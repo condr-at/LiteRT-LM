@@ -53,4 +53,18 @@ absl::StatusOr<size_t> ScopedFile::GetSizeImpl(int file) {
   return info.st_size;
 }
 
+absl::StatusOr<ScopedFile> ScopedFile::Duplicate() {
+  if (!IsValid()) {
+    return absl::InvalidArgumentError("File is not opened.");
+  }
+  return ScopedFile(dup(file_));
+}
+
+absl::StatusOr<int> ScopedFile::Release() {
+  if (!IsValid()) {
+    return absl::InvalidArgumentError("File is not opened.");
+  }
+  return ReleasePlatformFile();
+}
+
 }  // namespace litert::lm

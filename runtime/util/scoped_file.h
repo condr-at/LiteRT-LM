@@ -48,12 +48,12 @@ class ScopedFile {
     }
   }
 
-  ScopedFile(ScopedFile&& other) : file_(other.Release()) {}
+  ScopedFile(ScopedFile&& other) : file_(other.ReleasePlatformFile()) {}
   ScopedFile& operator=(ScopedFile&& other) {
     if (IsValid()) {
       CloseFile(file_);
     }
-    file_ = other.Release();
+    file_ = other.ReleasePlatformFile();
     return *this;
   }
 
@@ -67,7 +67,12 @@ class ScopedFile {
   static absl::StatusOr<size_t> GetSize(PlatformFile file);
   absl::StatusOr<size_t> GetSize() const { return GetSize(file_); }
 
-#if defined(_WIN32)
+  // Returns a ScopedFile pointing to the same underlying file as `this`.
+  absl::StatusOr<ScopedFile> Duplicate();
+
+  // Releases ownership of the current file as a C file descriptor.
+  //
+  // Windows notes:
   // Releases ownership of the operating system file HANDLE and returns the
   // corresponding C file descriptor.
   //
@@ -84,11 +89,10 @@ class ScopedFile {
   //
   // Warning: While it is possible to get a HANDLE back from the file
   // descriptor, **ownership will stay with the file descriptor**.
-  absl::StatusOr<int> ReleaseAsCFileDescriptor();
-#endif
+  absl::StatusOr<int> Release();
 
  private:
-  PlatformFile Release() {
+  PlatformFile ReleasePlatformFile() {
     PlatformFile temp = file_;
     file_ = kInvalidPlatformFile;
     return temp;

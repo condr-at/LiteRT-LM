@@ -105,8 +105,21 @@ std::string GetLastErrorString() {
 
 }  // namespace
 
-absl::StatusOr<int> ScopedFile::ReleaseAsCFileDescriptor() {
-  if (file_ == kInvalidPlatformFile) {
+absl::StatusOr<ScopedFile> ScopedFile::Duplicate() {
+  if (!IsValid()) {
+    return absl::InvalidArgumentError("File is not opened.");
+  }
+  HANDLE duplicated;
+  if (!DuplicateHandle(GetCurrentProcess(), file_, GetCurrentProcess(),
+                       &duplicated, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+    return absl::FailedPreconditionError("Could not duplicate handle: " +
+                                         GetLastErrorString());
+  }
+  return ScopedFile(duplicated);
+}
+
+absl::StatusOr<int> ScopedFile::Release() {
+  if (!IsValid()) {
     return absl::InvalidArgumentError("File is not opened.");
   }
 
@@ -126,7 +139,7 @@ absl::StatusOr<int> ScopedFile::ReleaseAsCFileDescriptor() {
     return absl::ErrnoToStatus(
         errno, "Could not convert HANDLE to a C file descriptor");
   }
-  Release();
+  ReleasePlatformFile();
   return fd;
 }
 

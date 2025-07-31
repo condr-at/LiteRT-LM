@@ -33,6 +33,11 @@
 namespace litert::lm {
 namespace {
 
+#if defined(_WIN32)
+#define read _read
+#define close _close
+#endif  // defined(_WIN32)
+
 using ::testing::status::IsOkAndHolds;
 using ::testing::status::StatusIs;
 
@@ -100,14 +105,29 @@ TEST(ScopedFile, GetSizeOfInvalidFile) {
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
-#if defined(_WIN32)
+TEST(ScopedFile, Duplicate) {
+  auto path = std::filesystem::path(::testing::TempDir()) / "file.txt";
+  WriteFile(path.string(), "foo bar");
 
-TEST(ScopedFile, ReleaseAsCFileDescriptorFailsWithAnInvalidFile) {
-  ScopedFile uninitialized_file;
-  EXPECT_FALSE(uninitialized_file.ReleaseAsCFileDescriptor().ok());
+  ASSERT_OK_AND_ASSIGN(auto file, ScopedFile::OpenWritable(path.string()));
+  ASSERT_OK_AND_ASSIGN(auto duplicated, file.Duplicate());
+
+  EXPECT_THAT(file.GetSize(), IsOkAndHolds(7));
+  EXPECT_THAT(duplicated.GetSize(), IsOkAndHolds(7));
+
+  // Delete original, duplicated file should still be valid.
+  file = ScopedFile();
+  EXPECT_THAT(duplicated.GetSize(), IsOkAndHolds(7));
 }
 
-TEST(ScopedFile, ReleaseAsCFileDescriptorFailsWithAnAsyncFile) {
+TEST(ScopedFile, ReleaseFailsWithAnInvalidFile) {
+  ScopedFile uninitialized_file;
+  EXPECT_FALSE(uninitialized_file.Release().ok());
+}
+
+#if defined(_WIN32)
+
+TEST(ScopedFile, ReleaseFailsWithAnAsyncFile) {
   auto path = std::filesystem::path(::testing::TempDir()) / "file.txt";
   const DWORD share_mode =
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -117,39 +137,41 @@ TEST(ScopedFile, ReleaseAsCFileDescriptorFailsWithAnAsyncFile) {
                     OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
   ASSERT_NE(hfile, INVALID_HANDLE_VALUE);
   ScopedFile file(hfile);
-  EXPECT_FALSE(file.ReleaseAsCFileDescriptor().ok());
+  EXPECT_FALSE(file.Release().ok());
 }
 
-TEST(ScopedFile, ReleaseAsCFileDescriptorWorksForAReadOnlyFile) {
+#endif  // defined(_WIN32)
+
+TEST(ScopedFile, ReleaseWorksForAReadOnlyFile) {
   const char reference_data[] = "foo bar";
   auto path = std::filesystem::path(::testing::TempDir()) / "file.txt";
   WriteFile(path.string(), reference_data);
 
   ASSERT_OK_AND_ASSIGN(auto file, ScopedFile::Open(path.string()));
-  ASSERT_OK_AND_ASSIGN(int fd, file.ReleaseAsCFileDescriptor());
+  ASSERT_OK_AND_ASSIGN(int fd, file.Release());
   EXPECT_GE(fd, 0);
 
   EXPECT_FALSE(file.IsValid());
 
   char data[sizeof(reference_data)] = {'a'};
-  EXPECT_EQ(_read(fd, data, sizeof(reference_data) - 1),
+  EXPECT_EQ(read(fd, data, sizeof(reference_data) - 1),
             sizeof(reference_data) - 1)
       << strerror(errno);
 
-  _close(fd);
+  close(fd);
 }
 
-TEST(ScopedFile, ReleaseAsCFileDescriptorWorksForAWritableFile) {
+TEST(ScopedFile, ReleaseWorksForAWritableFile) {
   const char reference_data[] = "foo bar";
   auto path = std::filesystem::path(::testing::TempDir()) / "file.txt";
   WriteFile(path.string(), reference_data);
 
   ASSERT_OK_AND_ASSIGN(auto file, ScopedFile::OpenWritable(path.string()));
-  ASSERT_OK_AND_ASSIGN(int fd, file.ReleaseAsCFileDescriptor());
+  ASSERT_OK_AND_ASSIGN(int fd, file.Release());
   EXPECT_GE(fd, 0);
 
   char data[sizeof(reference_data)] = {'a'};
-  EXPECT_EQ(_read(fd, data, sizeof(reference_data) - 1),
+  EXPECT_EQ(read(fd, data, sizeof(reference_data) - 1),
             sizeof(reference_data) - 1)
       << strerror(errno);
 
@@ -157,13 +179,11 @@ TEST(ScopedFile, ReleaseAsCFileDescriptorWorksForAWritableFile) {
             sizeof(reference_data) - 1)
       << strerror(errno);
 
-  _close(fd);
+  close(fd);
 
   std::string file_contents = ReadFile(path.string());
   EXPECT_EQ(file_contents, std::string(reference_data) + reference_data);
 }
-
-#endif  // defined(_WIN32)
 
 }  // namespace
 }  // namespace litert::lm
