@@ -202,6 +202,7 @@ class LlmLiteRtNpuCompiledModelExecutor : public LlmExecutor {
       std::optional<EmbedderPerLayerContext> embedder_per_layer_context =
           std::nullopt)
       : executor_settings_(std::move(executor_settings)),
+        resources_(std::move(resources)),
         embedder_context_(std::move(embedder_context)),
         npu_auxiliary_context_(std::move(npu_auxiliary_context)),
         mask_context_(std::move(mask_context)),
@@ -318,6 +319,7 @@ class LlmLiteRtNpuCompiledModelExecutor : public LlmExecutor {
       const InferenceContext& cache_update_inference_context);
 
   LlmExecutorSettings executor_settings_;
+  std::unique_ptr<ModelResources> resources_;
   LatencyStats latency_stats_;
   EmbedderContext embedder_context_;
   NpuAuxiliaryContext npu_auxiliary_context_;
