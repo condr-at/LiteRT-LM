@@ -137,6 +137,7 @@ cc_library(
     hdrs = ["sampling_cpu_util.h"],
     deps = [
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -150,7 +151,10 @@ cc_library(
 cc_library(
     name = "sampler",
     hdrs = ["sampler.h"],
-    deps = ["@com_google_absl//absl/status"] + select({
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ] + select({
         "//:litert_lm_link_capi_so": [
             "@litert//litert/cc:litert_tensor_buffer",
         ],
@@ -313,6 +317,8 @@ cc_test(
     deps = [
         ":top_p_cpu_sampler",
         "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "//runtime/util:convert_tensor_buffer",
     ] + select({

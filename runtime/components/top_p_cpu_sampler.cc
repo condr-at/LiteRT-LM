@@ -41,7 +41,8 @@ absl::Status ValidateTensor(const TensorBuffer& tensor, int max_num_dims,
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<TopPSampler>> TopPSampler::Create(
-    int k, float p, float temperature, int batch_size, int seed) {
+    int k, float p, float temperature, int batch_size, int seed,
+    bool compute_perplexity) {
   if (k <= 0) {
     return absl::InvalidArgumentError("k must be positive.");
   }
@@ -55,7 +56,8 @@ absl::StatusOr<std::unique_ptr<TopPSampler>> TopPSampler::Create(
     return absl::InvalidArgumentError(
         absl::StrCat("Temperature must be positive, but got ", temperature));
   }
-  return absl::WrapUnique(new TopPSampler(k, p, temperature, batch_size, seed));
+  return absl::WrapUnique(
+      new TopPSampler(k, p, temperature, batch_size, seed, compute_perplexity));
 }
 
 absl::Status TopPSampler::SampleToIdAndScoreBuffer(
@@ -87,12 +89,22 @@ absl::Status TopPSampler::SampleToIdAndScoreBuffer(
     logits_data = logits_data_or.Value();
   }
   std::vector<float> sampled_scores;
-  auto sampled_ids = TopKTopPSampling(logits_data, k_, p_, temperature_,
-                                      generator_, batch_size_, sampled_scores);
-  if (!sampled_ids.ok()) {
-    return sampled_ids.status();
+  auto sampled_ids_and_perplexity =
+      TopKTopPSampling(logits_data, k_, p_, temperature_, generator_,
+                       batch_size_, compute_perplexity_, sampled_scores);
+  if (!sampled_ids_and_perplexity.ok()) {
+    return sampled_ids_and_perplexity.status();
   }
-  ids_tensor.Write(absl::MakeConstSpan(*sampled_ids));
+  auto sampled_ids = (*sampled_ids_and_perplexity)->GetSampleIds();
+  auto perplexity = (*sampled_ids_and_perplexity)->GetPerplexity();
+  if (compute_perplexity_) {
+    if (!perplexity.has_value()) {
+      return absl::InternalError(
+          "Perplexity is enabled but is not being computed.");
+    }
+    perplexity_ += *perplexity;
+  }
+  ids_tensor.Write(absl::MakeConstSpan(sampled_ids));
   if (scores_tensor != nullptr) {
     status = ValidateTensor(*scores_tensor, /*max_num_dims=*/1, batch_size_,
                             "output scores");
