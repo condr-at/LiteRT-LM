@@ -11,13 +11,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""This tool is designed to inspect the contents of a .litertlm file.
+r"""This tool is designed to inspect the contents of a .litertlm file.
 
 It reads the file's header, system metadata, and section information, and prints
 them to the console.
 
 Example usage:
-  python litertlm_peek_main.py --litertlm_file=/path/to/your/file.litertlm
+  bazel run  third_party/odml/litert_lm/python/tools:litertlm_peek_main -- \
+  --litertlm_file=<path/to/your/file.litertlm>
 """
 
 import argparse
