@@ -36,7 +36,11 @@ enum class ModelType {
   kTfLiteEmbedder = 2,
   kTfLitePerLayerEmbedder = 3,
   kTfLiteAux = 4,
+  kTfLiteAudioFrontend = 9,  // Audio frontend model is weight-less Short-Time
+                             // Fourier Transform (STFT) to convert audio to
+                             // spectrogram.
   kTfLiteAudioEncoderHw = 5,
+  kTfLiteAudioAdapter = 10,
   kTfLiteEndOfAudio = 6,
   kTfLiteVisionAdapter = 7,
   kTfLiteVisionEncoder = 8,
@@ -55,8 +59,12 @@ inline absl::StatusOr<ModelType> StringToModelType(
     return ModelType::kTfLitePerLayerEmbedder;
   } else if (lower_case_model_type_str == "tf_lite_aux") {
     return ModelType::kTfLiteAux;
+  } else if (lower_case_model_type_str == "tf_lite_audio_frontend") {
+    return ModelType::kTfLiteAudioFrontend;
   } else if (lower_case_model_type_str == "tf_lite_audio_encoder_hw") {
     return ModelType::kTfLiteAudioEncoderHw;
+  } else if (lower_case_model_type_str == "tf_lite_audio_adapter") {
+    return ModelType::kTfLiteAudioAdapter;
   } else if (lower_case_model_type_str == "tf_lite_end_of_audio") {
     return ModelType::kTfLiteEndOfAudio;
   } else if (lower_case_model_type_str == "tf_lite_vision_adapter") {
@@ -80,8 +88,12 @@ inline std::string ModelTypeToString(ModelType model_type) {
       return "TF_LITE_PER_LAYER_EMBEDDER";
     case ModelType::kTfLiteAux:
       return "TF_LITE_AUX";
+    case ModelType::kTfLiteAudioFrontend:
+      return "TF_LITE_AUDIO_FRONTEND";
     case ModelType::kTfLiteAudioEncoderHw:
       return "TF_LITE_AUDIO_ENCODER_HW";
+    case ModelType::kTfLiteAudioAdapter:
+      return "TF_LITE_AUDIO_ADAPTER";
     case ModelType::kTfLiteEndOfAudio:
       return "TF_LITE_END_OF_AUDIO";
     case ModelType::kTfLiteVisionAdapter:
