@@ -102,7 +102,7 @@ cc_library(
     name = "sampler",
     hdrs = ["sampler.h"],
     deps = ["@com_google_absl//absl/status"] + select({
-        "//:litert_lm_link_capi_so": [
+        "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_tensor_buffer",
         ],
         "//conditions:default": [

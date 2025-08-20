@@ -52,7 +52,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "//runtime/proto:engine_cc_proto",
     ] + select({
-        "//:litert_lm_link_capi_so": [
+        "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_tensor_buffer",
         ],
         "//conditions:default": [
@@ -80,7 +80,7 @@ cc_test(
         "//runtime/util:convert_tensor_buffer",
         "//runtime/util:test_utils",
     ] + select({
-        "//:litert_lm_link_capi_so": [
+        "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_tensor_buffer",
         ],
         "//conditions:default": [
