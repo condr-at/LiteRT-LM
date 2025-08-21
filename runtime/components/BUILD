@@ -17,6 +17,7 @@ load("@litert//litert/build_common:litert_build_defs.bzl", "export_lrt_runtime_o
 package(
     default_hdrs_check = "strict",
     default_visibility = [
+        "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
         "//:__subpackages__",
     ],
 )
