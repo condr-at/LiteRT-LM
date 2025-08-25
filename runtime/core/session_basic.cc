@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/log/absl_log.h"  // from @com_google_absl
@@ -95,11 +96,13 @@ absl::Status SessionBasic::RunPrefill(const std::vector<InputData>& contents) {
   }
   absl::Status status;
   for (const auto& input : contents) {
-    RETURN_IF_ERROR(worker_thread_pool_.Schedule(
-        [this, input_copy = ToString(input).value(), &status]() {
-          status =
-              this->PrefillInternal(input_copy, /*wait_for_completion=*/true);
-        }));
+    if (const auto* input_text = std::get_if<InputText>(&input)) {
+      RETURN_IF_ERROR(worker_thread_pool_.Schedule(
+          [this, input_copy = input_text->GetData(), &status]() {
+            status =
+                this->PrefillInternal(input_copy, /*wait_for_completion=*/true);
+          }));
+    }
   }
   RETURN_IF_ERROR(worker_thread_pool_.WaitUntilDone(Engine::kDefaultTimeout));
   return status;
@@ -111,17 +114,19 @@ absl::Status SessionBasic::RunPrefillAsync(
     return absl::InvalidArgumentError("Input is empty.");
   }
   for (const auto& input : contents) {
-    RETURN_IF_ERROR(worker_thread_pool_.Schedule(
-        [this, input_copy = ToString(input).value(), observer]() {
-          absl::Status status =
-              this->PrefillInternal(input_copy, /*wait_for_completion=*/false);
-          ABSL_LOG(INFO) << "RunPrefillAsync status: " << status;
-          if (status.ok()) {
-            observer->OnDone();
-          } else {
-            observer->OnError(status);
-          }
-        }));
+    if (const auto* input_text = std::get_if<InputText>(&input)) {
+      RETURN_IF_ERROR(worker_thread_pool_.Schedule(
+          [this, input_copy = input_text->GetData(), observer]() {
+            absl::Status status = this->PrefillInternal(
+                input_copy, /*wait_for_completion=*/false);
+            ABSL_LOG(INFO) << "RunPrefillAsync status: " << status;
+            if (status.ok()) {
+              observer->OnDone();
+            } else {
+              observer->OnError(status);
+            }
+          }));
+    }
   }
   return absl::OkStatus();
 }

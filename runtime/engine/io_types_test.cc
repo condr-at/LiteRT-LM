@@ -50,11 +50,6 @@ TEST(InputTextTest, GetText) {
   EXPECT_EQ(input_text.GetData(), "Hello World!");
 }
 
-TEST(InputTextTest, ToString) {
-  InputText input_text("Hello World!");
-  EXPECT_EQ(ToString(input_text), "Hello World!");
-}
-
 TEST(InputImageTest, GetRawImageBytes) {
   InputImage input_image("Hello Image!");
   ASSERT_OK_AND_ASSIGN(auto raw_image_bytes, input_image.GetRawImageBytes());

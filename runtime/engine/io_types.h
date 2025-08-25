@@ -128,9 +128,6 @@ class InputAudio {
 // A container to host the input data. Will be extended to support more input
 // types in the future.
 using InputData = std::variant<InputText, InputImage, InputAudio>;
-// Converts the input data to a string. It returns nullopt if the input data
-// is not an InputText.
-std::optional<std::string> ToString(const InputData& input_data);
 
 // A container to host the model responses.
 class Responses {
