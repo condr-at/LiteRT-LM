@@ -17,32 +17,30 @@
 
 #include <stdbool.h>
 
-#include <memory>
 #include <optional>
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
-#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/components/sampler.h"
 #include "runtime/components/stop_token_detector.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/llm_executor.h"
+#include "runtime/executor/llm_executor_io_types.h"
 
 namespace litert::lm {
 
 // Runs the pipeline to prefill the input prompt.
-// - executor: The executor that call the core LLM model.
-// - tokenizer: The tokenizer to encode the text into token ids.
-// - prompt: The input prompt to prefill.
-// - bos_token_id: The token id of the start token.
-// Returns the last token id of the prefill ids. It is used for
-//   the next decode process to determine the token id to start from.
+// - executor: The executor that calls the core LLM model.
+// - inputs: The inputs for the executor, containing the prompt and other
+//   necessary data.
 // - wait_for_completion: If true, wait for the prefill to complete before
 //   returning.
-absl::StatusOr<int> Prefill(LlmExecutor& executor, Tokenizer& tokenizer,
-                            absl::string_view prompt, int bos_token_id,
+// - benchmark_info: Optional benchmark info to record performance metrics.
+// Returns the last token id of the prefill ids. It is used for
+//   the next decode process to determine the token id to start from.
+absl::StatusOr<int> Prefill(LlmExecutor& executor, ExecutorInputs& inputs,
                             bool wait_for_completion,
                             std::optional<BenchmarkInfo>& benchmark_info);
 

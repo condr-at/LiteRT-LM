@@ -350,44 +350,31 @@ absl::StatusOr<Responses> DecodeLoop(
 
 }  // namespace
 
-absl::StatusOr<int> Prefill(LlmExecutor& executor, Tokenizer& tokenizer,
-                            absl::string_view prompt, int bos_token_id,
+absl::StatusOr<int> Prefill(LlmExecutor& executor, ExecutorInputs& inputs,
                             bool wait_for_completion,
                             std::optional<BenchmarkInfo>& benchmark_info) {
-  int benchmark_prefill_token_count = 0;
-  if (benchmark_info.has_value()) {
-    benchmark_prefill_token_count =
-        benchmark_info->GetBenchmarkParams().num_prefill_tokens();
-    RETURN_IF_ERROR(benchmark_info->TimePrefillTurnStart());
-  }
-  ASSIGN_OR_RETURN(std::vector<int> ids, tokenizer.TextToTokenIds(prompt));
-  if (benchmark_prefill_token_count > 0) {
-    // If benchmark is enabled, we will use the benchmark prefill token count
-    // to set the prefill token count.
-    ids.resize(benchmark_prefill_token_count);
-  } else {
-    ids.insert(ids.begin(), bos_token_id);
-  }
   const int max_num_tokens = TryGetMaxNumTokens(executor);
-  if (ids.size() >= max_num_tokens) {
+  ASSIGN_OR_RETURN(auto text_data, inputs.GetTextDataPtr());
+  RET_CHECK(text_data != nullptr) << "text_data must not be null.";
+  LITERT_ASSIGN_OR_RETURN_ABSL(auto token_id_tensor_type,
+                               text_data->GetTokenIds().TensorType());
+  auto num_tokens = token_id_tensor_type.Layout().Dimensions().back();
+  if (num_tokens >= max_num_tokens) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Input token ids are too long. Exceeding the maximum number of tokens "
         "allowed: ",
-        ids.size(), " >= ", max_num_tokens));
+        num_tokens, " >= ", max_num_tokens));
   }
-  ASSIGN_OR_RETURN(auto ids_buffer, tokenizer.TokenIdsToTensorBuffer(ids));
-  LITERT_ASSIGN_OR_RETURN_ABSL(auto ids_buffer_span,
-                               ReferTensorBufferAsSpan<int>(ids_buffer));
+  LITERT_ASSIGN_OR_RETURN_ABSL(
+      auto ids_buffer_span,
+      ReferTensorBufferAsSpan<int>(text_data->GetTokenIds()));
   if (ids_buffer_span.empty()) {
     return absl::InternalError("Input token ids are empty.");
   }
   const int last_token_id = ids_buffer_span.back();
   ExecutorPrefillParams params;
   params.SetWaitForCompletion(wait_for_completion);
-  RETURN_IF_ERROR(
-      executor.Prefill(ExecutorInputs(ExecutorTextData(std::move(ids_buffer)),
-                                      std::nullopt, std::nullopt),
-                       params));
+  RETURN_IF_ERROR(executor.Prefill(inputs, params));
   if (benchmark_info.has_value()) {
     RETURN_IF_ERROR(benchmark_info->TimePrefillTurnEnd(ids_buffer_span.size()));
   }

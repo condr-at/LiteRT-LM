@@ -24,6 +24,7 @@
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor.h"
+#include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/framework/threadpool.h"
 #include "runtime/proto/sampler_params.pb.h"
 #include "runtime/util/convert_tensor_buffer.h"
@@ -83,10 +84,31 @@ absl::Status SessionBasic::PrefillInternal(absl::string_view input,
                    session_config_.GetPromptTemplates().user().suffix(),
                    session_config_.GetPromptTemplates().model().prefix());
   ABSL_LOG(INFO) << "PrefillInternal: " << formatted_input;
-  ASSIGN_OR_RETURN(last_prefill_token_id_,
-                   Prefill(executor_, tokenizer_, formatted_input,
-                           session_config_.GetStartTokenId(),
-                           wait_for_completion, benchmark_info_));
+  // Tokenize the formatted input.
+  int benchmark_prefill_token_count = 0;
+  if (benchmark_info_.has_value()) {
+    benchmark_prefill_token_count =
+        benchmark_info_->GetBenchmarkParams().num_prefill_tokens();
+    RETURN_IF_ERROR(benchmark_info_->TimePrefillTurnStart());
+  }
+  ASSIGN_OR_RETURN(std::vector<int> ids,
+                   tokenizer_.TextToTokenIds(formatted_input));
+  if (benchmark_prefill_token_count > 0) {
+    // If benchmark is enabled, we will use the benchmark prefill token count
+    // to set the prefill token count.
+    ids.resize(benchmark_prefill_token_count);
+  } else {
+    // TODO(hoko): Ask @ztenghui what is the original design intent here.
+    ids.insert(ids.begin(), session_config_.GetStartTokenId());
+  }
+  ASSIGN_OR_RETURN(auto ids_buffer, tokenizer_.TokenIdsToTensorBuffer(ids));
+  ExecutorInputs inputs(ExecutorTextData(std::move(ids_buffer)), std::nullopt,
+                        std::nullopt);
+  // This should be added to the beginning of the next prefill call as will no?
+  // Also, this is not thread safe. More discussion with @ztenghui is needed.
+  ASSIGN_OR_RETURN(
+      last_prefill_token_id_,
+      Prefill(executor_, inputs, wait_for_completion, benchmark_info_));
   return absl::OkStatus();
 }
 

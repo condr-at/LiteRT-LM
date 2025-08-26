@@ -19,6 +19,7 @@
 #include "runtime/components/top_p_cpu_sampler.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/fake_llm_executor.h"
+#include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/util/convert_tensor_buffer.h"
 #include "runtime/util/test_utils.h"  // NOLINT
 
@@ -89,9 +90,19 @@ TEST_F(PipelineTest, PrefillTooLong) {
   // Set the max number of tokens to 3.
   executor_->GetMutableExecutorSettings().value()->SetMaxNumTokens(3);
   std::optional<BenchmarkInfo> benchmark_info;
+
+  ASSERT_OK_AND_ASSIGN(std::vector<int> token_ids,
+                       tokenizer_->TextToTokenIds(prompt));
+  // Prepend the bos token id.
+  token_ids.insert(token_ids.begin(), 2);
+  ASSERT_OK_AND_ASSIGN(auto token_ids_buffer,
+                       tokenizer_->TokenIdsToTensorBuffer(token_ids));
+  ExecutorTextData text_data(std::move(token_ids_buffer));
+  ExecutorInputs inputs(std::move(text_data), std::nullopt, std::nullopt);
+
   auto last_prefill_token_id =
-      Prefill(*executor_, *tokenizer_, prompt,
-              /*bos_token_id=*/2, /*wait_for_completion=*/true, benchmark_info);
+      Prefill(*executor_, inputs,
+              /*wait_for_completion=*/true, benchmark_info);
   EXPECT_THAT(last_prefill_token_id,
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -99,9 +110,19 @@ TEST_F(PipelineTest, PrefillTooLong) {
 TEST_F(PipelineTest, PrefillSucceed) {
   const std::string prompt = "Hello World!";
   std::optional<BenchmarkInfo> benchmark_info;
+
+  ASSERT_OK_AND_ASSIGN(std::vector<int> token_ids,
+                       tokenizer_->TextToTokenIds(prompt));
+  // Prepend the bos token id.
+  token_ids.insert(token_ids.begin(), 2);
+  ASSERT_OK_AND_ASSIGN(auto token_ids_buffer,
+                       tokenizer_->TokenIdsToTensorBuffer(token_ids));
+  ExecutorTextData text_data(std::move(token_ids_buffer));
+  ExecutorInputs inputs(std::move(text_data), std::nullopt, std::nullopt);
+
   auto last_prefill_token_id =
-      Prefill(*executor_, *tokenizer_, prompt,
-              /*bos_token_id=*/2, /*wait_for_completion=*/true, benchmark_info);
+      Prefill(*executor_, inputs,
+              /*wait_for_completion=*/true, benchmark_info);
   EXPECT_OK(last_prefill_token_id.status());
   EXPECT_EQ(*last_prefill_token_id, 2294);
 }
@@ -263,9 +284,18 @@ class PipelineCustomSamplingTest : public testing::Test {
 TEST_F(PipelineCustomSamplingTest, Prefill) {
   const std::string prompt = "Hello World!";
   std::optional<BenchmarkInfo> benchmark_info;
+  ASSERT_OK_AND_ASSIGN(std::vector<int> token_ids,
+                       tokenizer_->TextToTokenIds(prompt));
+  // Prepend the bos token id.
+  token_ids.insert(token_ids.begin(), 2);
+  ASSERT_OK_AND_ASSIGN(auto token_ids_buffer,
+                       tokenizer_->TokenIdsToTensorBuffer(token_ids));
+  ExecutorTextData text_data(std::move(token_ids_buffer));
+  ExecutorInputs inputs(std::move(text_data), std::nullopt, std::nullopt);
+
   auto last_prefill_token_id =
-      Prefill(*executor_, *tokenizer_, prompt,
-              /*bos_token_id=*/2, /*wait_for_completion=*/true, benchmark_info);
+      Prefill(*executor_, inputs,
+              /*wait_for_completion=*/true, benchmark_info);
   EXPECT_OK(last_prefill_token_id.status());
   EXPECT_EQ(*last_prefill_token_id, 2294);
 }
@@ -275,9 +305,18 @@ TEST_F(PipelineCustomSamplingTest, PrefillTooLong) {
   executor_->GetMutableExecutorSettings().value()->SetMaxNumTokens(3);
   const std::string prompt = "Hello World!";
   std::optional<BenchmarkInfo> benchmark_info;
+  ASSERT_OK_AND_ASSIGN(std::vector<int> token_ids,
+                       tokenizer_->TextToTokenIds(prompt));
+  // Prepend the bos token id.
+  token_ids.insert(token_ids.begin(), 2);
+  ASSERT_OK_AND_ASSIGN(auto token_ids_buffer,
+                       tokenizer_->TokenIdsToTensorBuffer(token_ids));
+  ExecutorTextData text_data(std::move(token_ids_buffer));
+  ExecutorInputs inputs(std::move(text_data), std::nullopt, std::nullopt);
+
   auto last_prefill_token_id =
-      Prefill(*executor_, *tokenizer_, prompt,
-              /*bos_token_id=*/2, /*wait_for_completion=*/true, benchmark_info);
+      Prefill(*executor_, inputs,
+              /*wait_for_completion=*/true, benchmark_info);
   EXPECT_THAT(last_prefill_token_id,
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
