@@ -37,3 +37,29 @@
  diff --git a/BUILD.bazel b/BUILD.bazel
  --- a/BUILD.bazel
  +++ b/BUILD.bazel
++diff --git a/third_party/kissfft/kissfft.BUILD b/third_party/kissfft/kissfft.BUILD
+--- third_party/kissfft/kissfft.BUILD
++++ third_party/kissfft/kissfft.BUILD
+@@ -28,3 +28,22 @@ cc_library(
+         "-DFIXED_POINT=16",
+     ],
+ )
++cc_library(
++    name = "kissfftr",
++    srcs = [
++        "kfc.c",
++        "kiss_fft.c",
++        "kiss_fftnd.c",
++        "kiss_fftndr.c",
++        "kiss_fftr.c",
++    ],
++    hdrs = [
++        "_kiss_fft_guts.h",
++        "kfc.h",
++        "kiss_fft.h",
++        "kiss_fft_log.h",
++        "kiss_fftnd.h",
++        "kiss_fftndr.h",
++        "kiss_fftr.h",
++    ],
++)
