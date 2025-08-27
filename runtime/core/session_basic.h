@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -89,10 +90,22 @@ class SessionBasic : public Engine::Session {
         worker_thread_pool_(*worker_thread_pool),
         stop_token_detector_(stop_token_detector) {}
 
+  // Util function for applying the prompt templates.
+  // The input is the raw text input from the user.
+  // The output is the text input after applying the proper prompt templates.
+  absl::StatusOr<std::string> ApplyPromptTemplates(absl::string_view input);
+
+  // Preprocesses the input contents. This function is used for pre-processing
+  // the input contents before sending them to the LLM executor.
+  // Text input will be preprocessed by the tokenizer.
+  absl::StatusOr<std::vector<InputData>> PreprocessContents(
+      const std::vector<InputData>& contents);
+
   // The internal function to prefill the input prompt. It is for convenience to
   // wrap it with lambda function for scheduling.
-  absl::Status PrefillInternal(absl::string_view input,
-                               bool wait_for_completion);
+  absl::Status PrefillInternal(
+      const std::vector<InputData>& preprocessed_contents,
+      bool wait_for_completion);
 
   // The internal functions to decode the input prompt. It is for convenience to
   // wrap it with lambda function for scheduling.

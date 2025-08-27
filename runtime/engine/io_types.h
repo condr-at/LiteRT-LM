@@ -17,7 +17,6 @@
 
 #include <cstdint>
 #include <map>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -36,13 +35,40 @@ namespace litert::lm {
 // A container to host the input text.
 class InputText {
  public:
-  explicit InputText(absl::string_view text) : text_(text) {}
+  // Constructs an InputText from a raw text. The InputText takes ownership of
+  // the provided `text`.
+  explicit InputText(std::string text) : data_(std::move(text)) {}
+  // Constructs an InputText from a TensorBuffer. The InputText takes
+  // ownership of the provided `text_tensor`.
+  explicit InputText(TensorBuffer text_tensor)
+      : data_(std::move(text_tensor)) {}
 
-  // Returns the input text.
-  absl::string_view GetData() const { return text_; }
+  // Returns true if the text is preprocessed into a TensorBuffer.
+  bool IsTensorBuffer() const {
+    return std::holds_alternative<TensorBuffer>(data_);
+  }
+
+  // Returns the raw text string. Returns an error if the text is preprocessed.
+  absl::StatusOr<absl::string_view> GetRawTextString() const {
+    if (std::holds_alternative<std::string>(data_)) {
+      return absl::string_view(std::get<std::string>(data_));
+    }
+    return absl::FailedPreconditionError(
+        "The text is preprocessed and does not have raw text bytes.");
+  }
+
+  // Returns the preprocessed text tensor. Returns an error if the text is
+  // not preprocessed.
+  absl::StatusOr<const TensorBuffer*> GetPreprocessedTextTensor() const {
+    if (std::holds_alternative<TensorBuffer>(data_)) {
+      return &std::get<TensorBuffer>(data_);
+    }
+    return absl::FailedPreconditionError(
+        "The text is not preprocessed and does not have a tensor.");
+  }
 
  private:
-  std::string text_;
+  std::variant<std::string, TensorBuffer> data_;
 };
 
 // A container to host the input image.
@@ -58,7 +84,7 @@ class InputImage {
       : data_(std::move(image_tensor)) {}
 
   // Returns true if the image is preprocessed into a TensorBuffer.
-  bool IsPreprocessed() const {
+  bool IsTensorBuffer() const {
     return std::holds_alternative<TensorBuffer>(data_);
   }
 
@@ -98,7 +124,7 @@ class InputAudio {
       : data_(std::move(audio_tensor)) {}
 
   // Returns true if the audio is preprocessed into a TensorBuffer.
-  bool IsPreprocessed() const {
+  bool IsTensorBuffer() const {
     return std::holds_alternative<TensorBuffer>(data_);
   }
 

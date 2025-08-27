@@ -1,3 +1,17 @@
+// Copyright 2025 The ODML Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "runtime/engine/io_types.h"
 
 #include <cstddef>
@@ -45,9 +59,61 @@ std::string FloatToString(float val) {
   return oss.str();
 }
 
-TEST(InputTextTest, GetText) {
+TEST(InputTextTest, GetRawText) {
   InputText input_text("Hello World!");
-  EXPECT_EQ(input_text.GetData(), "Hello World!");
+  EXPECT_FALSE(input_text.IsTensorBuffer());
+  EXPECT_THAT(input_text.GetRawTextString(), IsOkAndHolds("Hello World!"));
+  EXPECT_THAT(input_text.GetPreprocessedTextTensor(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST(InputTextTest, GetPreprocessedTextTensor) {
+  // Create a tensor buffer with kTensorData.
+  LITERT_ASSERT_OK_AND_ASSIGN(auto env, litert::Environment::Create({}));
+  const RankedTensorType kTensorType(kTestTensorType);
+  constexpr auto kTensorBufferType = kLiteRtTensorBufferTypeHostMemory;
+  const size_t kTensorSize = sizeof(kTensorData);
+
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer original_tensor_buffer,
+      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+                                  kTensorSize));
+
+  LITERT_ASSERT_OK(
+      original_tensor_buffer.Write<float>(absl::MakeSpan(kTensorData, 4)));
+
+  // Create an InputText from the tensor buffer. This InputText takes
+  // ownership of the tensor buffer.
+  InputText input_text(std::move(original_tensor_buffer));
+
+  // Confirm the InputText is preprocessed.
+  EXPECT_TRUE(input_text.IsTensorBuffer());
+
+  // Confirm that GetRawTextString returns an error.
+  EXPECT_THAT(input_text.GetRawTextString(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  // Confirm the retrieved tensor buffer is identical to the original tensor
+  // buffer.
+  ASSERT_OK_AND_ASSIGN(auto retrieved_tensor_buffer,
+                       input_text.GetPreprocessedTextTensor());
+
+  LITERT_ASSERT_OK_AND_ASSIGN(auto retrieved_tensor_buffer_size,
+                              retrieved_tensor_buffer->Size());
+  EXPECT_EQ(retrieved_tensor_buffer_size, kTensorSize);
+  LITERT_ASSERT_OK_AND_ASSIGN(auto retrieved_tensor_buffer_type,
+                              retrieved_tensor_buffer->BufferType());
+  EXPECT_EQ(retrieved_tensor_buffer_type, kTensorBufferType);
+  LITERT_ASSERT_OK_AND_ASSIGN(auto retrieved_tensor_type,
+                              retrieved_tensor_buffer->TensorType());
+  EXPECT_EQ(retrieved_tensor_type, kTensorType);
+
+  // Confirm the value of the retrieved_tensor_buffer is identical to
+  // kTensorData.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      auto retrieved_data,
+      ::litert::lm::ReferTensorBufferAsSpan<float>(*retrieved_tensor_buffer));
+  EXPECT_THAT(retrieved_data, ElementsAreArray(kTensorData));
 }
 
 TEST(InputImageTest, GetRawImageBytes) {
@@ -76,7 +142,7 @@ TEST(InputImageTest, GetPreprocessedImageTensor) {
   InputImage input_image(std::move(original_tensor_buffer));
 
   // Confirm the InputImage is preprocessed.
-  EXPECT_TRUE(input_image.IsPreprocessed());
+  EXPECT_TRUE(input_image.IsTensorBuffer());
 
   // Confirm the retrieved tensor buffer is identical to the original tensor
   // buffer.
@@ -127,7 +193,7 @@ TEST(InputAudioTest, GetPreprocessedAudioTensor) {
   InputAudio input_audio(std::move(original_tensor_buffer));
 
   // Confirm the InputAudio is preprocessed.
-  EXPECT_TRUE(input_audio.IsPreprocessed());
+  EXPECT_TRUE(input_audio.IsTensorBuffer());
 
   // Confirm the retrieved tensor buffer is identical to the original tensor
   // buffer.

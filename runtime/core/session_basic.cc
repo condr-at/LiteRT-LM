@@ -28,6 +28,7 @@
 #include "runtime/framework/threadpool.h"
 #include "runtime/proto/sampler_params.pb.h"
 #include "runtime/util/convert_tensor_buffer.h"
+#include "runtime/util/litert_status_util.h"
 #include "runtime/util/status_macros.h"  // IWYU pragma: keep
 
 namespace litert::lm {
@@ -74,36 +75,77 @@ SessionBasic::~SessionBasic() {
   }
 }
 
-absl::Status SessionBasic::PrefillInternal(absl::string_view input,
-                                           bool wait_for_completion) {
+absl::StatusOr<std::string> SessionBasic::ApplyPromptTemplates(
+    absl::string_view input) {
+  return absl::StrCat(session_config_.GetPromptTemplates().user().prefix(),
+                      input,
+                      session_config_.GetPromptTemplates().user().suffix(),
+                      session_config_.GetPromptTemplates().model().prefix());
+}
+
+// TODO - b/436674053: Modulize the preprocessing logic into a separate
+// preprocessor class, please refer to the bug for more details.
+absl::StatusOr<std::vector<InputData>> SessionBasic::PreprocessContents(
+    const std::vector<InputData>& contents) {
+  std::vector<InputData> preprocessed_contents;
+  for (const auto& input : contents) {
+    if (const auto* input_text = std::get_if<InputText>(&input)) {
+      if (input_text->IsTensorBuffer()) {
+        ASSIGN_OR_RETURN(const auto* token_ids,
+                         input_text->GetPreprocessedTextTensor());
+        LITERT_ASSIGN_OR_RETURN_ABSL(auto token_ids_clone,
+                                     token_ids->Duplicate());
+        preprocessed_contents.emplace_back(
+            InputText(std::move(token_ids_clone)));
+      } else {
+        ASSIGN_OR_RETURN(auto raw_text, input_text->GetRawTextString());
+        ASSIGN_OR_RETURN(auto formatted_text, ApplyPromptTemplates(raw_text));
+        int benchmark_prefill_token_count = 0;
+        if (benchmark_info_.has_value()) {
+          benchmark_prefill_token_count =
+              benchmark_info_->GetBenchmarkParams().num_prefill_tokens();
+          RETURN_IF_ERROR(benchmark_info_->TimePrefillTurnStart());
+        }
+        ASSIGN_OR_RETURN(std::vector<int> ids,
+                         tokenizer_.TextToTokenIds(formatted_text));
+        if (benchmark_prefill_token_count > 0) {
+          // If benchmark is enabled, we will use the benchmark prefill token
+          // count to set the prefill token count.
+          ids.resize(benchmark_prefill_token_count);
+        } else {
+          // TODO(hoko): Ask @ztenghui what is the original design intent here.
+          ids.insert(ids.begin(), session_config_.GetStartTokenId());
+        }
+        ASSIGN_OR_RETURN(auto ids_buffer,
+                         tokenizer_.TokenIdsToTensorBuffer(ids));
+        preprocessed_contents.emplace_back(InputText(std::move(ids_buffer)));
+      }
+    } else if (const auto* input_image = std::get_if<InputImage>(&input)) {
+      return absl::UnimplementedError("Image prefill is not implemented yet.");
+    } else if (const auto* input_audio = std::get_if<InputAudio>(&input)) {
+      return absl::UnimplementedError("Audio prefill is not implemented yet.");
+    }
+  }
+  return preprocessed_contents;
+}
+
+absl::Status SessionBasic::PrefillInternal(
+    const std::vector<InputData>& preprocessed_contents,
+    bool wait_for_completion) {
   // TODO(b/397975034): Consider to utilize a prompt formatting logic in a
   // separate library/class.
   // Update the input with prompt formatting.
-  std::string formatted_input =
-      absl::StrCat(session_config_.GetPromptTemplates().user().prefix(), input,
-                   session_config_.GetPromptTemplates().user().suffix(),
-                   session_config_.GetPromptTemplates().model().prefix());
-  ABSL_LOG(INFO) << "PrefillInternal: " << formatted_input;
-  // Tokenize the formatted input.
-  int benchmark_prefill_token_count = 0;
-  if (benchmark_info_.has_value()) {
-    benchmark_prefill_token_count =
-        benchmark_info_->GetBenchmarkParams().num_prefill_tokens();
-    RETURN_IF_ERROR(benchmark_info_->TimePrefillTurnStart());
-  }
-  ASSIGN_OR_RETURN(std::vector<int> ids,
-                   tokenizer_.TextToTokenIds(formatted_input));
-  if (benchmark_prefill_token_count > 0) {
-    // If benchmark is enabled, we will use the benchmark prefill token count
-    // to set the prefill token count.
-    ids.resize(benchmark_prefill_token_count);
-  } else {
-    // TODO(hoko): Ask @ztenghui what is the original design intent here.
-    ids.insert(ids.begin(), session_config_.GetStartTokenId());
-  }
-  ASSIGN_OR_RETURN(auto ids_buffer, tokenizer_.TokenIdsToTensorBuffer(ids));
-  ExecutorInputs inputs(ExecutorTextData(std::move(ids_buffer)), std::nullopt,
-                        std::nullopt);
+  RET_CHECK(preprocessed_contents.size() == 1)
+      << "preprocessed_contents must have exactly one element.";
+  RET_CHECK(std::holds_alternative<InputText>(preprocessed_contents.at(0)))
+      << "preprocessed_contents must have an InputText.";
+  const InputText& input_text =
+      std::get<InputText>(preprocessed_contents.at(0));
+  ASSIGN_OR_RETURN(const auto* token_ids,
+                   input_text.GetPreprocessedTextTensor());
+  LITERT_ASSIGN_OR_RETURN_ABSL(auto token_ids_clone, token_ids->Duplicate());
+  ExecutorInputs inputs(ExecutorTextData(std::move(token_ids_clone)),
+                        std::nullopt, std::nullopt);
   // This should be added to the beginning of the next prefill call as will no?
   // Also, this is not thread safe. More discussion with @ztenghui is needed.
   ASSIGN_OR_RETURN(
@@ -116,16 +158,15 @@ absl::Status SessionBasic::RunPrefill(const std::vector<InputData>& contents) {
   if (contents.empty()) {
     return absl::InvalidArgumentError("Input is empty.");
   }
+  ASSIGN_OR_RETURN(std::vector<InputData> preprocessed_contents,
+                   PreprocessContents(contents));
   absl::Status status;
-  for (const auto& input : contents) {
-    if (const auto* input_text = std::get_if<InputText>(&input)) {
-      RETURN_IF_ERROR(worker_thread_pool_.Schedule(
-          [this, input_copy = input_text->GetData(), &status]() {
-            status =
-                this->PrefillInternal(input_copy, /*wait_for_completion=*/true);
-          }));
-    }
-  }
+  RETURN_IF_ERROR(worker_thread_pool_.Schedule(
+      [this, preprocessed_contents = std::move(preprocessed_contents),
+       &status]() {
+        status = this->PrefillInternal(preprocessed_contents,
+                                       /*wait_for_completion=*/true);
+      }));
   RETURN_IF_ERROR(worker_thread_pool_.WaitUntilDone(Engine::kDefaultTimeout));
   return status;
 }
@@ -135,21 +176,20 @@ absl::Status SessionBasic::RunPrefillAsync(
   if (contents.empty()) {
     return absl::InvalidArgumentError("Input is empty.");
   }
-  for (const auto& input : contents) {
-    if (const auto* input_text = std::get_if<InputText>(&input)) {
-      RETURN_IF_ERROR(worker_thread_pool_.Schedule(
-          [this, input_copy = input_text->GetData(), observer]() {
-            absl::Status status = this->PrefillInternal(
-                input_copy, /*wait_for_completion=*/false);
-            ABSL_LOG(INFO) << "RunPrefillAsync status: " << status;
-            if (status.ok()) {
-              observer->OnDone();
-            } else {
-              observer->OnError(status);
-            }
-          }));
-    }
-  }
+  ASSIGN_OR_RETURN(std::vector<InputData> preprocessed_contents,
+                   PreprocessContents(contents));
+  RETURN_IF_ERROR(worker_thread_pool_.Schedule(
+      [this, preprocessed_contents = std::move(preprocessed_contents),
+       observer]() {
+        absl::Status status = this->PrefillInternal(
+            preprocessed_contents, /*wait_for_completion=*/false);
+        ABSL_LOG(INFO) << "RunPrefillAsync status: " << status;
+        if (status.ok()) {
+          observer->OnDone();
+        } else {
+          observer->OnError(status);
+        }
+      }));
   return absl::OkStatus();
 }
 

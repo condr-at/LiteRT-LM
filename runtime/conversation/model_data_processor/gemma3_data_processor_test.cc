@@ -60,8 +60,14 @@ absl::StatusOr<std::string> GetContents(const std::string& path) {
 }
 
 MATCHER_P(HasInputText, text_input, "") {
-  return std::holds_alternative<InputText>(arg) &&
-         std::get<InputText>(arg).GetData() == text_input.GetData();
+  if (!std::holds_alternative<InputText>(arg)) {
+    return false;
+  }
+  auto text_bytes = std::get<InputText>(arg).GetRawTextString();
+  if (!text_bytes.ok()) {
+    return false;
+  }
+  return text_bytes.value() == text_input->GetRawTextString().value();
 }
 
 MATCHER_P(HasInputImage, image_input, "") {
@@ -87,9 +93,8 @@ TEST(Gemma3DataProcessorTest, ToInputDataVectorTextOnly) {
       const std::vector<InputData> input_data,
       processor->ToInputDataVector(rendered_template_prompt, messages, {}));
 
-  EXPECT_THAT(input_data,
-              ElementsAre(HasInputText(InputText(
-                  "<start_of_turn>user\ntest prompt\n<end_of_turn>"))));
+  InputText expected_text("<start_of_turn>user\ntest prompt\n<end_of_turn>");
+  EXPECT_THAT(input_data, ElementsAre(HasInputText(&expected_text)));
 }
 
 TEST(Gemma3DataProcessorTest, ToInputDataVectorTextAndImage) {
@@ -105,13 +110,12 @@ TEST(Gemma3DataProcessorTest, ToInputDataVectorTextAndImage) {
   ASSERT_OK_AND_ASSIGN(
       const std::vector<InputData> input_data,
       processor->ToInputDataVector(rendered_template_prompt, messages, {}));
+  InputText expected_text1("<start_of_turn>user\nHere is an image of a cat ");
   InputImage image_input("");
-  EXPECT_THAT(
-      input_data,
-      ElementsAre(HasInputText(InputText(
-                      "<start_of_turn>user\nHere is an image of a cat ")),
-                  HasInputImage(&image_input),
-                  HasInputText(InputText("<end_of_turn>"))));
+  InputText expected_text2("<end_of_turn>");
+  EXPECT_THAT(input_data, ElementsAre(HasInputText(&expected_text1),
+                                      HasInputImage(&image_input),
+                                      HasInputText(&expected_text2)));
 }
 
 TEST(Gemma3DataProcessorTest, ToMessage) {
@@ -154,8 +158,7 @@ TEST(Gemma3DataProcessorTest, PromptTemplateToInputDataVectorTextOnly) {
   ASSERT_OK_AND_ASSIGN(
       const std::vector<InputData> input_data,
       processor->ToInputDataVector(rendered_prompt, messages, {}));
-  EXPECT_THAT(input_data,
-              ElementsAre(HasInputText(InputText(R"""(<start_of_turn>user
+  InputText expected_text(R"""(<start_of_turn>user
 Hello world!
 
 How are you?<end_of_turn>
@@ -164,7 +167,8 @@ I am doing well, thanks for asking.<end_of_turn>
 <start_of_turn>user
 What is the capital of France?<end_of_turn>
 <start_of_turn>model
-)"""))));
+)""");
+  EXPECT_THAT(input_data, ElementsAre(HasInputText(&expected_text)));
 }
 
 TEST(Gemma3DataProcessorTest, PromptTemplateToInputDataVectorTextAndImage) {
@@ -195,23 +199,24 @@ TEST(Gemma3DataProcessorTest, PromptTemplateToInputDataVectorTextAndImage) {
   ASSERT_OK_AND_ASSIGN(
       const std::vector<InputData> input_data,
       processor->ToInputDataVector(rendered_prompt, messages, {}));
-  InputImage image_input("");
-  EXPECT_THAT(input_data,
-              ElementsAre(HasInputText(InputText(R"""(<start_of_turn>user
+  InputText expected_text1(R"""(<start_of_turn>user
 Hello world!
 
-How are you?)""")),
-                          HasInputImage(&image_input),
-                          HasInputText(InputText(R"""(<end_of_turn>
+How are you?)""");
+  InputImage image_input("");
+  InputText expected_text2(R"""(<end_of_turn>
 <start_of_turn>model
 I am doing well, thanks for asking.<end_of_turn>
 <start_of_turn>user
-)""")),
-                          HasInputImage(&image_input),
-                          HasInputText(InputText(
-                              R"""(What is the capital of France?<end_of_turn>
+)""");
+  InputText expected_text3(R"""(What is the capital of France?<end_of_turn>
 <start_of_turn>model
-)"""))));
+)""");
+  EXPECT_THAT(
+      input_data,
+      ElementsAre(HasInputText(&expected_text1), HasInputImage(&image_input),
+                  HasInputText(&expected_text2), HasInputImage(&image_input),
+                  HasInputText(&expected_text3)));
 }
 
 }  // namespace

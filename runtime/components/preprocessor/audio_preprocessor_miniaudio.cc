@@ -235,7 +235,7 @@ AudioPreprocessorMiniAudio::Create(const AudioPreprocessorConfig& config) {
 // 4. Create a tensor buffer for the log mel spectrograms.
 absl::StatusOr<InputAudio> AudioPreprocessorMiniAudio::Preprocess(
     InputAudio audio_bytes) {
-  if (audio_bytes.IsPreprocessed()) {
+  if (audio_bytes.IsTensorBuffer()) {
     return absl::FailedPreconditionError(
         "Audio is already preprocessed. No need to preprocess again.");
   }
