@@ -113,6 +113,7 @@ py_test(
 pytype_strict_library(
     name = "litertlm_builder",
     srcs = ["litertlm_builder.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":litertlm_core",
         "@flatbuffers//:runtime_py",
@@ -131,5 +132,33 @@ py_test(
         "//runtime/proto:llm_metadata_py_pb2",
         "@absl_py//absl/testing:absltest",
         "@com_google_protobuf//:protobuf_python",
+    ],
+)
+
+pytype_strict_binary(
+    name = "litertlm_builder_cli",
+    srcs = ["litertlm_builder_cli.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":litertlm_builder",
+        "@absl_py//absl:app",
+    ],
+)
+
+py_test(
+    name = "litertlm_builder_cli_test",
+    srcs = ["litertlm_builder_cli_test.py"],
+    data = [
+        ":litertlm_builder_cli",
+    ],
+    deps = [
+        ":litertlm_peek",
+        "@rules_python//python/runfiles",
+        "//runtime/proto:llm_metadata_py_pb2",
+        "@absl_py//absl/testing:absltest",
     ],
 )
