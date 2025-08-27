@@ -317,6 +317,14 @@ http_archive(
     urls = ["https://github.com/google/minja/archive/58568621432715b0ed38efd16238b0e7ff36c3ba.zip"],
 )
 
+http_archive(
+    name = "miniaudio",
+    build_file = "@//:BUILD.miniaudio",
+    sha256 = "bcb07bfb27e6fa94d34da73ba2d5642d4940b208ec2a660dbf4e52e6b7cd492f",
+    strip_prefix = "miniaudio-0.11.22",
+    urls = ["https://github.com/mackron/miniaudio/archive/refs/tags/0.11.22.tar.gz"],
+)
+
 # Android rules. Need latest rules_android_ndk to use NDK 26+.
 load("@rules_android_ndk//:rules.bzl", "android_ndk_repository")
 
