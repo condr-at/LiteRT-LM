@@ -150,7 +150,9 @@ cc_library(
             "@litert//litert/cc/internal:litert_tensor_buffer",
         ],
     }) + select({
-        "//conditions:default": [],
+        "//conditions:default": [
+            "@litert//litert/c/internal:litert_tensor_buffer_registry",  # buildcleaner: keep
+        ],
     }),
 )
 
