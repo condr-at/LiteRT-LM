@@ -121,9 +121,8 @@ class Engine {
     virtual absl::StatusOr<BenchmarkInfo> GetBenchmarkInfo() = 0;
 
     // Cancels the ongoing inference process. Note that if this function is
-    // called, the inference process will return with a kCancelled error.
-    // Also, the session object should be discarded after this call as it cannot
-    // be used for further inference.
+    // called, the inference process will return with a kCancelled error. The
+    // session could still be used after afterwards.
     virtual void CancelProcess() {
       ABSL_LOG(FATAL) << "CancelProcess is not implemented.";
     }
