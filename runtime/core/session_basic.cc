@@ -14,6 +14,8 @@
 
 #include "runtime/core/session_basic.h"
 
+#include <cstddef>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,8 +30,10 @@
 #include "absl/strings/match.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
-#include "absl/time/time.h"  // from @com_google_absl
+#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
+#include "litert/cc/litert_model.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/sampler.h"
 #include "runtime/components/sampler_factory.h"
@@ -145,10 +149,12 @@ absl::StatusOr<std::string> SessionBasic::ApplyPromptTemplates(
   return absl::StrCat(turn_prefix, input, turn_suffix);
 }
 
+// TODO - b/436674053: Modularize the preprocessing logic into a separate
+// preprocessor class, and have unit test for it.
 absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
     const std::vector<InputData>& preprocessed_contents) {
   std::vector<int> combined_token_ids;
-  std::optional<ExecutorVisionData> single_image_data = std::nullopt;
+  std::vector<ExecutorVisionData> all_image_data;
   for (const auto& preprocessed_content : preprocessed_contents) {
     if (const auto* input_text =
             std::get_if<InputText>(&preprocessed_content)) {
@@ -164,18 +170,15 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
                                 ids_buffer_span.begin(), ids_buffer_span.end());
     } else if (const auto* input_image =
                    std::get_if<InputImage>(&preprocessed_content)) {
-      if (single_image_data.has_value()) {
-        return absl::InvalidArgumentError(
-            "Only one image is supported per prefill call.");
-      }
       ASSIGN_OR_RETURN(const auto* image_tensor,
                        input_image->GetPreprocessedImageTensor());
       if (image_tensor == nullptr) {
         return absl::InvalidArgumentError(
             "Image tensor is null in preprocessed_contents.");
       }
-      ASSIGN_OR_RETURN(single_image_data,
+      ASSIGN_OR_RETURN(auto single_image_data,
                        vision_executor_->Encode(*image_tensor));
+      all_image_data.push_back(std::move(single_image_data));
       // Hardcoded token id for start of image token.
       combined_token_ids.push_back(kStartOfImageTokenId);
       for (int i = 0; i < kNumSpecialTokens; ++i) {
@@ -192,11 +195,79 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
         "No token IDs found in preprocessed_contents.");
   }
 
+  std::optional<ExecutorVisionData> combined_image_data = std::nullopt;
+  if (!all_image_data.empty()) {
+    if (all_image_data.size() == 1) {
+      // If there is only one image, we can just move it to the combined image
+      // data.
+      combined_image_data.emplace(std::move(all_image_data[0]));
+    } else {
+      // If there are multiple images, we need to first combine them into a
+      // TensorBuffer, then create a single ExecutorVisionData from the
+      // TensorBuffer.
+      int num_images = all_image_data.size();
+      ASSIGN_OR_RETURN(const auto* first_image_tensor,
+                       all_image_data[0].GetEmbeddingsPtr());
+      LITERT_ASSIGN_OR_RETURN_ABSL(auto first_tensor_type,
+                                   first_image_tensor->TensorType());
+      LITERT_ASSIGN_OR_RETURN_ABSL(size_t single_embedding_packed_size,
+                                   first_image_tensor->PackedSize());
+
+      ::litert::Layout combined_layout;
+      if (first_tensor_type.Layout().Dimensions().size() == 3) {
+        combined_layout = ::litert::Layout(::litert::Dimensions(
+            {first_tensor_type.Layout().Dimensions()[0], 1,
+             first_tensor_type.Layout().Dimensions()[1] * num_images,
+             first_tensor_type.Layout().Dimensions()[2]}));
+      } else if (first_tensor_type.Layout().Dimensions().size() == 4) {
+        combined_layout = ::litert::Layout(::litert::Dimensions(
+            {first_tensor_type.Layout().Dimensions()[0],
+             first_tensor_type.Layout().Dimensions()[1],
+             first_tensor_type.Layout().Dimensions()[2] * num_images,
+             first_tensor_type.Layout().Dimensions()[3]}));
+      } else {
+        return absl::InvalidArgumentError(
+            "The embedding tensor type must have 3 or 4 dimensions.");
+      }
+      ::litert::RankedTensorType combined_tensor_type(
+          first_tensor_type.ElementType(), std::move(combined_layout));
+
+      LITERT_ASSIGN_OR_RETURN_ABSL(
+          auto combined_image_tensor_buffer,
+          TensorBuffer::CreateManaged(
+              kLiteRtTensorBufferTypeHostMemory, combined_tensor_type,
+              single_embedding_packed_size * num_images));
+      LITERT_ASSIGN_OR_RETURN_ABSL(
+          auto combined_embeddings_lock_and_addr,
+          ::litert::TensorBufferScopedLock::Create(
+              combined_image_tensor_buffer, TensorBuffer::LockMode::kWrite));
+      char* combined_image_tensor_buffer_ptr =
+          static_cast<char*>(combined_embeddings_lock_and_addr.second);
+
+      for (int i = 0; i < num_images; ++i) {
+        ASSIGN_OR_RETURN(auto embeddings_ptr,
+                         all_image_data[i].GetMutableEmbeddingsPtr());
+        LITERT_ASSIGN_OR_RETURN_ABSL(auto embeddings_size,
+                                     embeddings_ptr->PackedSize());
+        LITERT_ASSIGN_OR_RETURN_ABSL(
+            auto embeddings_lock_and_addr,
+            ::litert::TensorBufferScopedLock::Create(
+                *embeddings_ptr, TensorBuffer::LockMode::kRead));
+        memcpy(
+            combined_image_tensor_buffer_ptr + i * single_embedding_packed_size,
+            embeddings_lock_and_addr.second, embeddings_size);
+      }
+      combined_image_data.emplace(
+          ExecutorVisionData(std::move(combined_image_tensor_buffer),
+                             /*per_layer_embeddings=*/std::nullopt));
+    }
+  }
+
   ASSIGN_OR_RETURN(auto token_ids_buffer,
                    tokenizer_.TokenIdsToTensorBuffer(combined_token_ids));
 
   ExecutorInputs inputs(ExecutorTextData(std::move(token_ids_buffer)),
-                        std::move(single_image_data), std::nullopt);
+                        std::move(combined_image_data), std::nullopt);
 
   return inputs;
 }

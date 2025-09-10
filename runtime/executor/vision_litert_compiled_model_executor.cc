@@ -248,7 +248,6 @@ absl::StatusOr<ExecutorVisionData> VisionLiteRtCompiledModelExecutor::Encode(
                      "buffer but got ",
                      output_tensor_buffers.size()));
   }
-  auto& output_tensor_buffer = output_tensor_buffers[0];
 
   LITERT_ASSIGN_OR_RETURN_ABSL(auto input_buffer_type,
                                input_image_tensor.BufferType());
@@ -286,10 +285,11 @@ absl::StatusOr<ExecutorVisionData> VisionLiteRtCompiledModelExecutor::Encode(
             " is larger than encoder input size: ", encoder_input_size));
       }
       LITERT_ASSIGN_OR_RETURN_ABSL(
-          auto input_image_data,
-          input_image_tensor_ref.Lock(TensorBuffer::LockMode::kRead));
-      memcpy(encoder_input_ptr, input_image_data, input_image_size);
-      LITERT_RETURN_IF_ERROR(input_image_tensor_ref.Unlock());
+          auto input_image_data_lock_and_addr,
+          ::litert::TensorBufferScopedLock::Create(
+              input_image_tensor_ref, TensorBuffer::LockMode::kRead));
+      memcpy(encoder_input_ptr, input_image_data_lock_and_addr.second,
+             input_image_size);
     } else {
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported input buffer type: ", input_buffer_type));
@@ -302,7 +302,7 @@ absl::StatusOr<ExecutorVisionData> VisionLiteRtCompiledModelExecutor::Encode(
             &vision_encoder_->GetOutputBuffers()[0], 1)));
   } else {
     LITERT_RETURN_IF_ERROR(vision_encoder_->GetCompiledModel().Run(
-        /*input_buffers=*/absl::MakeSpan(&input_image_tensor_ref, 1),
+        /*input_buffers=*/absl::MakeSpan(&input_image_tensor, 1),
         /*output_buffers=*/absl::MakeSpan(
             &vision_encoder_->GetOutputBuffers()[0], 1)));
   }
@@ -310,9 +310,9 @@ absl::StatusOr<ExecutorVisionData> VisionLiteRtCompiledModelExecutor::Encode(
   LITERT_RETURN_IF_ERROR(vision_adapter_->GetCompiledModel().Run(
       /*input_buffers=*/absl::MakeSpan(&vision_encoder_->GetOutputBuffers()[0],
                                        1),
-      /*output_buffers=*/absl::MakeSpan(&output_tensor_buffer, 1)));
+      /*output_buffers=*/absl::MakeSpan(&output_tensor_buffers[0], 1)));
 
-  return ExecutorVisionData(std::move(output_tensor_buffer),
+  return ExecutorVisionData(std::move(output_tensor_buffers[0]),
                             /*per_layer_embeddings=*/std::nullopt);
 }
 

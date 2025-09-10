@@ -116,7 +116,9 @@ void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
   }
   std::vector<litert::lm::InputData> inputs;
   for (int i = 0; i < images_bytes.size(); ++i) {
-    inputs.emplace_back(litert::lm::InputText(prompt_parts[i]));
+    if (!prompt_parts[i].empty()) {
+      inputs.emplace_back(litert::lm::InputText(prompt_parts[i]));
+    }
     inputs.emplace_back(litert::lm::InputImage(images_bytes.at(i)));
   }
   inputs.emplace_back(InputText(prompt_parts.back()));
