@@ -23,8 +23,8 @@
 
 #include "runtime/engine/litert_lm_lib.h"
 
+#include <filesystem>  // NOLINT
 #include <fstream>
-#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -38,7 +38,6 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
-#include "absl/strings/str_split.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "runtime/engine/engine.h"
@@ -47,6 +46,7 @@
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/util/status_macros.h"  // IWYU pragma: keep
+#include "re2/re2.h"  // from @com_googlesource_code_re2
 #include "stb_image.h"  // from @stb
 #include "tflite/profiling/memory_usage_monitor.h"  // from @litert
 
@@ -57,7 +57,9 @@ using ::litert::lm::Backend;
 using ::litert::lm::Engine;
 using ::litert::lm::EngineSettings;
 using ::litert::lm::InferenceObservable;
+using ::litert::lm::InputAudio;
 using ::litert::lm::InputData;
+using ::litert::lm::InputImage;
 using ::litert::lm::InputText;
 using ::litert::lm::LlmExecutorSettings;
 using ::litert::lm::ModelAssets;
@@ -104,24 +106,40 @@ void RunBenchmark(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
 void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
                    litert::lm::Engine::Session* session,
                    std::string& input_prompt,
-                   std::vector<std::string>& images_bytes) {
-  std::vector<std::string> prompt_parts =
-      absl::StrSplit(input_prompt, "<start_of_image>");
-  for (int i = 0; i < prompt_parts.size(); ++i) {
-    ABSL_LOG(INFO) << "Prompt part: " << prompt_parts[i];
+                   std::vector<std::string>& images_bytes,
+                   std::vector<std::string>& audio_bytes) {
+  std::vector<litert::lm::InputData> inputs;
+  auto image_input_it = images_bytes.begin();
+  auto audio_input_it = audio_bytes.begin();
+  RE2 re_delimiter("(<start_of_audio>|<start_of_image>)");
+  absl::string_view prompt_view(input_prompt);
+  const char* start = prompt_view.data();
+  std::string part;
+  while (RE2::FindAndConsume(&prompt_view, re_delimiter, &part)) {
+    absl::string_view text_part(start, prompt_view.data() - part.size());
+    if (!text_part.empty()) {
+      inputs.push_back(InputText(std::string(text_part)));
+    }
+    start = prompt_view.data();
+    if (part == "<start_of_image>") {
+      inputs.emplace_back(InputImage(*image_input_it));
+      ++image_input_it;
+    } else if (part == "<start_of_audio>") {
+      inputs.emplace_back(InputAudio(*audio_input_it));
+      ++audio_input_it;
+    }
   }
-  if (images_bytes.size() + 1 != prompt_parts.size()) {
-    ABSL_LOG(FATAL) << "The number of images must be the same as the number of "
+  if (!prompt_view.empty()) {
+    inputs.push_back(InputText(std::string(prompt_view)));
+  }
+  if (image_input_it != images_bytes.end()) {
+    ABSL_LOG(FATAL) << "The number of images is not the same as the number of "
                        "<start_of_image> tags in the prompt.";
   }
-  std::vector<litert::lm::InputData> inputs;
-  for (int i = 0; i < images_bytes.size(); ++i) {
-    if (!prompt_parts[i].empty()) {
-      inputs.emplace_back(litert::lm::InputText(prompt_parts[i]));
-    }
-    inputs.emplace_back(litert::lm::InputImage(images_bytes.at(i)));
+  if (audio_input_it != audio_bytes.end()) {
+    ABSL_LOG(FATAL) << "The number of audio is not the same as the number of "
+                       "<start_of_audio> tags in the prompt.";
   }
-  inputs.emplace_back(InputText(prompt_parts.back()));
   if (settings.async) {
     InferenceObservable observable;
     absl::Status status = session->GenerateContentStream(inputs, &observable);
@@ -149,7 +167,9 @@ void RunMultiTurnConversation(const LiteRtLmSettings& settings,
       break;
     }
     std::vector<std::string> image_bytes;
-    RunSingleTurn(settings, llm, session, input_prompt, image_bytes);
+    std::vector<std::string> audio_bytes;
+    RunSingleTurn(settings, llm, session, input_prompt, image_bytes,
+                  audio_bytes);
   } while (true);
 }
 
@@ -187,9 +207,23 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
       vision_backend = backend;
     }
   }
-  ASSIGN_OR_RETURN(EngineSettings engine_settings,
-                   EngineSettings::CreateDefault(std::move(model_assets),
-                                                 backend, vision_backend));
+  std::optional<Backend> audio_backend = std::nullopt;
+  if (settings.audio_files.has_value()) {
+    ABSL_LOG(INFO) << "Audio files are provided, setting audio backend.";
+    if (settings.audio_backend.has_value()) {
+      ABSL_LOG(INFO) << "Provided audio backend: " << *settings.audio_backend;
+      ASSIGN_OR_RETURN(audio_backend, litert::lm::GetBackendFromString(
+                                          *settings.audio_backend));
+    } else {
+      ABSL_LOG(INFO) << "Setting audio backend based on the main backend: "
+                     << backend_str;
+      audio_backend = backend;
+    }
+  }
+  ASSIGN_OR_RETURN(
+      EngineSettings engine_settings,
+      EngineSettings::CreateDefault(std::move(model_assets), backend,
+                                    vision_backend, audio_backend));
   if (settings.force_f32) {
     engine_settings.GetMutableMainExecutorSettings().SetActivationDataType(
         litert::lm::ActivationDataType::FLOAT32);
@@ -237,6 +271,12 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
   } else {
     ABSL_LOG(INFO) << "vision_executor_settings: not set";
   }
+  if (engine_settings.GetAudioExecutorSettings().has_value()) {
+    ABSL_LOG(INFO) << "audio_executor_settings: "
+                   << engine_settings.GetAudioExecutorSettings().value();
+  } else {
+    ABSL_LOG(INFO) << "audio_executor_settings: not set";
+  }
 
   if (settings.benchmark) {
     litert::lm::proto::BenchmarkParams benchmark_params;
@@ -275,8 +315,22 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
         images_bytes.push_back(buffer.str());
       }
     }
+    std::vector<std::string> audio_bytes;
+    if (settings.audio_files.has_value() && !settings.audio_files->empty()) {
+      for (const auto& audio_file : *settings.audio_files) {
+        ABSL_LOG(INFO) << "Loading audio from: " << audio_file;
+        std::ifstream file_stream(audio_file, std::ios::binary);
+        if (!file_stream) {
+          return absl::InternalError(
+              absl::StrCat("Failed to open audio file: ", audio_file));
+        }
+        std::stringstream buffer;
+        buffer << file_stream.rdbuf();
+        audio_bytes.push_back(buffer.str());
+      }
+    }
     RunSingleTurn(settings, llm->get(), session->get(), input_prompt,
-                  images_bytes);
+                  images_bytes, audio_bytes);
   }
 
   if (settings.report_peak_memory_footprint) {

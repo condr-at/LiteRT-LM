@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include "absl/status/status.h"  // from @com_google_absl
 #include "runtime/executor/executor_settings_base.h"
+#include "runtime/util/test_utils.h"  // IWYU pragma: keep
 
 namespace litert::lm {
 namespace {
@@ -58,16 +59,16 @@ TEST(AudioExecutorSettingsTest, CreateDefaultWithInvalidBackend) {
   ASSERT_OK_AND_ASSIGN(ModelAssets model_assets, ModelAssets::Create(""));
   EXPECT_THAT(
       AudioExecutorSettings::CreateDefault(model_assets, 10, Backend::GPU),
-      StatusIs(absl::StatusCode::kInternal));
+      StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(AudioExecutorSettings::CreateDefault(model_assets, 10,
                                                    Backend::CPU_ARTISAN),
-              StatusIs(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(AudioExecutorSettings::CreateDefault(
                   model_assets, 10, Backend::GOOGLE_TENSOR_ARTISAN),
-              StatusIs(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(
       AudioExecutorSettings::CreateDefault(model_assets, 10, Backend::NPU),
-      StatusIs(absl::StatusCode::kInternal));
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

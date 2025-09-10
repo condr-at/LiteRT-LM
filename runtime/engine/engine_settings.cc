@@ -25,6 +25,7 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/components/tokenizer.h"
+#include "runtime/executor/audio_executor_settings.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/proto/engine.pb.h"
@@ -35,8 +36,7 @@
 namespace litert::lm {
 namespace {
 
-std::ostream& operator<<(std::ostream& os,
-                         const std::vector<int>& vec) {
+std::ostream& operator<<(std::ostream& os, const std::vector<int>& vec) {
   constexpr int newline_num = 10;
   os << "vector size: " << vec.size() << ": [";
   for (int i = 0; i < vec.size(); ++i) {
@@ -57,7 +57,8 @@ std::ostream& operator<<(std::ostream& os,
 // static
 absl::StatusOr<EngineSettings> EngineSettings::CreateDefault(
     ModelAssets model_assets, Backend backend,
-    std::optional<Backend> vision_backend) {
+    std::optional<Backend> vision_backend,
+    std::optional<Backend> audio_backend) {
   ASSIGN_OR_RETURN(  // NOLINT
       auto executor_settings,
       LlmExecutorSettings::CreateDefault(model_assets, backend));
@@ -67,8 +68,16 @@ absl::StatusOr<EngineSettings> EngineSettings::CreateDefault(
                      LlmExecutorSettings::CreateDefault(
                          model_assets, vision_backend.value()));
   }
+  std::optional<AudioExecutorSettings> audio_executor_settings;
+  if (audio_backend.has_value()) {
+    ASSIGN_OR_RETURN(audio_executor_settings,
+                     AudioExecutorSettings::CreateDefault(
+                         model_assets, executor_settings.GetMaxNumTokens(),
+                         audio_backend.value()));
+  }
   return EngineSettings(std::move(executor_settings),
-                        std::move(vision_executor_settings), std::nullopt);
+                        std::move(vision_executor_settings),
+                        std::move(audio_executor_settings));
 }
 
 absl::Status EngineSettings::MaybeUpdateAndValidate(
@@ -93,10 +102,8 @@ absl::Status EngineSettings::MaybeUpdateAndValidate(
     auto start_token_ids =
         tokenizer.TextToTokenIds(metadata.start_token().token_str());
     if (start_token_ids.ok()) {
-      metadata.mutable_start_token()
-          ->mutable_token_ids()
-          ->mutable_ids()
-          ->Add(start_token_ids->begin(), start_token_ids->end());
+      metadata.mutable_start_token()->mutable_token_ids()->mutable_ids()->Add(
+          start_token_ids->begin(), start_token_ids->end());
     }
   }
   // Load the max num tokens from the model file.
@@ -135,9 +142,11 @@ absl::Status EngineSettings::MaybeUpdateAndValidate(
 EngineSettings::EngineSettings(
     LlmExecutorSettings executor_settings,
     std::optional<LlmExecutorSettings> vision_executor_settings,
+    std::optional<AudioExecutorSettings> audio_executor_settings,
     std::optional<proto::BenchmarkParams> benchmark_params)
     : main_executor_settings_(std::move(executor_settings)),
       vision_executor_settings_(std::move(vision_executor_settings)),
+      audio_executor_settings_(std::move(audio_executor_settings)),
       benchmark_params_(benchmark_params) {}
 
 const LlmExecutorSettings& EngineSettings::GetMainExecutorSettings() const {
@@ -156,6 +165,16 @@ EngineSettings::GetVisionExecutorSettings() const {
 std::optional<LlmExecutorSettings>&
 EngineSettings::GetMutableVisionExecutorSettings() {
   return vision_executor_settings_;
+}
+
+const std::optional<AudioExecutorSettings>&
+EngineSettings::GetAudioExecutorSettings() const {
+  return audio_executor_settings_;
+}
+
+std::optional<AudioExecutorSettings>&
+EngineSettings::GetMutableAudioExecutorSettings() {
+  return audio_executor_settings_;
 }
 
 // Benchmark parameters:
@@ -258,9 +277,8 @@ absl::Status SessionConfig::MaybeUpdateAndValidate(
       for (const auto& stop_token : llm_metadata.stop_tokens()) {
         if (stop_token.has_token_ids() &&
             stop_token.token_ids().ids_size() > 0) {
-          std::vector<int> stop_token_ids(
-              stop_token.token_ids().ids().begin(),
-              stop_token.token_ids().ids().end());
+          std::vector<int> stop_token_ids(stop_token.token_ids().ids().begin(),
+                                          stop_token.token_ids().ids().end());
           stop_token_ids_.push_back(stop_token_ids);
         }
       }
@@ -294,7 +312,7 @@ absl::Status SessionConfig::MaybeUpdateAndValidate(
     if (engine_settings.GetMainExecutorSettings().GetBackend() ==
         Backend::GPU) {
       sampler_backend_ = Backend::GPU;
-  } else {
+    } else {
       sampler_backend_ = Backend::CPU;
     }
   }

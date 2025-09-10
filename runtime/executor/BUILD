@@ -24,6 +24,30 @@ package(
 licenses(["notice"])
 
 cc_library(
+    name = "audio_executor_settings",
+    srcs = ["audio_executor_settings.cc"],
+    hdrs = ["audio_executor_settings.h"],
+    deps = [
+        ":executor_settings_base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_test(
+    name = "audio_executor_settings_test",
+    srcs = ["audio_executor_settings_test.cc"],
+    deps = [
+        ":audio_executor_settings",
+        ":executor_settings_base",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_library(
     name = "vision_executor_settings",
     srcs = ["vision_executor_settings.cc"],
     hdrs = ["vision_executor_settings.h"],
@@ -535,6 +559,84 @@ cc_library(
     deps = [
         ":llm_executor_io_types",
         "@com_google_absl//absl/status:statusor",
+    ] + select({
+        "@litert//litert:litert_link_capi_so": [
+            "@litert//litert/cc:litert_tensor_buffer",
+        ],
+        "//conditions:default": [
+            "@litert//litert/cc/internal:litert_tensor_buffer",
+        ],
+    }),
+)
+
+cc_library(
+    name = "audio_litert_compiled_model_executor",
+    srcs = ["audio_litert_compiled_model_executor.cc"],
+    hdrs = ["audio_litert_compiled_model_executor.h"],
+    deps = [
+        ":audio_executor",
+        ":audio_executor_settings",
+        ":executor_settings_base",
+        ":litert_compiled_model_executor_utils",
+        ":llm_executor_io_types",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@litert//litert/c:litert_common",
+        "@litert//litert/c:litert_tensor_buffer_types",
+        "@litert//litert/cc:litert_element_type",
+        "@litert//litert/cc:litert_layout",
+        "@litert//litert/cc:litert_macros",
+        "//runtime/components:model_resources",
+        "//runtime/util:litert_status_util",
+    ] + select({
+        "@litert//litert:litert_link_capi_so": [
+            "@litert//litert/cc:litert_compiled_model",
+            "@litert//litert/cc:litert_environment",
+            "@litert//litert/cc:litert_model",
+            "@litert//litert/cc:litert_options",
+            "@litert//litert/cc:litert_tensor_buffer",
+            "@litert//litert/cc/options:litert_cpu_options",
+            "@litert//litert/cc/options:litert_gpu_options",
+            "@litert//litert/cc/options:litert_runtime_options",
+        ],
+        "//conditions:default": [
+            "@litert//litert/cc/internal:litert_compiled_model",
+            "@litert//litert/cc/internal:litert_cpu_options",
+            "@litert//litert/cc/internal:litert_environment",
+            "@litert//litert/cc/internal:litert_gpu_options",
+            "@litert//litert/cc/internal:litert_model",
+            "@litert//litert/cc/internal:litert_options",
+            "@litert//litert/cc/internal:litert_runtime_options",
+            "@litert//litert/cc/internal:litert_tensor_buffer",
+        ],
+    }),
+)
+
+cc_test(
+    name = "audio_litert_compiled_model_executor_test",
+    srcs = ["audio_litert_compiled_model_executor_test.cc"],
+    data = ["//runtime/testdata"],
+    tags = ["requires-mac-inputs:hard"],  # Required for running on Forge on Mac.
+    deps = [
+        ":audio_executor_settings",
+        ":audio_litert_compiled_model_executor",
+        ":executor_settings_base",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@litert//litert/c:litert_tensor_buffer_types",
+        "@litert//litert/cc:litert_element_type",
+        "@litert//litert/cc:litert_layout",
+        "@litert//litert/cc:litert_macros",
+        "//runtime/util:litert_status_util",
+        "//runtime/util:scoped_file",
+        "//runtime/util:test_utils",
     ] + select({
         "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_tensor_buffer",

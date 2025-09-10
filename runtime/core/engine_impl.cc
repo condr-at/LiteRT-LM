@@ -30,12 +30,17 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "runtime/components/model_resources.h"
+#include "runtime/components/preprocessor/audio_preprocessor.h"
+#include "runtime/components/preprocessor/audio_preprocessor_miniaudio.h"
 #include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/preprocessor/stb_image_preprocessor.h"
 #include "runtime/core/session_factory.h"
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
+#include "runtime/executor/audio_executor.h"
+#include "runtime/executor/audio_executor_settings.h"
+#include "runtime/executor/audio_litert_compiled_model_executor.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/litert_compiled_model_executor_utils.h"
 #include "runtime/executor/llm_executor.h"
@@ -64,6 +69,15 @@ absl::StatusOr<std::unique_ptr<LlmExecutor>> BuildLitertCompiledModelExecutor(
   // Create executor that creates and owns the interpreter and kv cache.
   return LlmLiteRtCompiledModelExecutor::Create(std::move(executor_settings),
                                                 model_resources);
+}
+
+// Builds the Audio Executor.
+absl::StatusOr<std::unique_ptr<AudioExecutor>> BuildAudioExecutor(
+    AudioExecutorSettings executor_settings) {
+  if (executor_settings.GetModelAssets().HasScopedFile()) {
+    return absl::InvalidArgumentError("Model must be passed as a single path.");
+  }
+  return AudioLiteRtCompiledModelExecutor::Create(std::move(executor_settings));
 }
 
 }  // namespace
@@ -130,6 +144,9 @@ class EngineImpl : public Engine {
       ABSL_CHECK_OK(executor);
       executor_ = std::move(executor.value());
     }
+
+    // TODO - b/436674053: Modularize the executor creation logic into a
+    // separate executor class, and have unit test for it.
     if (engine_settings_.GetVisionExecutorSettings().has_value()) {
       auto vision_executor_settings = VisionExecutorSettings::CreateDefault(
           engine_settings_.GetMainExecutorSettings().GetModelAssets(),
@@ -146,6 +163,28 @@ class EngineImpl : public Engine {
       // vision executor is enabled.
       image_preprocessor_ = std::make_unique<StbImagePreprocessor>();
     }
+
+    if (engine_settings_.GetAudioExecutorSettings().has_value()) {
+      auto audio_encoder_model = litert_model_resources_->GetTFLiteModel(
+          ModelType::kTfLiteAudioEncoderHw);
+      auto audio_adapter_model = litert_model_resources_->GetTFLiteModel(
+          ModelType::kTfLiteAudioAdapter);
+      if (audio_encoder_model.ok() && audio_adapter_model.ok()) {
+        auto audio_executor_settings = AudioExecutorSettings::CreateDefault(
+            engine_settings_.GetMainExecutorSettings().GetModelAssets(),
+            engine_settings_.GetMainExecutorSettings().GetMaxNumTokens(),
+            engine_settings_.GetAudioExecutorSettings()->GetBackend());
+        ABSL_QCHECK_OK(audio_executor_settings);
+        auto audio_executor = BuildAudioExecutor(*audio_executor_settings);
+        ABSL_QCHECK_OK(audio_executor);
+        audio_executor_ = std::move(*audio_executor);
+        auto audio_preprocessor = AudioPreprocessorMiniAudio::Create(
+            AudioPreprocessorConfig::CreateDefaultUsmConfig());
+        ABSL_QCHECK_OK(audio_preprocessor);
+        audio_preprocessor_ = std::move(*audio_preprocessor);
+      }
+    }
+
     if (benchmark_info_.has_value()) {
       ABSL_CHECK_OK(
           benchmark_info_->TimeInitPhaseEnd("Executor initialization"));
@@ -175,7 +214,9 @@ class EngineImpl : public Engine {
     ASSIGN_OR_RETURN(auto* tokenizer, litert_model_resources_->GetTokenizer());
     return InitializeSession(executor_.get(), tokenizer,
                              /*image_preprocessor=*/image_preprocessor_.get(),
-                             /*vision_executor=*/vision_executor_.get(), config,
+                             /*vision_executor=*/vision_executor_.get(),
+                             /*audio_preprocessor=*/audio_preprocessor_.get(),
+                             /*audio_executor=*/audio_executor_.get(), config,
                              benchmark_info_, worker_thread_pool_.get());
   }
   absl::Status WaitUntilDone(absl::Duration timeout) override {
@@ -196,6 +237,10 @@ class EngineImpl : public Engine {
   // Default stop token ids for all sessions loaded from the model file.
   std::vector<std::vector<int>> stop_token_ids_;
   proto::SamplerParameters sampler_params_;
+
+  // Shared audio preprocessor and executor for all sessions.
+  std::unique_ptr<AudioPreprocessor> audio_preprocessor_;
+  std::unique_ptr<AudioExecutor> audio_executor_;
 
   // Benchmark info for the engine.
   std::optional<BenchmarkInfo> benchmark_info_;

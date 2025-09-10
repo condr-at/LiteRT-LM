@@ -29,6 +29,8 @@
 #include "third_party/odml/infra/genai/inference/executor/litert_executor_utils.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_litert_opencl_executor.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_litert_xnnpack_executor.h"
+#include "runtime/components/preprocessor/audio_preprocessor.h"
+#include "runtime/components/preprocessor/audio_preprocessor_miniaudio.h"
 #include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/preprocessor/stb_image_preprocessor.h"
 #include "runtime/components/sentencepiece_tokenizer.h"
@@ -37,6 +39,9 @@
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
+#include "runtime/executor/audio_executor.h"
+#include "runtime/executor/audio_executor_settings.h"
+#include "runtime/executor/audio_litert_compiled_model_executor.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_settings.h"
@@ -164,6 +169,21 @@ class EngineImpl : public Engine {
       // Create the image preprocessor for processing the image input.
       image_preprocessor_ = std::make_unique<StbImagePreprocessor>();
     }
+    if (engine_settings_.GetAudioExecutorSettings().has_value()) {
+      auto audio_executor_settings = AudioExecutorSettings::CreateDefault(
+          engine_settings_.GetMainExecutorSettings().GetModelAssets(),
+          engine_settings_.GetMainExecutorSettings().GetMaxNumTokens(),
+          engine_settings_.GetAudioExecutorSettings()->GetBackend());
+      ABSL_QCHECK_OK(audio_executor_settings);
+      auto audio_executor =
+          AudioLiteRtCompiledModelExecutor::Create(*audio_executor_settings);
+      ABSL_QCHECK_OK(audio_executor);
+      audio_executor_ = std::move(*audio_executor);
+      auto audio_preprocessor = AudioPreprocessorMiniAudio::Create(
+          AudioPreprocessorConfig::CreateDefaultUsmConfig());
+      ABSL_QCHECK_OK(audio_preprocessor);
+      audio_preprocessor_ = std::move(*audio_preprocessor);
+    }
 
     if (benchmark_info_.has_value()) {
       ABSL_CHECK_OK(
@@ -199,6 +219,7 @@ class EngineImpl : public Engine {
         proto::SamplerParameters::TYPE_UNSPECIFIED);
     return InitializeSession(executor_.get(), tokenizer_,
                              image_preprocessor_.get(), vision_executor_.get(),
+                             audio_preprocessor_.get(), audio_executor_.get(),
                              config, benchmark_info_,
                              worker_thread_pool_.get());
   }
@@ -220,6 +241,12 @@ class EngineImpl : public Engine {
   std::unique_ptr<VisionExecutor> vision_executor_;
   // Tokenizer from task file, that is not owned by the model resources.
   // So we keep it here to avoid the model resources being destroyed.
+
+  // Audio executor for all sessions.
+  std::unique_ptr<AudioPreprocessor> audio_preprocessor_;
+  // Audio executor for all sessions.
+  std::unique_ptr<AudioExecutor> audio_executor_;
+
   std::unique_ptr<Tokenizer> task_tokenizer_;
   // A pointer to the tokenizer, that is either the task_tokenizer_ or the
   // tokenizer from the litert lm model resources. Set in constructor and it is

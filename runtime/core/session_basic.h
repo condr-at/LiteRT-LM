@@ -26,6 +26,7 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "runtime/components/preprocessor/audio_preprocessor.h"
 #include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/sampler.h"
 #include "runtime/components/stop_token_detector.h"
@@ -33,6 +34,7 @@
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
+#include "runtime/executor/audio_executor.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/executor/vision_executor.h"
@@ -49,6 +51,10 @@ class SessionBasic : public Engine::Session {
   // Creates a SessionBasic object.
   // - executor: The initialized LLM Executor to call.
   // - tokenizer: The tokenizer to encode/decode the text into token ids.
+  // - image_preprocessor: The image preprocessor to preprocess the image input.
+  // - vision_executor: The vision executor to encode the image input.
+  // - audio_preprocessor: The audio preprocessor to preprocess the audio input.
+  // - audio_executor: The audio executor to encode the audio input.
   // - stop_token_ids: The token ids to stop the decoding process.
   // - sampler_params: The sampler parameters used for decoding. Note that if
   //   the sampler_params.type is TYPE_UNSPECIFIED, the sampling logic will be
@@ -56,6 +62,7 @@ class SessionBasic : public Engine::Session {
   static absl::StatusOr<std::unique_ptr<SessionBasic>> Create(
       LlmExecutor* absl_nonnull executor, Tokenizer* absl_nonnull tokenizer,
       ImagePreprocessor* image_preprocessor, VisionExecutor* vision_executor,
+      AudioPreprocessor* audio_preprocessor, AudioExecutor* audio_executor,
       const SessionConfig& session_config,
       std::optional<BenchmarkInfo> benchmark_info,
       ThreadPool* absl_nonnull worker_thread_pool);
@@ -101,19 +108,20 @@ class SessionBasic : public Engine::Session {
       const std::vector<InputData>& preprocessed_contents);
 
  private:
-  explicit SessionBasic(LlmExecutor* absl_nonnull executor,
-                        Tokenizer* absl_nonnull tokenizer,
-                        ImagePreprocessor* image_preprocessor,
-                        VisionExecutor* vision_executor,
-                        std::unique_ptr<Sampler> sampler,
-                        const SessionConfig& session_config,
-                        std::optional<BenchmarkInfo> benchmark_info,
-                        ThreadPool* absl_nonnull worker_thread_pool,
-                        const StopTokenDetector& stop_token_detector)
+  explicit SessionBasic(
+      LlmExecutor* absl_nonnull executor, Tokenizer* absl_nonnull tokenizer,
+      ImagePreprocessor* image_preprocessor, VisionExecutor* vision_executor,
+      AudioPreprocessor* audio_preprocessor, AudioExecutor* audio_executor,
+      std::unique_ptr<Sampler> sampler, const SessionConfig& session_config,
+      std::optional<BenchmarkInfo> benchmark_info,
+      ThreadPool* absl_nonnull worker_thread_pool,
+      const StopTokenDetector& stop_token_detector)
       : executor_(*executor),
         tokenizer_(*tokenizer),
         image_preprocessor_(image_preprocessor),
         vision_executor_(vision_executor),
+        audio_preprocessor_(audio_preprocessor),
+        audio_executor_(audio_executor),
         sampler_(std::move(sampler)),
         session_config_(session_config),
         benchmark_info_(benchmark_info),
@@ -138,6 +146,9 @@ class SessionBasic : public Engine::Session {
   absl::Status DecodeInternalStreaming(
       InferenceObservable* observer = nullptr);
 
+  // The util function to convert the string to processed input text.
+  absl::StatusOr<InputText> StringToProcessedInputText(absl::string_view text);
+
   // The executor used for run the LLM for prefill/decode.
   LlmExecutor& executor_;
 
@@ -149,6 +160,12 @@ class SessionBasic : public Engine::Session {
 
   // The vision executor used for run the LLM for prefill/decode.
   VisionExecutor* vision_executor_;
+
+  // The audio preprocessor used for preprocessing the audio input.
+  AudioPreprocessor* audio_preprocessor_;
+
+  // The audio executor used for run the LLM for prefill/decode.
+  AudioExecutor* audio_executor_;
 
   // The session config used for the session.
   std::unique_ptr<Sampler> sampler_;

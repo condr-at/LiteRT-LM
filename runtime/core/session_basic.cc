@@ -34,6 +34,7 @@
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "runtime/components/preprocessor/audio_preprocessor.h"
 #include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/sampler.h"
 #include "runtime/components/sampler_factory.h"
@@ -43,6 +44,7 @@
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
+#include "runtime/executor/audio_executor.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_io_types.h"
@@ -59,12 +61,96 @@ namespace {
 constexpr int kStartOfImageTokenId = 255999;
 constexpr int kNumSpecialTokens = 257;
 
+constexpr int kStartOfAudioTokenId = 256000;
+
+template <typename T>
+absl::StatusOr<std::optional<T>> CombineExecutorData(
+    std::vector<T>& executor_data) {
+  if (executor_data.empty()) {
+    return std::nullopt;
+  }
+  if (executor_data.size() == 1) {
+    // If there is only one image, we can just move it to the combined image
+    // data.
+    return std::move(executor_data[0]);
+  }
+  // If there are multiple executor data, we need to first combine them into a
+  // TensorBuffer, then create a single ExecutorVisionData from the
+  // TensorBuffer.
+  int num_executor_data = executor_data.size();
+  ASSIGN_OR_RETURN(const auto* first_tensor,
+                   executor_data[0].GetEmbeddingsPtr());
+  LITERT_ASSIGN_OR_RETURN_ABSL(auto first_tensor_type,
+                               first_tensor->TensorType());
+  LITERT_ASSIGN_OR_RETURN_ABSL(size_t single_embedding_packed_size,
+                               first_tensor->PackedSize());
+
+  ::litert::Layout combined_layout;
+  if (first_tensor_type.Layout().Dimensions().size() == 3) {
+    combined_layout = ::litert::Layout(::litert::Dimensions(
+        {first_tensor_type.Layout().Dimensions()[0], 1,
+         first_tensor_type.Layout().Dimensions()[1] * num_executor_data,
+         first_tensor_type.Layout().Dimensions()[2]}));
+  } else if (first_tensor_type.Layout().Dimensions().size() == 4) {
+    combined_layout = ::litert::Layout(::litert::Dimensions(
+        {first_tensor_type.Layout().Dimensions()[0],
+         first_tensor_type.Layout().Dimensions()[1],
+         first_tensor_type.Layout().Dimensions()[2] * num_executor_data,
+         first_tensor_type.Layout().Dimensions()[3]}));
+  } else {
+    return absl::InvalidArgumentError(
+        "The embedding tensor type must have 3 or 4 dimensions.");
+  }
+  ::litert::RankedTensorType combined_tensor_type(
+      first_tensor_type.ElementType(), std::move(combined_layout));
+
+  LITERT_ASSIGN_OR_RETURN_ABSL(
+      auto combined_tensor_buffer,
+      TensorBuffer::CreateManaged(
+          kLiteRtTensorBufferTypeHostMemory, combined_tensor_type,
+          single_embedding_packed_size * num_executor_data));
+  LITERT_ASSIGN_OR_RETURN_ABSL(
+      auto combined_embeddings_lock_and_addr,
+      ::litert::TensorBufferScopedLock::Create(combined_tensor_buffer,
+                                               TensorBuffer::LockMode::kWrite));
+  char* combined_tensor_buffer_ptr =
+      static_cast<char*>(combined_embeddings_lock_and_addr.second);
+
+  for (int i = 0; i < num_executor_data; ++i) {
+    ASSIGN_OR_RETURN(auto embeddings_ptr,
+                     executor_data[i].GetMutableEmbeddingsPtr());
+    LITERT_ASSIGN_OR_RETURN_ABSL(auto embeddings_size,
+                                 embeddings_ptr->PackedSize());
+    LITERT_ASSIGN_OR_RETURN_ABSL(
+        auto embeddings_lock_and_addr,
+        ::litert::TensorBufferScopedLock::Create(
+            *embeddings_ptr, TensorBuffer::LockMode::kRead));
+    memcpy(combined_tensor_buffer_ptr + i * single_embedding_packed_size,
+           embeddings_lock_and_addr.second, embeddings_size);
+  }
+  if constexpr (std::is_same_v<T, ExecutorVisionData>) {
+    return ExecutorVisionData(std::move(combined_tensor_buffer),
+                              /*per_layer_embeddings=*/std::nullopt);
+  } else if constexpr (std::is_same_v<T, ExecutorAudioData>) {
+    int num_audio_tokens = 0;
+    for (const auto& executor_data : executor_data) {
+      num_audio_tokens += executor_data.GetValidTokens();
+    }
+    return ExecutorAudioData(std::move(combined_tensor_buffer),
+                             /*per_layer_embeddings=*/std::nullopt,
+                             num_audio_tokens);
+  } else {
+    return absl::InvalidArgumentError("Executor data type is not supported.");
+  }
+}
+
 }  // namespace
 
 // static
 absl::StatusOr<std::unique_ptr<SessionBasic>> SessionBasic::Create(
     LlmExecutor* executor, Tokenizer* tokenizer,
     ImagePreprocessor* image_preprocessor, VisionExecutor* vision_executor,
+    AudioPreprocessor* audio_preprocessor, AudioExecutor* audio_executor,
     const SessionConfig& session_config,
     std::optional<BenchmarkInfo> benchmark_info,
     ThreadPool* worker_thread_pool) {
@@ -92,10 +178,10 @@ absl::StatusOr<std::unique_ptr<SessionBasic>> SessionBasic::Create(
     RETURN_IF_ERROR(
         stop_token_detector.AddStopTokenSequence(stop_token_sequence));
   }
-  return absl::WrapUnique(
-      new SessionBasic(executor, tokenizer, image_preprocessor, vision_executor,
-                       std::move(sampler), session_config, benchmark_info,
-                       worker_thread_pool, stop_token_detector));
+  return absl::WrapUnique(new SessionBasic(
+      executor, tokenizer, image_preprocessor, vision_executor,
+      audio_preprocessor, audio_executor, std::move(sampler), session_config,
+      benchmark_info, worker_thread_pool, stop_token_detector));
 }
 
 SessionBasic::~SessionBasic() {
@@ -155,6 +241,7 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
     const std::vector<InputData>& preprocessed_contents) {
   std::vector<int> combined_token_ids;
   std::vector<ExecutorVisionData> all_image_data;
+  std::vector<ExecutorAudioData> all_audio_data;
   for (const auto& preprocessed_content : preprocessed_contents) {
     if (const auto* input_text =
             std::get_if<InputText>(&preprocessed_content)) {
@@ -186,7 +273,19 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
       }
     } else if (const auto* input_audio =
                    std::get_if<InputAudio>(&preprocessed_content)) {
-      return absl::UnimplementedError("Audio prefill is not implemented yet.");
+      ASSIGN_OR_RETURN(const auto* spectrogram_tensor,
+                       input_audio->GetPreprocessedAudioTensor());
+
+      ASSIGN_OR_RETURN(auto single_audio_data,
+                       audio_executor_->Encode(*spectrogram_tensor));
+      const int num_audio_tokens = single_audio_data.GetValidTokens();
+      all_audio_data.push_back(std::move(single_audio_data));
+      // Hardcoded token id for start of audio token.
+      combined_token_ids.push_back(kStartOfAudioTokenId);
+      for (int i = 0; i < num_audio_tokens; ++i) {
+        combined_token_ids.push_back(ExecutorAudioData::kSpecialToken);
+      }
+      combined_token_ids.push_back(ExecutorAudioData::kEndToken);
     }
   }
 
@@ -195,81 +294,50 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
         "No token IDs found in preprocessed_contents.");
   }
 
-  std::optional<ExecutorVisionData> combined_image_data = std::nullopt;
-  if (!all_image_data.empty()) {
-    if (all_image_data.size() == 1) {
-      // If there is only one image, we can just move it to the combined image
-      // data.
-      combined_image_data.emplace(std::move(all_image_data[0]));
-    } else {
-      // If there are multiple images, we need to first combine them into a
-      // TensorBuffer, then create a single ExecutorVisionData from the
-      // TensorBuffer.
-      int num_images = all_image_data.size();
-      ASSIGN_OR_RETURN(const auto* first_image_tensor,
-                       all_image_data[0].GetEmbeddingsPtr());
-      LITERT_ASSIGN_OR_RETURN_ABSL(auto first_tensor_type,
-                                   first_image_tensor->TensorType());
-      LITERT_ASSIGN_OR_RETURN_ABSL(size_t single_embedding_packed_size,
-                                   first_image_tensor->PackedSize());
-
-      ::litert::Layout combined_layout;
-      if (first_tensor_type.Layout().Dimensions().size() == 3) {
-        combined_layout = ::litert::Layout(::litert::Dimensions(
-            {first_tensor_type.Layout().Dimensions()[0], 1,
-             first_tensor_type.Layout().Dimensions()[1] * num_images,
-             first_tensor_type.Layout().Dimensions()[2]}));
-      } else if (first_tensor_type.Layout().Dimensions().size() == 4) {
-        combined_layout = ::litert::Layout(::litert::Dimensions(
-            {first_tensor_type.Layout().Dimensions()[0],
-             first_tensor_type.Layout().Dimensions()[1],
-             first_tensor_type.Layout().Dimensions()[2] * num_images,
-             first_tensor_type.Layout().Dimensions()[3]}));
-      } else {
-        return absl::InvalidArgumentError(
-            "The embedding tensor type must have 3 or 4 dimensions.");
-      }
-      ::litert::RankedTensorType combined_tensor_type(
-          first_tensor_type.ElementType(), std::move(combined_layout));
-
-      LITERT_ASSIGN_OR_RETURN_ABSL(
-          auto combined_image_tensor_buffer,
-          TensorBuffer::CreateManaged(
-              kLiteRtTensorBufferTypeHostMemory, combined_tensor_type,
-              single_embedding_packed_size * num_images));
-      LITERT_ASSIGN_OR_RETURN_ABSL(
-          auto combined_embeddings_lock_and_addr,
-          ::litert::TensorBufferScopedLock::Create(
-              combined_image_tensor_buffer, TensorBuffer::LockMode::kWrite));
-      char* combined_image_tensor_buffer_ptr =
-          static_cast<char*>(combined_embeddings_lock_and_addr.second);
-
-      for (int i = 0; i < num_images; ++i) {
-        ASSIGN_OR_RETURN(auto embeddings_ptr,
-                         all_image_data[i].GetMutableEmbeddingsPtr());
-        LITERT_ASSIGN_OR_RETURN_ABSL(auto embeddings_size,
-                                     embeddings_ptr->PackedSize());
-        LITERT_ASSIGN_OR_RETURN_ABSL(
-            auto embeddings_lock_and_addr,
-            ::litert::TensorBufferScopedLock::Create(
-                *embeddings_ptr, TensorBuffer::LockMode::kRead));
-        memcpy(
-            combined_image_tensor_buffer_ptr + i * single_embedding_packed_size,
-            embeddings_lock_and_addr.second, embeddings_size);
-      }
-      combined_image_data.emplace(
-          ExecutorVisionData(std::move(combined_image_tensor_buffer),
-                             /*per_layer_embeddings=*/std::nullopt));
-    }
-  }
+  ASSIGN_OR_RETURN(auto combined_image_data,
+                   CombineExecutorData<ExecutorVisionData>(all_image_data));
+  ASSIGN_OR_RETURN(auto combined_audio_data,
+                   CombineExecutorData<ExecutorAudioData>(all_audio_data));
 
   ASSIGN_OR_RETURN(auto token_ids_buffer,
                    tokenizer_.TokenIdsToTensorBuffer(combined_token_ids));
 
   ExecutorInputs inputs(ExecutorTextData(std::move(token_ids_buffer)),
-                        std::move(combined_image_data), std::nullopt);
-
+                        std::move(combined_image_data),
+                        std::move(combined_audio_data));
   return inputs;
+}
+
+absl::StatusOr<InputText> SessionBasic::StringToProcessedInputText(
+    absl::string_view text) {
+  auto bos_token_id = session_config_.GetStartTokenId();
+  std::string bos_string = "";
+  if (bos_token_id >= 0) {
+    ASSIGN_OR_RETURN(bos_string, tokenizer_.TokenIdsToText({bos_token_id}));
+  }
+  bool bos_token_found = false;
+  if (!bos_string.empty() && absl::StartsWith(text, bos_string)) {
+    text = text.substr(bos_string.size());
+    bos_token_found = true;
+  }
+
+  int benchmark_prefill_token_count = 0;
+  if (benchmark_info_.has_value()) {
+    benchmark_prefill_token_count =
+        benchmark_info_->GetBenchmarkParams().num_prefill_tokens();
+    RETURN_IF_ERROR(benchmark_info_->TimePrefillTurnStart());
+  }
+  ASSIGN_OR_RETURN(std::vector<int> ids, tokenizer_.TextToTokenIds(text));
+  if (benchmark_prefill_token_count > 0) {
+    // If benchmark is enabled, we will use the benchmark prefill token
+    // count to set the prefill token count.
+    ids.resize(benchmark_prefill_token_count);
+  } else if (bos_token_found) {
+    ids.insert(ids.begin(), session_config_.GetStartTokenId());
+  }
+
+  ASSIGN_OR_RETURN(auto ids_buffer, tokenizer_.TokenIdsToTensorBuffer(ids));
+  return InputText(std::move(ids_buffer));
 }
 
 // TODO - b/436674053: Modulize the preprocessing logic into a separate
@@ -277,6 +345,16 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
 absl::StatusOr<std::vector<InputData>> SessionBasic::PreprocessContents(
     const std::vector<InputData>& contents) {
   std::vector<InputData> preprocessed_contents;
+  if (!benchmark_info_.has_value()) {
+    ASSIGN_OR_RETURN(std::string formatted_first_chunk,
+                     ApplyPromptTemplates("", /*is_first_chunk=*/true,
+                                          /*is_last_chunk=*/false));
+    if (!formatted_first_chunk.empty()) {
+      ASSIGN_OR_RETURN(auto first_chunk_input_text,
+                       StringToProcessedInputText(formatted_first_chunk));
+      preprocessed_contents.push_back(std::move(first_chunk_input_text));
+    }
+  }
   for (int i = 0; i < contents.size(); ++i) {
     const auto& input = contents[i];
     if (const auto* input_text = std::get_if<InputText>(&input)) {
@@ -289,42 +367,9 @@ absl::StatusOr<std::vector<InputData>> SessionBasic::PreprocessContents(
             InputText(std::move(token_ids_clone)));
       } else {
         ASSIGN_OR_RETURN(auto raw_text, input_text->GetRawTextString());
-        ASSIGN_OR_RETURN(
-            auto formatted_text,
-            ApplyPromptTemplates(raw_text,
-                                 /*is_first_chunk=*/i == 0,
-                                 /*is_last_chunk=*/i == contents.size() - 1));
-        auto bos_token_id = session_config_.GetStartTokenId();
-        std::string bos_string = "";
-        if (bos_token_id >= 0) {
-          ASSIGN_OR_RETURN(bos_string,
-                           tokenizer_.TokenIdsToText({bos_token_id}));
-        }
-        bool bos_token_found = false;
-        if (!bos_string.empty() &&
-            absl::StartsWith(formatted_text, bos_string)) {
-          formatted_text = formatted_text.substr(bos_string.size());
-          bos_token_found = true;
-        }
-
-        int benchmark_prefill_token_count = 0;
-        if (benchmark_info_.has_value()) {
-          benchmark_prefill_token_count =
-              benchmark_info_->GetBenchmarkParams().num_prefill_tokens();
-          RETURN_IF_ERROR(benchmark_info_->TimePrefillTurnStart());
-        }
-        ASSIGN_OR_RETURN(std::vector<int> ids,
-                         tokenizer_.TextToTokenIds(formatted_text));
-        if (benchmark_prefill_token_count > 0) {
-          // If benchmark is enabled, we will use the benchmark prefill token
-          // count to set the prefill token count.
-          ids.resize(benchmark_prefill_token_count);
-        } else if (bos_token_found) {
-          ids.insert(ids.begin(), session_config_.GetStartTokenId());
-        }
-        ASSIGN_OR_RETURN(auto ids_buffer,
-                         tokenizer_.TokenIdsToTensorBuffer(ids));
-        preprocessed_contents.emplace_back(InputText(std::move(ids_buffer)));
+        ASSIGN_OR_RETURN(auto processed_input_text,
+                         StringToProcessedInputText(raw_text));
+        preprocessed_contents.emplace_back(std::move(processed_input_text));
       }
     } else if (const auto* input_image = std::get_if<InputImage>(&input)) {
       RET_CHECK(image_preprocessor_) << "Image preprocessor is not available.";
@@ -345,7 +390,23 @@ absl::StatusOr<std::vector<InputData>> SessionBasic::PreprocessContents(
       preprocessed_contents.emplace_back(
           InputImage(std::move(preprocessed_image)));
     } else if (const auto* input_audio = std::get_if<InputAudio>(&input)) {
-      return absl::UnimplementedError("Audio prefill is not implemented yet.");
+      if (audio_preprocessor_ == nullptr) {
+        return absl::InternalError("Audio preprocessor is not available.");
+      }
+      ASSIGN_OR_RETURN(auto preprocessed_audio,
+                       audio_preprocessor_->Preprocess(*input_audio));
+      preprocessed_contents.emplace_back(
+          InputAudio(std::move(preprocessed_audio)));
+    }
+  }
+  if (!benchmark_info_.has_value()) {
+    ASSIGN_OR_RETURN(std::string formatted_last_chunk,
+                     ApplyPromptTemplates("", /*is_first_chunk=*/false,
+                                          /*is_last_chunk=*/true));
+    if (!formatted_last_chunk.empty()) {
+      ASSIGN_OR_RETURN(auto last_chunk_input_text,
+                       StringToProcessedInputText(formatted_last_chunk));
+      preprocessed_contents.push_back(std::move(last_chunk_input_text));
     }
   }
   return preprocessed_contents;
@@ -423,12 +484,11 @@ absl::StatusOr<Responses> SessionBasic::DecodeInternal() {
                                  last_prefill_token_id_);
     auto decoded_ids_buffer = CopyToTensorBuffer<int>(
         decoded_ids, {session_config_.GetNumOutputCandidates(), 1});
-    ASSIGN_OR_RETURN(
-        auto responses,
-        DecodeCustomSampling(executor_, tokenizer_, stop_token_detector_,
-                             /*num_output_candidates=*/1, *sampler_,
-                             *decoded_ids_buffer, benchmark_info_,
-                             &cancelled_));
+    ASSIGN_OR_RETURN(auto responses,
+                     DecodeCustomSampling(
+                         executor_, tokenizer_, stop_token_detector_,
+                         /*num_output_candidates=*/1, *sampler_,
+                         *decoded_ids_buffer, benchmark_info_, &cancelled_));
     return responses;
   }
 }
@@ -437,8 +497,7 @@ absl::Status SessionBasic::DecodeInternalStreaming(
     InferenceObservable* observer) {
   if (sampler_ == nullptr) {
     RETURN_IF_ERROR(DecodeStreaming(executor_, tokenizer_, stop_token_detector_,
-                                    benchmark_info_, observer,
-                                    &cancelled_));
+                                    benchmark_info_, observer, &cancelled_));
   } else {
     std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
                                  last_prefill_token_id_);

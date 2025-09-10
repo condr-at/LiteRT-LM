@@ -27,10 +27,12 @@ namespace lm {
 struct LiteRtLmSettings {
   std::string backend = "gpu";
   std::optional<std::string> vision_backend = std::nullopt;
+  std::optional<std::string> audio_backend = std::nullopt;
   std::string sampler_backend = "";
   std::string model_path;
   std::string input_prompt = "What is the tallest building in the world?";
   std::optional<std::vector<std::string>> image_files = std::nullopt;
+  std::optional<std::vector<std::string>> audio_files = std::nullopt;
   bool benchmark = false;
   int benchmark_prefill_tokens = 0;
   int benchmark_decode_tokens = 0;

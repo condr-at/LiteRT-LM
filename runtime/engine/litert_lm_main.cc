@@ -40,6 +40,9 @@ ABSL_FLAG(std::string, backend, "gpu",
 ABSL_FLAG(std::optional<std::string>, vision_backend, std::nullopt,
           "Backend to use for the vision model (cpu or gpu). If not specified, "
           "the vision backend will be chosen based on the main backend.");
+ABSL_FLAG(std::optional<std::string>, audio_backend, std::nullopt,
+          "Backend to use for the audio model (cpu or gpu). If not specified, "
+          "the audio backend will be chosen based on the main backend.");
 ABSL_FLAG(std::string, sampler_backend, "",
           "Sampler backend to use for LLM execution (cpu, gpu, etc.). If "
           "empty, the sampler backend will be chosen for the best according to "
@@ -77,6 +80,8 @@ ABSL_FLAG(int, num_logits_to_print_after_decode, 0,
           "If 0, disables printing logits.");
 ABSL_FLAG(std::optional<std::vector<std::string>>, image_files, std::nullopt,
           "The path to the image files that to be used for vision modality.");
+ABSL_FLAG(std::optional<std::vector<std::string>>, audio_files, std::nullopt,
+          "The path to the audio files that to be used for audio modality.");
 
 namespace {
 
@@ -113,6 +118,9 @@ absl::Status MainHelper(int argc, char** argv) {
         << "Example usage: ./litert_lm_main --model_path=<model_path> "
            "[--input_prompt=<input_prompt>] [--backend=<cpu|gpu|npu>] "
            "[--vision_backend=<cpu|gpu>] "
+           "[--audio_backend=<cpu|gpu>] "
+           "[--image_files=<image_path1>,<image_path2>,...] "
+           "[--audio_files=<audio_path1>,<audio_path2>,...] "
            "[--sampler_backend=<cpu|gpu>] [--benchmark] "
            "[--benchmark_prefill_tokens=<num_prefill_tokens>] "
            "[--benchmark_decode_tokens=<num_decode_tokens>] "
@@ -121,17 +129,19 @@ absl::Status MainHelper(int argc, char** argv) {
            "[--multi_turns=<true|false>] "
            "[--num_cpu_threads=<num_cpu_threads>] "
            "[--clear_kv_cache_before_prefill=<true|false>] "
-           "[--num_logits_to_print_after_decode=<num_logits_to_print>] ";
+           "[--num_logits_to_print_after_decode=<num_logits_to_print>]";
     return absl::InvalidArgumentError("No arguments provided.");
   }
 
   litert::lm::LiteRtLmSettings settings;
   settings.backend = absl::GetFlag(FLAGS_backend);
   settings.vision_backend = absl::GetFlag(FLAGS_vision_backend);
+  settings.audio_backend = absl::GetFlag(FLAGS_audio_backend);
   settings.sampler_backend = absl::GetFlag(FLAGS_sampler_backend);
   settings.model_path = absl::GetFlag(FLAGS_model_path);
   settings.input_prompt = absl::GetFlag(FLAGS_input_prompt);
   settings.image_files = absl::GetFlag(FLAGS_image_files);
+  settings.audio_files = absl::GetFlag(FLAGS_audio_files);
   settings.benchmark = absl::GetFlag(FLAGS_benchmark);
   settings.benchmark_prefill_tokens =
       absl::GetFlag(FLAGS_benchmark_prefill_tokens);
@@ -147,7 +157,6 @@ absl::Status MainHelper(int argc, char** argv) {
       absl::GetFlag(FLAGS_clear_kv_cache_before_prefill);
   settings.num_logits_to_print_after_decode =
       absl::GetFlag(FLAGS_num_logits_to_print_after_decode);
-
   return litert::lm::RunLiteRtLm(settings);
 }
 

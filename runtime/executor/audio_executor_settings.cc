@@ -14,18 +14,31 @@
 
 #include "runtime/executor/audio_executor_settings.h"
 
+#include <ostream>
+
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
-#include "third_party/odml/genai_modules/utils/core/ret_check.h"
 #include "runtime/executor/executor_settings_base.h"
+#include "runtime/util/status_macros.h"
 
 namespace litert::lm {
+
+std::ostream& operator<<(std::ostream& os,
+                         const AudioExecutorSettings& settings) {
+  os << "AudioExecutorSettings: " << std::endl;
+  os << "ModelAssets: " << settings.GetModelAssets() << std::endl;
+  os << "MaxSequenceLength: " << settings.GetMaxSequenceLength() << std::endl;
+  os << "Backend: " << settings.GetBackend() << std::endl;
+  os << "BundledWithMainModel: " << settings.GetBundledWithMainModel()
+     << std::endl;
+  return os;
+}
 
 absl::StatusOr<AudioExecutorSettings> AudioExecutorSettings::CreateDefault(
     const ModelAssets& model_assets, int max_sequence_length, Backend backend,
     bool bundled_with_main_model) {
   AudioExecutorSettings settings(model_assets, max_sequence_length);
-  RET_CHECK(settings.SetBackend(backend) == absl::OkStatus());
+  RETURN_IF_ERROR(settings.SetBackend(backend));
   settings.SetBundledWithMainModel(bundled_with_main_model);
   return settings;
 }
@@ -41,8 +54,10 @@ void AudioExecutorSettings::SetMaxSequenceLength(int max_sequence_length) {
 Backend AudioExecutorSettings::GetBackend() const { return backend_; }
 
 absl::Status AudioExecutorSettings::SetBackend(Backend backend) {
-  RET_CHECK(backend == Backend::GPU_ARTISAN || backend == Backend::CPU)
-      << "Currently only GPU_ARTISAN and CPU are supported.";
+  if (backend != Backend::GPU_ARTISAN && backend != Backend::CPU) {
+    return absl::InvalidArgumentError(
+        "Currently only GPU_ARTISAN and CPU are supported.");
+  }
   backend_ = backend;
   return absl::OkStatus();
 }

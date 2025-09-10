@@ -14,6 +14,7 @@
 
 #include "runtime/engine/engine_settings.h"
 
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -33,9 +34,10 @@ namespace litert::lm {
 namespace {
 
 using ::litert::lm::EngineSettings;
+using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
 using ::testing::Eq;
-using ::testing::ContainsRegex;
+using ::testing::status::StatusIs;
 
 proto::LlmMetadata CreateLlmMetadata() {
   proto::LlmMetadata llm_metadata;
@@ -146,6 +148,68 @@ TEST(EngineSettingsTest, VisionExecutorSettingsGetModelPath) {
   ASSERT_TRUE(settings->GetVisionExecutorSettings().has_value());
   auto model_path =
       settings->GetVisionExecutorSettings()->GetModelAssets().GetPath();
+  ASSERT_OK(model_path);
+  EXPECT_EQ(*model_path, "test_model_path_1");
+}
+
+TEST(EngineSettingsTest, AudioExecutorSettingsNotSet) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  ASSERT_OK_AND_ASSIGN(auto settings, EngineSettings::CreateDefault(
+                                          *model_assets,
+                                          /*backend=*/Backend::CPU,
+                                          /*vision_backend=*/std::nullopt,
+                                          /*audio_backend=*/std::nullopt));
+  EXPECT_FALSE(settings.GetAudioExecutorSettings().has_value());
+}
+
+TEST(EngineSettingsTest, AudioExecutorSettingsSetAndGetBackend) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  ASSERT_OK_AND_ASSIGN(auto settings, EngineSettings::CreateDefault(
+                                          *model_assets,
+                                          /*backend=*/Backend::CPU,
+                                          /*vision_backend=*/std::nullopt,
+                                          /*audio_backend=*/Backend::CPU));
+  EXPECT_EQ(settings.GetAudioExecutorSettings()->GetBackend(), Backend::CPU);
+}
+
+TEST(EngineSettingsTest, AudioExecutorSettingsSetGpuFails) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  // Audio backend is not supported on GPU yet.
+  EXPECT_THAT(EngineSettings::CreateDefault(*model_assets,
+                                            /*backend=*/Backend::CPU,
+                                            /*vision_backend=*/std::nullopt,
+                                            /*audio_backend=*/Backend::GPU),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(EngineSettingsTest, AudioExecutorSettingsSetAndGetCacheDir) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  ASSERT_OK_AND_ASSIGN(auto settings, EngineSettings::CreateDefault(
+                                          *model_assets,
+                                          /*backend=*/Backend::CPU,
+                                          /*vision_backend=*/std::nullopt,
+                                          /*audio_backend=*/Backend::CPU));
+  ASSERT_TRUE(settings.GetAudioExecutorSettings().has_value());
+  settings.GetMutableAudioExecutorSettings()->SetCacheDir("audio_cache_dir");
+  EXPECT_EQ(settings.GetAudioExecutorSettings()->GetCacheDir(),
+            "audio_cache_dir");
+}
+
+TEST(EngineSettingsTest, AudioExecutorSettingsGetModelPath) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  ASSERT_OK_AND_ASSIGN(auto settings, EngineSettings::CreateDefault(
+                                          *model_assets,
+                                          /*backend=*/Backend::CPU,
+                                          /*vision_backend=*/std::nullopt,
+                                          /*audio_backend=*/Backend::CPU));
+  ASSERT_TRUE(settings.GetAudioExecutorSettings().has_value());
+  auto model_path =
+      settings.GetAudioExecutorSettings()->GetModelAssets().GetPath();
   ASSERT_OK(model_path);
   EXPECT_EQ(*model_path, "test_model_path_1");
 }

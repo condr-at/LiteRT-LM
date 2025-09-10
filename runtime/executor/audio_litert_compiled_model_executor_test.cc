@@ -30,7 +30,6 @@
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
-#include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/executor/audio_executor_settings.h"
 #include "runtime/executor/executor_settings_base.h"
@@ -87,10 +86,13 @@ CreateAudioExecutor(const std::string& model_path, int max_sequence_length,
   return litert::lm::AudioLiteRtCompiledModelExecutor::Create(
       audio_executor_settings);
 }
-
+// TODO: b/441514829 - Enable the tests on Windows once the bug is fixed.
+#if !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && \
+    !defined(__NT__) && !defined(_WIN64)
 TEST(AudioLiteRtCompiledModelExecutorTest, CreateExecutorTest) {
-  EXPECT_OK(CreateAudioExecutor(std::filesystem::path(::testing::SrcDir()) /
-                                    std::string(kTestAudioModelPath),
+  EXPECT_OK(CreateAudioExecutor((std::filesystem::path(::testing::SrcDir()) /
+                                 std::string(kTestAudioModelPath))
+                                    .string(),
                                 /*max_sequence_length=*/0, Backend::CPU));
 }
 
@@ -98,8 +100,9 @@ TEST(AudioLiteRtCompiledModelExecutorTest,
      EncodeTest_WithoutMaskFitSequenceLength) {
   ASSERT_OK_AND_ASSIGN(
       auto audio_executor,
-      CreateAudioExecutor(std::filesystem::path(::testing::SrcDir()) /
-                              std::string(kTestAudioModelPath),
+      CreateAudioExecutor((std::filesystem::path(::testing::SrcDir()) /
+                           std::string(kTestAudioModelPath))
+                              .string(),
                           /*max_sequence_length=*/0, Backend::CPU));
 
   constexpr std::array<float,
@@ -143,8 +146,9 @@ TEST(AudioLiteRtCompiledModelExecutorTest,
      EncodeTest_WithMaskFitSequenceLength) {
   ASSERT_OK_AND_ASSIGN(
       auto audio_executor,
-      CreateAudioExecutor(std::filesystem::path(::testing::SrcDir()) /
-                              std::string(kTestAudioModelPath),
+      CreateAudioExecutor((std::filesystem::path(::testing::SrcDir()) /
+                           std::string(kTestAudioModelPath))
+                              .string(),
                           /*max_sequence_length=*/0, Backend::CPU));
 
   constexpr std::array<float,
@@ -200,8 +204,9 @@ TEST(AudioLiteRtCompiledModelExecutorTest,
      EncodeTest_WithoutMaskLongerThanSequenceLength) {
   ASSERT_OK_AND_ASSIGN(
       auto audio_executor,
-      CreateAudioExecutor(std::filesystem::path(::testing::SrcDir()) /
-                              std::string(kTestAudioModelPath),
+      CreateAudioExecutor((std::filesystem::path(::testing::SrcDir()) /
+                           std::string(kTestAudioModelPath))
+                              .string(),
                           /*max_sequence_length=*/0, Backend::CPU));
 
   constexpr std::array<float, 13 * kSpectrogramFrequencySlots>
@@ -245,8 +250,9 @@ TEST(AudioLiteRtCompiledModelExecutorTest,
      EncodeTest_WithMaskLongerThanSequenceLength) {
   ASSERT_OK_AND_ASSIGN(
       auto audio_executor,
-      CreateAudioExecutor(std::filesystem::path(::testing::SrcDir()) /
-                              std::string(kTestAudioModelPath),
+      CreateAudioExecutor((std::filesystem::path(::testing::SrcDir()) /
+                           std::string(kTestAudioModelPath))
+                              .string(),
                           /*max_sequence_length=*/0, Backend::CPU));
 
   constexpr std::array<float, 13 * kSpectrogramFrequencySlots>
@@ -295,6 +301,8 @@ TEST(AudioLiteRtCompiledModelExecutorTest,
                           6., 9., 9., 9., 0., 1., 2., 3., 3., 3.));
   EXPECT_EQ(executor_audio_data.GetValidTokens(), 6);
 }
+#endif  // !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && \
+        // !defined(__NT__) && !defined(_WIN64)
 
 }  // namespace
 

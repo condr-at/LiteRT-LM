@@ -14,6 +14,7 @@
 
 #include "runtime/core/session_basic.h"
 
+#include <array>
 #include <filesystem>  // NOLINT: Required for path manipulation.
 #include <memory>
 #include <optional>
@@ -24,62 +25,103 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"  // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/synchronization/notification.h"  // from @com_google_absl
 #include "absl/time/clock.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "litert/test/matchers.h"  // from @litert
+#include "runtime/components/preprocessor/by_pass_audio_preprocessor.h"
 #include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
+#include "runtime/executor/audio_executor_settings.h"
+#include "runtime/executor/audio_litert_compiled_model_executor.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/fake_llm_executor.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/framework/threadpool.h"
 #include "runtime/util/convert_tensor_buffer.h"
-#include "runtime/util/test_utils.h"  // NOLINT
+#include "runtime/util/scoped_file.h"
+#include "runtime/util/status_macros.h"  // NOLINT
+#include "runtime/util/test_utils.h"     // NOLINT
 
 namespace litert::lm {
 namespace {
 
-constexpr char kTestdataDir[] =
+constexpr absl::string_view kTestdataDir =
     "litert_lm/runtime/components/testdata/";
+constexpr absl::string_view kTestAudioModelPath =
+    "litert_lm/runtime/testdata/dummy_audio_only.litertlm";
+
+constexpr int kSpectrogramFrequencySlots = 8;
+constexpr int kSpectrogramSequenceLength = 10;
+constexpr int kEmbeddingSequenceLength = 5;
+constexpr int kEmbeddingDimensions = 6;
+
+// Audio embedding tensor will have shape [1, kEmbeddingSequenceLength,
+// kEmbeddingDimensions].
+constexpr std::array<float, kEmbeddingSequenceLength * kEmbeddingDimensions>
+    kExpectedAudioEmbedding = {0., 0., 0., 0., 0., 0., 0., 1., 2., 3.,
+                               3., 3., 0., 1., 2., 4., 4., 4., 1., 2.,
+                               3., 5., 5., 5., 0., 1., 2., 4., 4., 4.};
+
+// Mel spectrogram tensor will have shape [1, kSpectrogramSequenceLength,
+// kSpectrogramFrequencySlots].
+constexpr std::array<float,
+                     kSpectrogramSequenceLength * kSpectrogramFrequencySlots>
+    mel_spectrogram_data = {
+        0., 0., 0., 0., 0., 0., 1., 0., 1., 1., 1., 1., 0., 0., 0., 0.,
+        0., 1., 0., 0., 1., 1., 1., 1., 0., 1., 0., 0., 0., 0., 0., 0.,
+        0., 1., 0., 1., 0., 0., 1., 1., 1., 1., 1., 0., 0., 1., 1., 0.,
+        1., 0., 0., 1., 0., 1., 0., 1., 1., 0., 0., 1., 0., 1., 0., 0.,
+        0., 1., 0., 1., 1., 0., 1., 0., 0., 0., 1., 0., 1., 1., 1., 1.};
+
+absl::StatusOr<std::unique_ptr<FakeLlmExecutor>> CreateFakeLlmExecutor(
+    std::vector<std::vector<int>> prefill_tokens,
+    std::vector<std::vector<int>> decode_tokens,
+    std::optional<std::vector<float>> audio_embedding = std::nullopt) {
+  auto fake_executor = std::make_unique<FakeLlmExecutor>(
+      2560, prefill_tokens, decode_tokens, /*batch_size=*/1, audio_embedding);
+  return std::move(fake_executor);
+}
 
 class SessionBasicTest : public testing::Test {
  protected:
   void SetUp() override {
     auto tokenizer = SentencePieceTokenizer::CreateFromFile(
-        (std::filesystem::path(::testing::SrcDir()) / kTestdataDir /
-         "sentencepiece.model")
+        (std::filesystem::path(::testing::SrcDir()) /
+         std::string(kTestdataDir) / "sentencepiece.model")
             .string());
     ASSERT_OK(tokenizer);
     tokenizer_ = std::move(*tokenizer);
-    // The prefill tokens are the expected tokens that will be passed in at each
-    // time the Prefill function is called. The values are the token ids of the
-    // input prompt "Hello World!".
-    std::vector<std::vector<int>> prefill_tokens = {
-        {2, 90, 547, 58, 735, 210, 466, 2294}};
-    // The decode tokens are the expected tokens that will be returned by the
-    // Decode function. The values are the token ids of the output response
-    // "How's it going?" followed by the stop token id (2294).
-    std::vector<std::vector<int>> decode_tokens = {{224}, {24}, {8},    {66},
-                                                   {246}, {18}, {2295}, {2294}};
-    executor_ =
-        std::make_unique<FakeLlmExecutor>(2560, prefill_tokens, decode_tokens);
-
     sampler_params_.set_type(proto::SamplerParameters::TYPE_UNSPECIFIED);
-
     // Creating the thread pool of a single thread to execute the works.
     worker_thread_pool_ = std::make_unique<ThreadPool>(/*name_prefix=*/"engine",
                                                        /*max_num_threads=*/1);
   }
 
   std::unique_ptr<Tokenizer> tokenizer_;
-  std::unique_ptr<LlmExecutor> executor_;
   proto::SamplerParameters sampler_params_;
   std::unique_ptr<ThreadPool> worker_thread_pool_;
 };
+
+absl::StatusOr<std::unique_ptr<AudioLiteRtCompiledModelExecutor>>
+CreateAudioExecutor(const std::string& model_path, int max_sequence_length,
+                    Backend backend) {
+  ASSIGN_OR_RETURN(auto model_file, ScopedFile::Open(model_path));
+  auto model_file_ptr = std::make_shared<ScopedFile>(std::move(model_file));
+  ASSIGN_OR_RETURN(auto model_assets, ModelAssets::Create(model_file_ptr));
+  // Create the audio executor settings.
+  ASSIGN_OR_RETURN(auto audio_executor_settings,
+                   AudioExecutorSettings::CreateDefault(
+                       model_assets, max_sequence_length, backend));
+  // Create the audio executor.
+  return litert::lm::AudioLiteRtCompiledModelExecutor::Create(
+      audio_executor_settings);
+}
 
 TEST_F(SessionBasicTest, RunPrefill) {
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
@@ -88,11 +130,24 @@ TEST_F(SessionBasicTest, RunPrefill) {
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // The prefill tokens are the expected tokens that will be passed in
+          // at each time the Prefill function is called. The values are the
+          // token ids of the input prompt "Hello World!".
+          // The decode tokens are the expected tokens that will be returned by
+          // the Decode function. The values are the token ids of the output
+          // response "How's it going?" followed by the stop token id (2294).
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
   auto session = SessionBasic::Create(
-      executor_.get(), tokenizer_.get(),
+      executor.get(), tokenizer_.get(),
       /*image_preprocessor=*/nullptr,
-      /*vision_executor=*/nullptr, session_config,
-      /*benchmark_info=*/std::nullopt, worker_thread_pool_.get());
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   EXPECT_OK((*session)->RunPrefill(inputs));
@@ -105,11 +160,20 @@ TEST_F(SessionBasicTest, RunDecode) {
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  auto session = SessionBasic::Create(
+      executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   EXPECT_OK((*session)->RunPrefill(inputs));
@@ -138,11 +202,20 @@ TEST_F(SessionBasicTest, RunPrefillAsync) {
   session_config.SetStartTokenId(2);
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  auto session = SessionBasic::Create(
+      executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -160,11 +233,20 @@ TEST_F(SessionBasicTest, RunDecodeAsync) {
   session_config.SetStartTokenId(2);
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  auto session = SessionBasic::Create(
+      executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -209,11 +291,20 @@ TEST_F(SessionBasicTest, GenerateContentStream) {
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  auto session = SessionBasic::Create(
+      executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -232,11 +323,20 @@ TEST_F(SessionBasicTest, GenerateContentStreamEmptyInput) {
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  auto session = SessionBasic::Create(
+      executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
 
   std::vector<InputData> inputs;
   StreamingTestObserver observer;
@@ -247,7 +347,16 @@ TEST_F(SessionBasicTest, GenerateContentStreamEmptyInput) {
 
 TEST_F(SessionBasicTest, GenerateContentStreamPrefillError) {
   // Configure the executor to fail at prefill.
-  auto* fake_executor = static_cast<FakeLlmExecutor*>(executor_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+
+  auto* fake_executor = static_cast<FakeLlmExecutor*>(executor.get());
   fake_executor->SetPrefillStatus(absl::InternalError("Prefill failed"));
 
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
@@ -256,11 +365,12 @@ TEST_F(SessionBasicTest, GenerateContentStreamPrefillError) {
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  auto session = SessionBasic::Create(
+      executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -274,7 +384,15 @@ TEST_F(SessionBasicTest, GenerateContentStreamPrefillError) {
 
 TEST_F(SessionBasicTest, GenerateContentStreamDecodeError) {
   // Configure the executor to fail at decode.
-  auto* fake_executor = static_cast<FakeLlmExecutor*>(executor_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  auto* fake_executor = static_cast<FakeLlmExecutor*>(executor.get());
   fake_executor->SetDecodeStatus(absl::InternalError("Decode failed"));
 
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
@@ -283,11 +401,12 @@ TEST_F(SessionBasicTest, GenerateContentStreamDecodeError) {
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  auto session = SessionBasic::Create(
+      executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -312,11 +431,20 @@ TEST_F(SessionBasicTest, ApplyPromptTemplates) {
       "<end>\n");
   session_config.GetMutablePromptTemplates().mutable_model()->set_prefix(
       "<test>Model\n");
-  auto session_or =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  auto session_or = SessionBasic::Create(
+      executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
   ASSERT_OK(session_or);
   auto session = std::move(*session_or);
   // First chunk of the first turn will have the BOS token.
@@ -350,13 +478,22 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsSingleText) {
       "<end>\n");
   session_config.GetMutablePromptTemplates().mutable_model()->set_prefix(
       "<test>Model\n");
-  auto session_or =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  ASSERT_OK_AND_ASSIGN(
+      auto session,
+      SessionBasic::Create(executor.get(), tokenizer_.get(),
                            /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
-  ASSERT_OK(session_or);
-  auto session = std::move(*session_or);
+                           /*vision_executor=*/nullptr,
+                           /*audio_preprocessor=*/nullptr,
+                           /*audio_executor=*/nullptr, session_config,
+                           std::nullopt, worker_thread_pool_.get()));
 
   std::vector<InputData> preprocessed_contents;
   ASSERT_OK_AND_ASSIGN(auto ids_buffer, tokenizer_->TokenIdsToTensorBuffer(
@@ -389,13 +526,22 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsMultiText) {
       "<end>\n");
   session_config.GetMutablePromptTemplates().mutable_model()->set_prefix(
       "<test>Model\n");
-  auto session_or =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  ASSERT_OK_AND_ASSIGN(
+      auto session,
+      SessionBasic::Create(executor.get(), tokenizer_.get(),
                            /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
-  ASSERT_OK(session_or);
-  auto session = std::move(*session_or);
+                           /*vision_executor=*/nullptr,
+                           /*audio_preprocessor=*/nullptr,
+                           /*audio_executor=*/nullptr, session_config,
+                           std::nullopt, worker_thread_pool_.get()));
 
   std::vector<InputData> preprocessed_contents;
   LITERT_ASSERT_OK_AND_ASSIGN(auto ids_buffer1,
@@ -422,13 +568,22 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsMultiText) {
 TEST_F(SessionBasicTest, ProcessAndCombineContentsEmptyFails) {
   SessionConfig session_config = SessionConfig::CreateDefault();
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session_or =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  ASSERT_OK_AND_ASSIGN(
+      auto session,
+      SessionBasic::Create(executor.get(), tokenizer_.get(),
                            /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
-  ASSERT_OK(session_or);
-  auto session = std::move(*session_or);
+                           /*vision_executor=*/nullptr,
+                           /*audio_preprocessor=*/nullptr,
+                           /*audio_executor=*/nullptr, session_config,
+                           std::nullopt, worker_thread_pool_.get()));
 
   std::vector<InputData> preprocessed_contents;
   auto result = session->ProcessAndCombineContents(preprocessed_contents);
@@ -437,28 +592,198 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsEmptyFails) {
                           "No token IDs found in preprocessed_contents."));
 }
 
-TEST_F(SessionBasicTest, ProcessAndCombineContentsAudioFails) {
+// TODO: b/441514829 - Enable the tests on Windows once the bug is fixed.
+#if !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && \
+    !defined(__NT__) && !defined(_WIN64)
+TEST_F(SessionBasicTest, ProcessAndCombineContentsAudioSuccess) {
   SessionConfig session_config = SessionConfig::CreateDefault();
+  session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session_or =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
-  ASSERT_OK(session_or);
-  auto session = std::move(*session_or);
+
+  ByPassAudioPreprocessor bypass_audio_preprocessor;
+  ASSERT_OK_AND_ASSIGN(
+      auto audio_executor,
+      CreateAudioExecutor((std::filesystem::path(::testing::SrcDir()) /
+                           std::string(kTestAudioModelPath))
+                              .string(),
+                          /*max_sequence_length=*/0, Backend::CPU));
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/
+          {{224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}},
+          /*audio_embedding=*/
+          std::vector<float>(kExpectedAudioEmbedding.begin(),
+                             kExpectedAudioEmbedding.end())));
+  ASSERT_OK_AND_ASSIGN(
+      auto session, SessionBasic::Create(
+                        executor.get(), tokenizer_.get(),
+                        /*image_preprocessor=*/nullptr,
+                        /*vision_executor=*/nullptr,
+                        /*audio_preprocessor=*/&bypass_audio_preprocessor,
+                        /*audio_executor=*/audio_executor.get(), session_config,
+                        std::nullopt, worker_thread_pool_.get()));
 
   std::vector<InputData> preprocessed_contents;
-  preprocessed_contents.emplace_back(InputAudio(""));
-  auto result = session->ProcessAndCombineContents(preprocessed_contents);
-  EXPECT_THAT(result, testing::status::StatusIs(
-                          absl::StatusCode::kUnimplemented,
-                          "Audio prefill is not implemented yet."));
+  ASSERT_OK_AND_ASSIGN(auto ids_buffer, tokenizer_->TokenIdsToTensorBuffer(
+                                            {90, 547, 58, 735, 210, 466}));
+  preprocessed_contents.emplace_back(InputText(std::move(ids_buffer)));
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer mel_spectrogram_data,
+      CopyToTensorBuffer<float>(
+          mel_spectrogram_data,
+          {1, kSpectrogramSequenceLength, kSpectrogramFrequencySlots}));
+  InputAudio input_audio(std::move(mel_spectrogram_data));
+  preprocessed_contents.emplace_back(std::move(input_audio));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto result, session->ProcessAndCombineContents(preprocessed_contents));
+
+  ASSERT_OK_AND_ASSIGN(auto text_data, result.GetTextDataPtr());
+  ASSERT_NE(text_data, nullptr);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      auto token_ids_span,
+      ReferTensorBufferAsSpan<int>(text_data->GetTokenIds()));
+  // The input to audio executor has length 10.
+  // The processed audio embedding has length 5.
+  EXPECT_THAT(std::vector<int>(token_ids_span.begin(), token_ids_span.end()),
+              testing::ElementsAre(90, 547, 58, 735, 210, 466, 256000, -2, -2,
+                                   -2, -2, -2, -4));
 }
+
+TEST_F(SessionBasicTest, ProcessAndCombineContentsTextAndAudioSuccess) {
+  const std::vector<std::vector<int>> stop_token_ids = {{2294}};
+  SessionConfig session_config = SessionConfig::CreateDefault();
+  session_config.SetStartTokenId(2);
+  session_config.SetSamplerBackend(Backend::CPU);
+  session_config.GetMutableSamplerParams() = sampler_params_;
+  session_config.GetMutableStopTokenIds() = stop_token_ids;
+  session_config.GetMutablePromptTemplates().mutable_user()->set_prefix(
+      "User:");
+  session_config.GetMutablePromptTemplates().mutable_user()->set_suffix(
+      "[END]");
+  session_config.GetMutablePromptTemplates().mutable_model()->set_prefix(
+      "Model:");
+
+  ByPassAudioPreprocessor bypass_audio_preprocessor;
+  ASSERT_OK_AND_ASSIGN(
+      auto audio_executor,
+      CreateAudioExecutor((std::filesystem::path(::testing::SrcDir()) /
+                           std::string(kTestAudioModelPath))
+                              .string(),
+                          /*max_sequence_length=*/0, Backend::CPU));
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "User:Hello World!<audio_tokens>[END]Model:"
+          /*prefill_tokens=*/{{2,    423, 8,   179, 29,   90,     547,
+                               58,   735, 210, 466, 2294, 256000, -2,
+                               -2,   -2,  -2,  -2,  -4,   433,    2172,
+                               1920, 432, 197, 979, 3076, 29}},
+          // "How's it going?"
+          /*decode_tokens=*/
+          {{224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}},
+          /*audio_embedding=*/
+          std::vector<float>(kExpectedAudioEmbedding.begin(),
+                             kExpectedAudioEmbedding.end())));
+  ASSERT_OK_AND_ASSIGN(
+      auto session, SessionBasic::Create(
+                        executor.get(), tokenizer_.get(),
+                        /*image_preprocessor=*/nullptr,
+                        /*vision_executor=*/nullptr,
+                        /*audio_preprocessor=*/&bypass_audio_preprocessor,
+                        /*audio_executor=*/audio_executor.get(), session_config,
+                        std::nullopt, worker_thread_pool_.get()));
+
+  std::vector<InputData> inputs;
+  inputs.emplace_back(InputText("Hello World!"));
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer mel_spectrogram_data,
+      CopyToTensorBuffer<float>(
+          mel_spectrogram_data,
+          {1, kSpectrogramSequenceLength, kSpectrogramFrequencySlots}));
+  InputAudio input_audio(std::move(mel_spectrogram_data));
+  inputs.emplace_back(std::move(input_audio));
+  EXPECT_OK(session->RunPrefill(inputs));
+}
+
+TEST_F(SessionBasicTest, ProcessAndCombineContentsTextAudioTextSuccess) {
+  const std::vector<std::vector<int>> stop_token_ids = {{2294}};
+  SessionConfig session_config = SessionConfig::CreateDefault();
+  session_config.SetStartTokenId(2);
+  session_config.SetSamplerBackend(Backend::CPU);
+  session_config.GetMutableSamplerParams() = sampler_params_;
+  session_config.GetMutableStopTokenIds() = stop_token_ids;
+  session_config.GetMutablePromptTemplates().mutable_user()->set_prefix(
+      "User:");
+  session_config.GetMutablePromptTemplates().mutable_user()->set_suffix(
+      "[END]");
+  session_config.GetMutablePromptTemplates().mutable_model()->set_prefix(
+      "Model:");
+
+  ByPassAudioPreprocessor bypass_audio_preprocessor;
+  ASSERT_OK_AND_ASSIGN(
+      auto audio_executor,
+      CreateAudioExecutor((std::filesystem::path(::testing::SrcDir()) /
+                           std::string(kTestAudioModelPath))
+                              .string(),
+                          /*max_sequence_length=*/0, Backend::CPU));
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // clang-format off
+          // "User:Hello World!<audio_tokens>What does the audio say?[END]Model:" // NOLINT
+          // clang-format on
+          /*prefill_tokens=*/
+          {{2,   423,  8,      179, 29,  90,   547,  58, 735, 210,
+            466, 2294, 256000, -2,  -2,  -2,   -2,   -2, -4,  583,
+            378, 844,  166,    3,   14,  1252, 54,   58, 626, 2295,
+            433, 2172, 1920,   432, 197, 979,  3076, 29}},
+
+          // "How's it going?"
+          /*decode_tokens=*/
+          {{224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}},
+          /*audio_embedding=*/
+          std::vector<float>(kExpectedAudioEmbedding.begin(),
+                             kExpectedAudioEmbedding.end())));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto session, SessionBasic::Create(
+                        executor.get(), tokenizer_.get(),
+                        /*image_preprocessor=*/nullptr,
+                        /*vision_executor=*/nullptr,
+                        /*audio_preprocessor=*/&bypass_audio_preprocessor,
+                        /*audio_executor=*/audio_executor.get(), session_config,
+                        std::nullopt, worker_thread_pool_.get()));
+
+  std::vector<InputData> inputs;
+  inputs.emplace_back(InputText("Hello World!"));
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer mel_spectrogram_data,
+      CopyToTensorBuffer<float>(
+          mel_spectrogram_data,
+          {1, kSpectrogramSequenceLength, kSpectrogramFrequencySlots}));
+  InputAudio input_audio(std::move(mel_spectrogram_data));
+  inputs.emplace_back(std::move(input_audio));
+  inputs.emplace_back(InputText("What does the audio say?"));
+  EXPECT_OK(session->RunPrefill(inputs));
+}
+#endif  // !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && \
+        // !defined(__NT__) && !defined(_WIN64)
 
 TEST_F(SessionBasicTest, GenerateContentStreamWithCancellation) {
   // Configure the executor to have a delay to simulate a long-running task.
-  auto* fake_executor = static_cast<FakeLlmExecutor*>(executor_.get());
+  ASSERT_OK_AND_ASSIGN(
+      auto fake_executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
   fake_executor->SetDecodeDelay(absl::Milliseconds(200));
 
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
@@ -467,11 +792,12 @@ TEST_F(SessionBasicTest, GenerateContentStreamWithCancellation) {
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  auto session = SessionBasic::Create(
+      fake_executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
   ASSERT_OK(session);
 
   std::vector<InputData> inputs;
@@ -495,17 +821,26 @@ TEST_F(SessionBasicTest, GenerateContentStreamWithCancellation) {
 }
 
 TEST_F(SessionBasicTest, GenerateContentStreamOnCancelledSession) {
+  ASSERT_OK_AND_ASSIGN(
+      auto fake_executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
   SessionConfig session_config = SessionConfig::CreateDefault();
   session_config.GetMutableSamplerParams() = sampler_params_;
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetStartTokenId(2);
   session_config.SetSamplerBackend(Backend::CPU);
-  auto session =
-      SessionBasic::Create(executor_.get(), tokenizer_.get(),
-                           /*image_preprocessor=*/nullptr,
-                           /*vision_executor=*/nullptr, session_config,
-                           std::nullopt, worker_thread_pool_.get());
+  auto session = SessionBasic::Create(
+      fake_executor.get(), tokenizer_.get(),
+      /*image_preprocessor=*/nullptr,
+      /*vision_executor=*/nullptr, /*audio_preprocessor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
   ASSERT_OK(session);
 
   (*session)->CancelProcess();

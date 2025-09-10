@@ -23,6 +23,7 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/components/tokenizer.h"
+#include "runtime/executor/audio_executor_settings.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/proto/engine.pb.h"
@@ -69,7 +70,8 @@ class EngineSettings {
   // backend.
   static absl::StatusOr<EngineSettings> CreateDefault(
       ModelAssets model_assets, Backend backend = Backend::CPU,
-      std::optional<Backend> vision_backend = std::nullopt);
+      std::optional<Backend> vision_backend = std::nullopt,
+      std::optional<Backend> audio_backend = std::nullopt);
 
   // Updates the EngineSettings fields by loading the metadata from the model
   // assets. The function also validates to check if all of the required fields
@@ -87,6 +89,11 @@ class EngineSettings {
   const std::optional<LlmExecutorSettings>& GetVisionExecutorSettings() const;
   // Returns the mutable LlmExecutorSettings for the vision model.
   std::optional<LlmExecutorSettings>& GetMutableVisionExecutorSettings();
+
+  // Returns the AudioExecutorSettings for the audio model.
+  const std::optional<AudioExecutorSettings>& GetAudioExecutorSettings() const;
+  // Returns the mutable AudioExecutorSettings for the audio model.
+  std::optional<AudioExecutorSettings>& GetMutableAudioExecutorSettings();
 
   // Benchmark parameters:
   // Returns true if the benchmark is enabled.
@@ -107,6 +114,7 @@ class EngineSettings {
   explicit EngineSettings(
       LlmExecutorSettings executor_settings,
       std::optional<LlmExecutorSettings> vision_executor_settings,
+      std::optional<AudioExecutorSettings> audio_executor_settings,
       std::optional<proto::BenchmarkParams> benchmark_params = std::nullopt);
 
   // Settings for the main executor.
@@ -114,6 +122,9 @@ class EngineSettings {
 
   // Settings for the vision executor.
   std::optional<LlmExecutorSettings> vision_executor_settings_;
+
+  // Settings for the audio executor.
+  std::optional<AudioExecutorSettings> audio_executor_settings_;
 
   // Parameters used to configure the benchmarking process.
   std::optional<proto::BenchmarkParams> benchmark_params_;

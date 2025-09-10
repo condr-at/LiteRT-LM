@@ -15,6 +15,8 @@
 #ifndef THIRD_PARTY_ODML_LITE_RT_LLM_EXECUTOR_AUDIO_EXECUTOR_SETTINGS_H_
 #define THIRD_PARTY_ODML_LITE_RT_LLM_EXECUTOR_AUDIO_EXECUTOR_SETTINGS_H_
 
+#include <ostream>
+
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/executor/executor_settings_base.h"
@@ -54,6 +56,9 @@ class AudioExecutorSettings : public ExecutorSettingsBase {
 
   bool bundled_with_main_model_;
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const AudioExecutorSettings& settings);
 
 }  // namespace litert::lm
 
