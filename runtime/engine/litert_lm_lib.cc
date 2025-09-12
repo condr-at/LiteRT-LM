@@ -71,7 +71,7 @@ const absl::Duration kWaitUntilDoneTimeout = absl::Minutes(10);
 
 namespace {
 
-void RunBenchmark(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
+void RunBenchmark(const LiteRtLmSettings& settings, litert::lm::Engine* engine,
                   litert::lm::Engine::Session* session) {
   const bool is_dummy_input = settings.benchmark_prefill_tokens > 0 ||
                               settings.benchmark_decode_tokens > 0;
@@ -90,7 +90,7 @@ void RunBenchmark(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
     InferenceObservable observable;
     absl::Status status = session->GenerateContentStream(inputs, &observable);
     ABSL_CHECK_OK(status);
-    ABSL_CHECK_OK(llm->WaitUntilDone(kWaitUntilDoneTimeout));
+    ABSL_CHECK_OK(engine->WaitUntilDone(kWaitUntilDoneTimeout));
   } else {
     auto responses = session->GenerateContent(inputs);
     ABSL_CHECK_OK(responses);
@@ -103,7 +103,7 @@ void RunBenchmark(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
   ABSL_LOG(INFO) << *benchmark_info;
 }
 
-void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
+void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* engine,
                    litert::lm::Engine::Session* session,
                    std::string& input_prompt,
                    std::vector<std::string>& images_bytes,
@@ -144,7 +144,7 @@ void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
     InferenceObservable observable;
     absl::Status status = session->GenerateContentStream(inputs, &observable);
     ABSL_CHECK_OK(status);
-    ABSL_CHECK_OK(llm->WaitUntilDone(kWaitUntilDoneTimeout));
+    ABSL_CHECK_OK(engine->WaitUntilDone(kWaitUntilDoneTimeout));
   } else {
     auto responses = session->GenerateContent(inputs);
     ABSL_CHECK_OK(responses);
@@ -153,7 +153,7 @@ void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* llm,
 }
 
 void RunMultiTurnConversation(const LiteRtLmSettings& settings,
-                              litert::lm::Engine* llm,
+                              litert::lm::Engine* engine,
                               litert::lm::Engine::Session* session) {
   if (settings.benchmark) {
     ABSL_LOG(FATAL) << "Benchmarking with multi-turns input is not supported.";
@@ -168,7 +168,7 @@ void RunMultiTurnConversation(const LiteRtLmSettings& settings,
     }
     std::vector<std::string> image_bytes;
     std::vector<std::string> audio_bytes;
-    RunSingleTurn(settings, llm, session, input_prompt, image_bytes,
+    RunSingleTurn(settings, engine, session, input_prompt, image_bytes,
                   audio_bytes);
   } while (true);
 }
@@ -285,19 +285,19 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
     engine_settings.GetMutableBenchmarkParams() = benchmark_params;
   }
   ABSL_LOG(INFO) << "Creating engine";
-  absl::StatusOr<std::unique_ptr<litert::lm::Engine>> llm =
+  absl::StatusOr<std::unique_ptr<litert::lm::Engine>> engine =
       litert::lm::Engine::CreateEngine(std::move(engine_settings));
-  ABSL_CHECK_OK(llm) << "Failed to create engine";
+  ABSL_CHECK_OK(engine) << "Failed to create engine";
 
   ABSL_LOG(INFO) << "Creating session";
   absl::StatusOr<std::unique_ptr<litert::lm::Engine::Session>> session =
-      (*llm)->CreateSession(session_config);
+      (*engine)->CreateSession(session_config);
   ABSL_CHECK_OK(session) << "Failed to create session";
 
   if (settings.benchmark) {
-    RunBenchmark(settings, llm->get(), session->get());
+    RunBenchmark(settings, engine->get(), session->get());
   } else if (settings.multi_turns) {
-    RunMultiTurnConversation(settings, llm->get(), session->get());
+    RunMultiTurnConversation(settings, engine->get(), session->get());
   } else {
     std::string input_prompt = settings.input_prompt;
     std::vector<std::string> images_bytes;
@@ -329,7 +329,7 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
         audio_bytes.push_back(buffer.str());
       }
     }
-    RunSingleTurn(settings, llm->get(), session->get(), input_prompt,
+    RunSingleTurn(settings, engine->get(), session->get(), input_prompt,
                   images_bytes, audio_bytes);
   }
 
