@@ -175,7 +175,8 @@ TEST(StbImagePreprocessorTest, PreprocessFailedWithInvalidImage) {
 
   EXPECT_THAT(
       preprocessor.Preprocess(InputImage(invalid_image_bytes), parameter),
-      StatusIs(absl::StatusCode::kInvalidArgument, "Failed to decode image."));
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               "Failed to decode image. Reason: unknown image type"));
 }
 
 }  // namespace

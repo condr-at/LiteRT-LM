@@ -75,7 +75,8 @@ absl::StatusOr<InputImage> StbImagePreprocessor::Preprocess(
       input_image_bytes.size(), &original_width, &original_height,
       &original_channels, target_channels);
   if (decoded_image == nullptr) {
-    return absl::InvalidArgumentError("Failed to decode image.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to decode image. Reason: ", stbi_failure_reason()));
   }
   std::unique_ptr<unsigned char[], void (*)(void*)> decoded_image_ptr(
       decoded_image, stbi_image_free);
