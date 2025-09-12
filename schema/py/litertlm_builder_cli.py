@@ -81,6 +81,7 @@ import sys
 from absl import app
 
 from litert_lm.schema.py import litertlm_builder
+from litert_lm.schema.py import litertlm_core
 
 _SUBCOMMANDS = (
     "toml",
@@ -416,7 +417,7 @@ def _build_litertlm_file(parsed_args: list[argparse.Namespace]) -> None:
           )
     assert output_path, "Output path is required."
     assert toml_path, "TOML path is required."
-    with open(output_path, "wb") as f:
+    with litertlm_core.open_file(output_path, "wb") as f:
       builder = litertlm_builder.LitertLmFileBuilder.from_toml_file(toml_path)
       builder.build(f)
   else:
@@ -440,7 +441,7 @@ def _build_litertlm_file(parsed_args: list[argparse.Namespace]) -> None:
           raise ValueError(f"Unknown subcommand: {parsed_arg.command}")
 
     assert output_path, "Output path is required."
-    with open(output_path, "wb") as f:
+    with litertlm_core.open_file(output_path, "wb") as f:
       builder.build(f)
 
   print(f"LiteRT-LM file successfully created at {output_path}")

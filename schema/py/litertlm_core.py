@@ -14,6 +14,8 @@
 
 """Core library with shared constants and utilities for LiteRT-LM tools."""
 
+import os  # pylint: disable=unused-import
+
 from litert_lm.schema.core import litertlm_header_schema_py_generated as schema
 
 # --- File Format Constants ---
@@ -35,3 +37,13 @@ def any_section_data_type_to_string(data_type: int):
     return SECTION_DATA_TYPE_TO_STRING_MAP[data_type]
   else:
     raise ValueError(f"Unknown AnySectionDataType value: {data_type}")
+
+
+def path_exists(file_path: str) -> bool:
+  """Checks if a file exists."""
+  return os.path.exists(file_path)
+
+
+def open_file(file_path: str, mode: str = "rb"):
+  """Opens a file using the given mode."""
+  return open(file_path, mode)

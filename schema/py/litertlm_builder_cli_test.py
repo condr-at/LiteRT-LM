@@ -20,6 +20,7 @@ import subprocess
 from absl.testing import absltest
 
 from litert_lm.runtime.proto import llm_metadata_pb2
+from litert_lm.schema.py import litertlm_core
 from litert_lm.schema.py import litertlm_peek
 
 from python import runfiles
@@ -67,7 +68,7 @@ class LiteRTLMBuilderCLITest(absltest.TestCase):
 
   def _create_placeholder_file(self, filename: str, content: bytes) -> str:
     filepath = os.path.join(self.temp_dir, filename)
-    with open(filepath, "wb") as f:
+    with litertlm_core.open_file(filepath, "wb") as f:
       f.write(content)
     return filepath
 

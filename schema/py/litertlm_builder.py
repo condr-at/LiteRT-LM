@@ -31,16 +31,16 @@ builder.add_tflite_model(
 )
 builder.add_sentencepiece_tokenizer(tokenizer_path)
 builder.add_llm_metadata(llm_metadata_path)
-with open(output_path, "wb") as f:
+with litertlm_core.open_file(output_path, "wb") as f:
   builder.build(f)
 ```
 """
 
 import dataclasses
 import enum
-import os
+import os  # pylint: disable=unused-import
 import tomllib
-from typing import Any, BinaryIO, Callable, Optional, TypeVar
+from typing import Any, BinaryIO, Callable, Optional, TypeVar, Union
 import zlib
 import flatbuffers
 from google.protobuf import message
@@ -147,7 +147,7 @@ class LitertLmFileBuilder:
     )
     builder.add_sentencepiece_tokenizer(tokenizer_path)
     builder.add_llm_metadata(llm_metadata_path)
-    with open(output_path, "wb") as f:
+    with litertlm_core.open_file(output_path, "wb") as f:
       builder.build(f)
   ```
   """
@@ -232,7 +232,7 @@ class LitertLmFileBuilder:
   @classmethod
   def from_toml_file(cls, toml_path: str) -> LitertLmFileBuilderT:
     """Initializes a LitertLmFileBuilder from a TOML file."""
-    with open(toml_path, "r") as f:
+    with litertlm_core.open_file(toml_path, "r") as f:
       return cls.from_toml_str(f.read())
 
   def add_system_metadata(
@@ -268,7 +268,7 @@ class LitertLmFileBuilder:
     """
     assert not self._has_llm_metadata, "Llm metadata already added."
     self._has_llm_metadata = True
-    if not os.path.exists(llm_metadata_path):
+    if not litertlm_core.path_exists(llm_metadata_path):
       raise FileNotFoundError(
           f"Llm metadata file not found: {llm_metadata_path}"
       )
@@ -276,13 +276,13 @@ class LitertLmFileBuilder:
     if _is_binary_proto(llm_metadata_path):
 
       def data_reader():
-        with open(llm_metadata_path, "rb") as f:
+        with litertlm_core.open_file(llm_metadata_path, "rb") as f:
           return f.read()
 
     else:
 
       def data_reader():
-        with open(llm_metadata_path, "r") as f:
+        with litertlm_core.open_file(llm_metadata_path, "r") as f:
           return text_format.Parse(
               f.read(), llm_metadata_pb2.LlmMetadata()
           ).SerializeToString()
@@ -315,7 +315,7 @@ class LitertLmFileBuilder:
       FileNotFoundError: If the tflite model file is not found.
       ValueError: If the model type metadata is overridden.
     """
-    if not os.path.exists(tflite_model_path):
+    if not litertlm_core.path_exists(tflite_model_path):
       raise FileNotFoundError(
           f"Tflite model file not found: {tflite_model_path}"
       )
@@ -329,7 +329,7 @@ class LitertLmFileBuilder:
       metadata.extend(additional_metadata)
 
     def data_reader():
-      with open(tflite_model_path, "rb") as f:
+      with litertlm_core.open_file(tflite_model_path, "rb") as f:
         return f.read()
 
     section_object = _SectionObject(
@@ -360,13 +360,13 @@ class LitertLmFileBuilder:
     """
     assert not self._has_tokenizer, "Tokenizer already added."
     self._has_tokenizer = True
-    if not os.path.exists(sp_tokenizer_path):
+    if not litertlm_core.path_exists(sp_tokenizer_path):
       raise FileNotFoundError(
           f"Sentencepiece tokenizer file not found: {sp_tokenizer_path}"
       )
 
     def data_reader():
-      with open(sp_tokenizer_path, "rb") as f:
+      with litertlm_core.open_file(sp_tokenizer_path, "rb") as f:
         return f.read()
 
     section_object = _SectionObject(
@@ -396,13 +396,13 @@ class LitertLmFileBuilder:
     """
     assert not self._has_tokenizer, "Tokenizer already added."
     self._has_tokenizer = True
-    if not os.path.exists(hf_tokenizer_path):
+    if not litertlm_core.path_exists(hf_tokenizer_path):
       raise FileNotFoundError(
           f"HF tokenizer file not found: {hf_tokenizer_path}"
       )
 
     def read_and_compress(path: str) -> bytes:
-      with open(path, "rb") as f:
+      with litertlm_core.open_file(path, "rb") as f:
         content = f.read()
         uncompressed_size = len(content)
         compressed_content = zlib.compress(content)
@@ -416,7 +416,12 @@ class LitertLmFileBuilder:
     self._sections.append(section_object)
     return self
 
-  def build(self, stream: BinaryIO) -> None:
+  def build(
+      self,
+      stream: Union[
+          BinaryIO,
+      ],
+  ) -> None:
     """Builds the litertlm into the given stream."""
     stream.seek(0)
     # To simplify the build logic, we reserved the first block for the header.
@@ -517,10 +522,10 @@ def _is_binary_proto(filepath: str) -> bool:
       bool: True if the file is a binary protobuf, False if it's a textproto.
       TextProto.
   """
-  assert os.path.exists(filepath), f"File {filepath} does not exist."
+  assert litertlm_core.path_exists(filepath), f"File {filepath} does not exist."
 
   try:
-    with open(filepath, "rb") as f:
+    with litertlm_core.open_file(filepath, "rb") as f:
       content = f.read()
       msg = llm_metadata_pb2.LlmMetadata()
       msg.ParseFromString(content)
@@ -532,7 +537,7 @@ def _is_binary_proto(filepath: str) -> bool:
     pass
 
   try:
-    with open(filepath, "r") as f:
+    with litertlm_core.open_file(filepath, "r") as f:
       content = f.read()
       msg = text_format.Parse(content, llm_metadata_pb2.LlmMetadata())
       if msg.IsInitialized():

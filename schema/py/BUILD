@@ -93,6 +93,7 @@ py_test(
     srcs = ["litertlm_builder_test.py"],
     deps = [
         ":litertlm_builder",
+        ":litertlm_core",
         ":litertlm_peek",
         "//runtime/proto:llm_metadata_py_pb2",
         "@absl_py//absl/testing:absltest",
@@ -110,6 +111,7 @@ pytype_strict_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":litertlm_builder",
+        ":litertlm_core",
         "@absl_py//absl:app",
     ],
 )
@@ -121,6 +123,7 @@ py_test(
         ":litertlm_builder_cli",
     ],
     deps = [
+        ":litertlm_core",
         ":litertlm_peek",
         "@rules_python//python/runfiles",
         "//runtime/proto:llm_metadata_py_pb2",

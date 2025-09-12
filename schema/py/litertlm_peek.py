@@ -146,7 +146,7 @@ def read_litertlm_header(
   Raises:
     ValueError: If the file has an invalid magic number.
   """
-  with open(file_path, "rb") as file_stream:
+  with litertlm_core.open_file(file_path, "rb") as file_stream:
     magic = file_stream.read(8)
     if magic != b"LITERTLM":
       raise ValueError(f"Invalid magic number: {magic}")
@@ -219,7 +219,7 @@ def _dump_llm_metadata_proto(
 
   if dump_files_dir:
     file_path = os.path.join(dump_files_dir, "LlmMetadataProto.pbtext")
-    with open(file_path, "w") as f_out:
+    with litertlm_core.open_file(file_path, "w") as f_out:
       f_out.write(debug_str)
     output_stream.write(
         f"{' ' * INDENT_SPACES}LlmMetadataProto dumped to: {file_path}\n"
@@ -238,7 +238,7 @@ def _dump_tflite_model(
     file_name = _get_tflite_model_filename(section_object, section_index)
     file_path = os.path.join(dump_files_dir, file_name)
     file_stream.seek(section_object.BeginOffset())
-    with open(file_path, "wb") as f_out:
+    with litertlm_core.open_file(file_path, "wb") as f_out:
       f_out.write(
           file_stream.read(
               section_object.EndOffset() - section_object.BeginOffset()
@@ -275,7 +275,7 @@ def _dump_generic_section(
     file_name = f"Section{section_index}_{data_type_str}{file_extension}"
     file_path = os.path.join(dump_files_dir, file_name)
     file_stream.seek(section_object.BeginOffset())
-    with open(file_path, "wb") as f_out:
+    with litertlm_core.open_file(file_path, "wb") as f_out:
       f_out.write(
           file_stream.read(
               section_object.EndOffset() - section_object.BeginOffset()
@@ -298,7 +298,7 @@ def peek_litertlm_file(
     output_stream: The stream to write the output to.
   """
   metadata = read_litertlm_header(litertlm_path, output_stream)
-  with open(litertlm_path, "rb") as file_stream:
+  with litertlm_core.open_file(litertlm_path, "rb") as file_stream:
 
     # Print System Metadata
     system_metadata = metadata.SystemMetadata()

@@ -19,6 +19,7 @@ from absl.testing import absltest
 from google.protobuf import text_format
 from litert_lm.runtime.proto import llm_metadata_pb2
 from litert_lm.schema.py import litertlm_builder
+from litert_lm.schema.py import litertlm_core
 from litert_lm.schema.py import litertlm_peek
 
 _TOML_TEMPLATE = """
@@ -64,7 +65,7 @@ class LitertlmBuilderTest(absltest.TestCase):
 
   def _create_dummy_file(self, filename: str, content: bytes) -> str:
     filepath = os.path.join(self.temp_dir, filename)
-    with open(filepath, "wb") as f:
+    with litertlm_core.open_file(filepath, "wb") as f:
       f.write(content)
     return filepath
 
@@ -81,7 +82,7 @@ class LitertlmBuilderTest(absltest.TestCase):
       self, builder: litertlm_builder.LitertLmFileBuilder
   ) -> str:
     path = os.path.join(self.temp_dir, "litertlm.litertlm")
-    with open(path, "wb") as f:
+    with litertlm_core.open_file(path, "wb") as f:
       builder.build(f)
     stream = io.StringIO()
     litertlm_peek.peek_litertlm_file(path, self.temp_dir, stream)
