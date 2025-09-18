@@ -100,7 +100,6 @@ absl::Status InitializeEmbeddingLookups(
     end_of_multi_modal_embedding_models.insert(
         {ExecutorAudioData::kEndToken, end_of_audio_model.value()});
   }
-  ABSL_LOG(INFO) << "text embedder model ok: " << text_embedder_model.status();
   if (text_embedder_model.ok()) {
     ASSIGN_OR_RETURN(
         embedding_lookup,
