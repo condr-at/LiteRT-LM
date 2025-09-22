@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
-load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
+load(
+    "@org_tensorflow//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     default_hdrs_check = "strict",
@@ -25,43 +26,58 @@ package(
 
 licenses(["notice"])
 
-proto_library(
-    name = "engine_proto",
+tf_proto_library(
+    name = "engine",
     srcs = ["engine.proto"],
 )
 
-cc_proto_library(
-    name = "engine_cc_proto",
-    deps = [":engine_proto"],
+alias(
+    name = "engine_proto",
+    actual = ":engine",
 )
 
-proto_library(
-    name = "sampler_params_proto",
+alias(
+    name = "engine_cc_proto",
+    actual = ":engine_cc",
+)
+
+tf_proto_library(
+    name = "sampler_params",
     srcs = ["sampler_params.proto"],
 )
 
-cc_proto_library(
+alias(
+    name = "sampler_params_proto",
+    actual = ":sampler_params",
+)
+
+alias(
     name = "sampler_params_cc_proto",
-    deps = [":sampler_params_proto"],
+    actual = ":sampler_params_cc",
 )
 
-py_proto_library(
+alias(
     name = "sampler_params_py_pb2",
-    deps = [":sampler_params_proto"],
+    actual = ":sampler_params_py_proto",
 )
 
-proto_library(
-    name = "llm_metadata_proto",
+tf_proto_library(
+    name = "llm_metadata",
     srcs = ["llm_metadata.proto"],
-    deps = [":sampler_params_proto"],
+    deps = [":sampler_params"],
 )
 
-cc_proto_library(
+alias(
+    name = "llm_metadata_proto",
+    actual = ":llm_metadata",
+)
+
+alias(
     name = "llm_metadata_cc_proto",
-    deps = [":llm_metadata_proto"],
+    actual = ":llm_metadata_cc",
 )
 
-py_proto_library(
+alias(
     name = "llm_metadata_py_pb2",
-    deps = [":llm_metadata_proto"],
+    actual = ":llm_metadata_py_proto",
 )
