@@ -551,6 +551,7 @@ cc_library(
         "//conditions:default": [
             "@litert//litert/c:litert_common",
             "@litert//litert/c:litert_tensor_buffer_types",
+            "@litert//litert/c/options:litert_qualcomm_options",
             "@litert//litert/cc:litert_compiled_model",
             "@litert//litert/cc:litert_environment",
             "@litert//litert/cc:litert_macros",
@@ -559,6 +560,7 @@ cc_library(
             "@litert//litert/cc:litert_tensor_buffer",
             "@litert//litert/cc/options:litert_cpu_options",
             "@litert//litert/cc/options:litert_gpu_options",
+            "@litert//litert/cc/options:litert_qualcomm_options",
             "@litert//litert/cc/options:litert_runtime_options",
         ],
     }),

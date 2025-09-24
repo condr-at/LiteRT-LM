@@ -63,13 +63,13 @@ TEST(VisionExecutorSettingsTest, GetAndSetAdapterBackend) {
 
 TEST(VisionExecutorSettingsTest, CreateDefaultWithInvalidBackend) {
   ASSERT_OK_AND_ASSIGN(ModelAssets model_assets, ModelAssets::Create(""));
-  // Only GPU and CPU are supported.
+  // Vision encoder supports GPU, CPU and NPU backends.
   EXPECT_THAT(
       VisionExecutorSettings::CreateDefault(model_assets,
-                                            /*encoder_backend=*/Backend::NPU,
-                                            /*adapter_backend=*/Backend::CPU),
+                                            /*encoder_backend=*/Backend::CPU,
+                                            /*adapter_backend=*/Backend::NPU),
       StatusIs(absl::StatusCode::kInvalidArgument,
-               "Unsupported encoder backend: 6"));
+               "Unsupported adapter backend: 6"));
   EXPECT_THAT(
       VisionExecutorSettings::CreateDefault(model_assets,
                                             /*encoder_backend=*/Backend::GPU,
@@ -99,6 +99,10 @@ TEST(VisionExecutorSettingsTest, CreateDefaultWithValidBackend) {
                                                   Backend::CPU));
   EXPECT_OK(VisionExecutorSettings::CreateDefault(model_assets, Backend::GPU,
                                                   Backend::GPU));
+  EXPECT_OK(VisionExecutorSettings::CreateDefault(model_assets, Backend::NPU,
+                                                  Backend::GPU));
+  EXPECT_OK(VisionExecutorSettings::CreateDefault(model_assets, Backend::NPU,
+                                                  Backend::CPU));
 }
 
 }  // namespace

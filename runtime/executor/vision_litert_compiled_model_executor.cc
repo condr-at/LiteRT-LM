@@ -16,8 +16,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem> // NOLINT: Required for path manipulation.
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,6 +32,7 @@
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/c/litert_common.h"  // from @litert
 #include "litert/c/litert_tensor_buffer_types.h"  // from @litert
+#include "litert/c/options/litert_qualcomm_options.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
@@ -38,6 +41,7 @@
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "litert/cc/options/litert_cpu_options.h"  // from @litert
 #include "litert/cc/options/litert_gpu_options.h"  // from @litert
+#include "litert/cc/options/litert_qualcomm_options.h"  // from @litert
 #include "litert/cc/options/litert_runtime_options.h"  // from @litert
 #include "runtime/components/model_resources.h"
 #include "runtime/executor/executor_settings_base.h"
@@ -92,6 +96,17 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionEncoder::Initialize() {
       gpu_compilation_options.EnableNoExternalTensorsMode(true);
       options.AddOpaqueOptions(std::move(gpu_compilation_options));
       options.SetHardwareAccelerators(kLiteRtHwAcceleratorGpu);
+      break;
+    }
+    case Backend::NPU: {
+      LITERT_ASSIGN_OR_RETURN_ABSL(auto qualcomm_options,
+                                   qualcomm::QualcommOptions::Create());
+      qualcomm_options.SetLogLevel(kLiteRtQualcommLogOff);
+      qualcomm_options.SetHtpPerformanceMode(
+          kLiteRtQualcommHtpPerformanceModeBurst);
+      options.AddOpaqueOptions(std::move(qualcomm_options));
+      // TODO: yunandrew - Add support for other NPU backends.
+      options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
       break;
     }
     default:
@@ -190,7 +205,23 @@ litert::lm::VisionLiteRtCompiledModelExecutor::Create(
                           BuildLiteRtCompiledModelResources(
                               vision_executor_settings.GetModelAssets()));
 
-  LITERT_ASSIGN_OR_RETURN(auto litert_env, ::litert::Environment::Create({}));
+  std::vector<::litert::Environment::Option> environment_options = {};
+  if (vision_executor_settings.GetEncoderBackend() == Backend::NPU) {
+    std::string model_path(
+        vision_executor_settings.GetModelAssets().GetPath().value_or(""));
+    std::filesystem::path path(model_path);
+    if (!std::filesystem::exists(path)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Model file not found: ", path.parent_path().string()));
+    }
+
+    environment_options.push_back(::litert::Environment::Option{
+        ::litert::Environment::OptionTag::DispatchLibraryDir,
+        absl::string_view(path.parent_path().string())});
+  }
+  LITERT_ASSIGN_OR_RETURN(
+      auto litert_env,
+      ::litert::Environment::Create(absl::MakeConstSpan(environment_options)));
 
   ASSIGN_OR_RETURN(auto vision_encoder_model,
                    resources->GetTFLiteModel(ModelType::kTfLiteVisionEncoder));

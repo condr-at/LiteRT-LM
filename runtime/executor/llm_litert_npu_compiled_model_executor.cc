@@ -72,6 +72,8 @@ constexpr char cache_k25[] = "kv_cache_k_25";
 constexpr char cache_v25[] = "kv_cache_v_25";
 constexpr char cache_k19[] = "kv_cache_k_19";
 constexpr char cache_v19[] = "kv_cache_v_19";
+constexpr char cache_k23[] = "kv_cache_k_23";
+constexpr char cache_v23[] = "kv_cache_v_23";
 constexpr char cache_k17[] = "kv_cache_k_17";
 constexpr char cache_v17[] = "kv_cache_v_17";
 
@@ -478,9 +480,11 @@ LlmLiteRtNpuCompiledModelExecutor::CreateMaskContextWithBufferSharing(
       MaskSignatures::kMaskOutputLocalMask,
       MaskSignatures::kMaskOutputGlobalMask};
   for (const auto& mask_output_name : mask_output_names) {
-    LITERT_ASSIGN_OR_RETURN(
-        prefill_output_buffers[mask_output_name],
-        gemma_prefill_input_buffers[mask_output_name].Duplicate());
+    if (gemma_prefill_input_buffers.contains(mask_output_name)) {
+      LITERT_ASSIGN_OR_RETURN(
+          prefill_output_buffers[mask_output_name],
+          gemma_prefill_input_buffers[mask_output_name].Duplicate());
+    }
   }
 
   LITERT_ASSIGN_OR_RETURN(
@@ -493,9 +497,11 @@ LlmLiteRtNpuCompiledModelExecutor::CreateMaskContextWithBufferSharing(
           MaskSignatures::kDecodeMask, MaskSignatures::kMaskInputTokens));
 
   for (const auto& mask_output_name : mask_output_names) {
-    LITERT_ASSIGN_OR_RETURN(
-        decode_output_buffers[mask_output_name],
-        gemma_decode_input_buffers[mask_output_name].Duplicate());
+    if (gemma_decode_input_buffers.contains(mask_output_name)) {
+      LITERT_ASSIGN_OR_RETURN(
+          decode_output_buffers[mask_output_name],
+          gemma_decode_input_buffers[mask_output_name].Duplicate());
+    }
   }
 
   InferenceContext mask_context(
@@ -531,9 +537,11 @@ LlmLiteRtNpuCompiledModelExecutor::CreateRopeContextWithBufferSharing(
       RopeSignatures::kOutputPosEmbeddingLocalHigh,
       RopeSignatures::kOutputPosEmbeddingLow};
   for (const auto& rope_output_name : rope_output_names) {
-    LITERT_ASSIGN_OR_RETURN(
-        prefill_output_buffers[rope_output_name],
-        gemma_prefill_input_buffers[rope_output_name].Duplicate());
+    if (gemma_prefill_input_buffers.contains(rope_output_name)) {
+      LITERT_ASSIGN_OR_RETURN(
+          prefill_output_buffers[rope_output_name],
+          gemma_prefill_input_buffers[rope_output_name].Duplicate());
+    }
   }
 
   LITERT_ASSIGN_OR_RETURN(
@@ -542,9 +550,11 @@ LlmLiteRtNpuCompiledModelExecutor::CreateRopeContextWithBufferSharing(
           RopeSignatures::kDecodeRope, RopeSignatures::kInputPos));
 
   for (const auto& rope_output_name : rope_output_names) {
-    LITERT_ASSIGN_OR_RETURN(
-        decode_output_buffers[rope_output_name],
-        gemma_decode_input_buffers[rope_output_name].Duplicate());
+    if (gemma_decode_input_buffers.contains(rope_output_name)) {
+      LITERT_ASSIGN_OR_RETURN(
+          decode_output_buffers[rope_output_name],
+          gemma_decode_input_buffers[rope_output_name].Duplicate());
+    }
   }
 
   InferenceContext rope_context(
@@ -1553,13 +1563,21 @@ LlmLiteRtNpuCompiledModelExecutor::CreateForGemma3(
   // fail). Luckily these buffers are not used, so we can simply create new
   // ones to satisfy the compiled model run API.  We can remove this
   // workaround once we have a model that removes these buffers.
-  if (input_kv_cache_buffers.contains(cache_k25)) {
+  if (llm_inference_context.prefill_input_buffers.contains(cache_k25)) {
     LITERT_ASSIGN_OR_RETURN(
         llm_inference_context.decode_input_buffers[cache_k25],
         llm_compiled_model.CreateInputBuffer(kDecodeSignature, cache_k25));
     LITERT_ASSIGN_OR_RETURN(
         llm_inference_context.decode_input_buffers[cache_v25],
         llm_compiled_model.CreateInputBuffer(kDecodeSignature, cache_v25));
+  } else if (llm_inference_context.prefill_input_buffers.contains(cache_k23)) {
+    // Fast VLM model specific fix:
+    LITERT_ASSIGN_OR_RETURN(
+        llm_inference_context.decode_input_buffers[cache_k23],
+        llm_compiled_model.CreateInputBuffer(kDecodeSignature, cache_k23));
+    LITERT_ASSIGN_OR_RETURN(
+        llm_inference_context.decode_input_buffers[cache_v23],
+        llm_compiled_model.CreateInputBuffer(kDecodeSignature, cache_v23));
   } else {
     // Tiny Gemma 270M specific fix:
     LITERT_ASSIGN_OR_RETURN(
@@ -1624,13 +1642,24 @@ LlmLiteRtNpuCompiledModelExecutor::CreateForGemma3(
 
   std::optional<EmbedderPerLayerContext> embedder_per_layer_context =
       std::nullopt;
+
+  std::optional<std::unique_ptr<EmbeddingLookupManager>>
+      maybe_embedding_lookup_manager = std::nullopt;
+  // If the model has vision encoder, we need to create the embedding lookup
+  // manager.
+  if (resources.GetTFLiteModel(ModelType::kTfLiteVisionEncoder).ok()) {
+    ASSIGN_OR_RETURN(maybe_embedding_lookup_manager,
+                     EmbeddingLookupManager::Create(embedder_lrt_model, true,
+                                                    "decode_embedder"));
+  }
+
   auto executor = absl::WrapUnique(new LlmLiteRtNpuCompiledModelExecutor(
       executor_settings, std::move(embedder_context),
       std::move(npu_auxiliary_context), std::move(mask_context),
       std::move(rope_context), std::move(env), std::move(llm_compiled_model),
       std::move(llm_inference_context),
       std::move(cache_update_inference_context), std::move(prefill_runner_set),
-      /*embedding_lookup_manager=*/std::nullopt,
+      std::move(maybe_embedding_lookup_manager),
       /*embedder_per_layer_context=*/std::nullopt, is_benchmark_enabled));
   return executor;
 }
