@@ -317,8 +317,15 @@ absl::Status SessionConfig::MaybeUpdateAndValidate(
       }
     }
 
-    // Set the prompt template.
-    if (llm_metadata.has_prompt_templates()) {
+    // Set the prompt template from LlmMetadata, if not provided in
+    // SessionConfig.
+    //
+    // Hack: use the user field to check if the prompt template is being set.
+    // To use the empty prompt_template, set the user field with empty prefix.
+    //
+    // TODO(b/439648399): Remove this logic when LiteRT-LM no longer use
+    // template in Session level.
+    if (!prompt_templates_.has_user() && llm_metadata.has_prompt_templates()) {
       prompt_templates_ = llm_metadata.prompt_templates();
     }
   }

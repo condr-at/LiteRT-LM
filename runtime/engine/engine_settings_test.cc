@@ -51,6 +51,13 @@ proto::LlmMetadata CreateLlmMetadata() {
   llm_metadata.mutable_sampler_params()->set_p(0.95f);
   llm_metadata.mutable_sampler_params()->set_temperature(1.0f);
   llm_metadata.mutable_sampler_params()->set_seed(0);
+
+  llm_metadata.mutable_prompt_templates()->mutable_user()->set_prefix(
+      "<start>user");
+  llm_metadata.mutable_prompt_templates()->mutable_user()->set_suffix("<end>");
+  llm_metadata.mutable_prompt_templates()->mutable_model()->set_prefix(
+      "<start>model");
+  llm_metadata.mutable_prompt_templates()->mutable_model()->set_suffix("<end>");
   return llm_metadata;
 }
 
@@ -511,6 +518,87 @@ TEST(SessionConfigTest, SetAndGetSamplerBackend) {
   EXPECT_EQ(session_config.GetSamplerBackend(), Backend::CPU);
   session_config.SetSamplerBackend(Backend::GPU);
   EXPECT_EQ(session_config.GetSamplerBackend(), Backend::GPU);
+}
+
+TEST(SessionConfigTest,
+     MaybeUpdateAndValidatePromptTemplates_NoSessionTemplate) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  auto settings = EngineSettings::CreateDefault(*model_assets);
+  EXPECT_OK(settings);
+
+  FakeTokenizer tokenizer;
+  proto::LlmMetadata llm_metadata = CreateLlmMetadata();
+  EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
+
+  // SessionConfig has no promptTemplate: Use default from llm metadata.
+  auto session_config = SessionConfig::CreateDefault();
+  EXPECT_OK(session_config.MaybeUpdateAndValidate(*settings));
+  EXPECT_EQ(session_config.GetPromptTemplates().user().prefix(), "<start>user");
+  EXPECT_EQ(session_config.GetPromptTemplates().model().prefix(),
+            "<start>model");
+}
+
+TEST(SessionConfigTest,
+     MaybeUpdateAndValidatePromptTemplates_SessionTemplateSet) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  auto settings = EngineSettings::CreateDefault(*model_assets);
+  EXPECT_OK(settings);
+
+  FakeTokenizer tokenizer;
+  proto::LlmMetadata llm_metadata = CreateLlmMetadata();
+  EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
+
+  // SessionConfig has non-empty template: Use that.
+  auto session_config = SessionConfig::CreateDefault();
+  session_config.GetMutablePromptTemplates().mutable_user()->set_prefix(
+      "session_user");
+  EXPECT_OK(session_config.MaybeUpdateAndValidate(*settings));
+  EXPECT_EQ(session_config.GetPromptTemplates().user().prefix(),
+            "session_user");
+  EXPECT_FALSE(session_config.GetPromptTemplates().has_model());
+  EXPECT_FALSE(session_config.GetPromptTemplates().has_system());
+}
+
+TEST(SessionConfigTest,
+     MaybeUpdateAndValidatePromptTemplates_SessionTemplateSetEmpty) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  auto settings = EngineSettings::CreateDefault(*model_assets);
+  EXPECT_OK(settings);
+
+  FakeTokenizer tokenizer;
+  proto::LlmMetadata llm_metadata = CreateLlmMetadata();
+  EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
+
+  // SessionConfig has non-empty template: Use that.
+  auto session_config = SessionConfig::CreateDefault();
+  session_config.GetMutablePromptTemplates().mutable_user()->set_prefix("");
+  EXPECT_OK(session_config.MaybeUpdateAndValidate(*settings));
+  EXPECT_EQ(session_config.GetPromptTemplates().user().prefix(), "");
+  EXPECT_FALSE(session_config.GetPromptTemplates().has_model());
+  EXPECT_FALSE(session_config.GetPromptTemplates().has_system());
+}
+
+TEST(SessionConfigTest,
+     MaybeUpdateAndValidatePromptTemplates_MetadataTemplateMissing) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  auto settings = EngineSettings::CreateDefault(*model_assets);
+  EXPECT_OK(settings);
+
+  FakeTokenizer tokenizer;
+  proto::LlmMetadata llm_metadata = CreateLlmMetadata();
+  llm_metadata.clear_prompt_templates();
+  EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
+
+  // LlmMetadata has no promptTemplate: SessionConfig template remains default.
+  auto session_config = SessionConfig::CreateDefault();
+  EXPECT_OK(session_config.MaybeUpdateAndValidate(*settings));
+  EXPECT_FALSE(session_config.GetPromptTemplates().has_user());
+  EXPECT_FALSE(session_config.GetPromptTemplates().has_model());
+  EXPECT_FALSE(session_config.GetPromptTemplates().has_system());
 }
 
 }  // namespace
