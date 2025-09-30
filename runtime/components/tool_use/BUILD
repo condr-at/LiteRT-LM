@@ -32,6 +32,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@nlohmann_json//:json",
+        "//runtime/util:litert_status_util",
     ],
 )
 
@@ -41,6 +42,7 @@ cc_test(
     deps = [
         ":python_tool_format_utils",
         "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
         "@nlohmann_json//:json",
         "//runtime/util:test_utils",
     ],

@@ -67,7 +67,13 @@ absl::StatusOr<std::string> Conversation::GetSingleTurnText(
   PromptTemplateInput old_tmpl_input;
   if (std::holds_alternative<JsonPreface>(preface_)) {
     auto json_preface = std::get<JsonPreface>(preface_);
-    old_tmpl_input.messages = json_preface.messages;
+
+    for (auto& message : json_preface.messages) {
+      ASSIGN_OR_RETURN(nlohmann::ordered_json message_tmpl_input,
+                       model_data_processor_->MessageToTemplateInput(message));
+      old_tmpl_input.messages.push_back(message_tmpl_input);
+    }
+
     if (json_preface.tools.is_null()) {
       old_tmpl_input.tools = nullptr;
     } else {
@@ -80,25 +86,40 @@ absl::StatusOr<std::string> Conversation::GetSingleTurnText(
   }
   absl::MutexLock lock(&history_mutex_);  // NOLINT
   for (const auto& history_msg : history_) {
-    old_tmpl_input.messages.push_back(
-        std::get<nlohmann::ordered_json>(history_msg));
+    if (std::holds_alternative<nlohmann::ordered_json>(history_msg)) {
+      ASSIGN_OR_RETURN(nlohmann::ordered_json message_tmpl_input,
+                       model_data_processor_->MessageToTemplateInput(
+                           std::get<nlohmann::ordered_json>(history_msg)));
+      old_tmpl_input.messages.push_back(message_tmpl_input);
+    } else {
+      return absl::UnimplementedError("Message type is not supported yet");
+    }
   }
 
   if (history_.empty()) {
     PromptTemplateInput new_tmpl_input = std::move(old_tmpl_input);
-    new_tmpl_input.messages.push_back(
-        std::get<nlohmann::ordered_json>(message));
+    if (std::holds_alternative<nlohmann::ordered_json>(message)) {
+      ASSIGN_OR_RETURN(nlohmann::ordered_json message_tmpl_input,
+                       model_data_processor_->MessageToTemplateInput(
+                           std::get<nlohmann::ordered_json>(message)));
+      new_tmpl_input.messages.push_back(message_tmpl_input);
+    } else {
+      return absl::UnimplementedError("Message type is not supported yet");
+    }
     new_tmpl_input.add_generation_prompt = true;
     return prompt_template_.Apply(new_tmpl_input);
   }
 
   old_tmpl_input.add_generation_prompt = false;
-  std::string old_string = prompt_template_.Apply(old_tmpl_input).value();
+  ASSIGN_OR_RETURN(const std::string old_string,
+                   prompt_template_.Apply(old_tmpl_input));
 
   if (std::holds_alternative<nlohmann::ordered_json>(message)) {
     PromptTemplateInput new_tmpl_input = std::move(old_tmpl_input);
-    new_tmpl_input.messages.push_back(
-        std::get<nlohmann::ordered_json>(message));
+    ASSIGN_OR_RETURN(nlohmann::ordered_json message_tmpl_input,
+                     model_data_processor_->MessageToTemplateInput(
+                         std::get<nlohmann::ordered_json>(message)));
+    new_tmpl_input.messages.push_back(message_tmpl_input);
     new_tmpl_input.add_generation_prompt = true;
     ASSIGN_OR_RETURN(const std::string& new_string,
                      prompt_template_.Apply(new_tmpl_input));

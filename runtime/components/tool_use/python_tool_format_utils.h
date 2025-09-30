@@ -22,6 +22,69 @@
 
 namespace litert::lm {
 
+// Formats a JSON value as a Python value.
+//
+// - Numbers are formatted as Python numbers.
+// - Strings are formatted as Python strings.
+// - Booleans are converted to "True" and "False".
+// - Arrays are converted to Python lists.
+// - Objects without the "type" key are converted to Python dictionaries.
+// - Objects with the "type" key are converted to Python constructor calls.
+// - Null values are converted to "None".
+absl::StatusOr<std::string> FormatValueAsPython(
+    const nlohmann::ordered_json& value);
+
+// Formats a JSON tool declaration as Python function signature.
+//
+// Example:
+//
+// Input - JSON tool declaration:
+// ```json
+// {
+//   "name": "test_tool",
+//   "description": "This is a test tool.",
+//   "parameters": {
+//     "properties": {
+//       "test_param_1": {
+//         "type": "string",
+//         "description": "First parameter."
+//       },
+//       "test_param_2": {
+//         "type": "array",
+//         "items": {
+//           "type": "integer"
+//         },
+//         "description": "Second parameter."
+//       },
+//       "test_param_3": {
+//         "type": "object",
+//         "properties": {
+//           "field_1": {
+//             "type": "string"
+//           }
+//         },
+//         "description": "Third parameter."
+//       }
+//     },
+//     "required": ["test_param_1", "test_param_2"]
+//   }
+// }
+// ```
+//
+// Output - Python function signature:
+// ```python
+// def test_tool(
+//     test_param_1: str,
+//     test_param_2: list[int],
+//     test_param_3: dict[str, float] | None = None,
+// ) -> dict:
+//   """This is a test tool.
+//
+//   Args:
+//     test_param_1: First parameter.
+//     test_param_2: Second parameter.
+//     test_param_3: Third parameter.
+//   """
 absl::StatusOr<std::string> FormatToolAsPython(
     const nlohmann::ordered_json& tool);
 

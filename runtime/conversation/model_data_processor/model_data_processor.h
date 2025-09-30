@@ -47,6 +47,18 @@ class ModelDataProcessor {
   virtual absl::StatusOr<Message> ToMessage(
       const Responses& responses, const DataProcessorArguments& args) = 0;
 
+  // Converts a message into the Jinja template input for that message.
+  //
+  // Although the message is already a JSON object, some models require
+  // additional processing to convert the message into the input needed by the
+  // Jinja template.
+  //
+  // For example, messages represent tool calls as a list of JSON objects, but a
+  // model's Jinja template may expect the tool calls to already be formatted
+  // in a particular tool calling syntax.
+  virtual absl::StatusOr<nlohmann::ordered_json> MessageToTemplateInput(
+      const nlohmann::ordered_json& message) const = 0;
+
   // Formats the provided tools to be inserted into the system/developer
   // instruction of the prompt.
   virtual absl::StatusOr<nlohmann::ordered_json> FormatTools(

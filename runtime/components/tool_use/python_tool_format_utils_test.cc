@@ -16,13 +16,123 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/util/test_utils.h"  // NOLINT
 
 namespace {
 
 using ::litert::lm::FormatToolAsPython;
+using ::litert::lm::FormatValueAsPython;
 using ::testing::status::IsOkAndHolds;
+using ::testing::status::StatusIs;
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonString) {
+  nlohmann::ordered_json value = "string value";
+  EXPECT_THAT(FormatValueAsPython(value), IsOkAndHolds(R"("string value")"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonInteger) {
+  nlohmann::ordered_json value = 123;
+  EXPECT_THAT(FormatValueAsPython(value), IsOkAndHolds("123"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonFloat) {
+  nlohmann::ordered_json value = 1.23;
+  EXPECT_THAT(FormatValueAsPython(value), IsOkAndHolds("1.23"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonTrue) {
+  nlohmann::ordered_json value = true;
+  EXPECT_THAT(FormatValueAsPython(value), IsOkAndHolds("True"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonFalse) {
+  nlohmann::ordered_json value = false;
+  EXPECT_THAT(FormatValueAsPython(value), IsOkAndHolds("False"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonNull) {
+  nlohmann::ordered_json value = nullptr;
+  EXPECT_THAT(FormatValueAsPython(value), IsOkAndHolds("None"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonObject) {
+  nlohmann::ordered_json value =
+      nlohmann::ordered_json::parse(R"({"key": "value"})");
+  EXPECT_THAT(FormatValueAsPython(value), IsOkAndHolds(R"({"key": "value"})"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonArray) {
+  nlohmann::ordered_json value = nlohmann::ordered_json::parse(R"([1, "two"])");
+  EXPECT_THAT(FormatValueAsPython(value), IsOkAndHolds(R"([1, "two"])"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonDict) {
+  nlohmann::ordered_json object =
+      nlohmann::ordered_json::parse(R"({"key1": "value1", "key2": 2})");
+  EXPECT_THAT(FormatValueAsPython(object),
+              IsOkAndHolds(R"({"key1": "value1", "key2": 2})"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonInstance) {
+  nlohmann::ordered_json value = nlohmann::ordered_json::parse(
+      R"({"type": "Object", "key1": "value1", "key2": "value2"})");
+  EXPECT_THAT(FormatValueAsPython(value),
+              IsOkAndHolds(R"(Object(key1="value1", key2="value2"))"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonDictNested) {
+  nlohmann::ordered_json object = nlohmann::ordered_json::parse(
+      R"({"key1": "value1", "key2": {"nested_key": "nested_value"}})");
+  EXPECT_THAT(
+      FormatValueAsPython(object),
+      IsOkAndHolds(
+          R"({"key1": "value1", "key2": {"nested_key": "nested_value"}})"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonDictWithArray) {
+  nlohmann::ordered_json object = nlohmann::ordered_json::parse(
+      R"({"key1": "value1", "key2": [1, "two"]})");
+  EXPECT_THAT(FormatValueAsPython(object),
+              IsOkAndHolds(R"({"key1": "value1", "key2": [1, "two"]})"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonInstanceNested) {
+  nlohmann::ordered_json object = nlohmann::ordered_json::parse(
+      R"json({
+        "type": "Object",
+        "arg1": "value1",
+        "arg2": {
+          "nested_key": "nested_value"
+        }
+      })json");
+  EXPECT_THAT(
+      FormatValueAsPython(object),
+      IsOkAndHolds(
+          R"(Object(arg1="value1", arg2={"nested_key": "nested_value"}))"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonInstanceWithArray) {
+  nlohmann::ordered_json object = nlohmann::ordered_json::parse(
+      R"({"type": "Object", "arg1": "value1", "arg2": [1, "two"]})");
+  EXPECT_THAT(FormatValueAsPython(object),
+              IsOkAndHolds(R"(Object(arg1="value1", arg2=[1, "two"]))"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonNestedArray) {
+  nlohmann::ordered_json array =
+      nlohmann::ordered_json::parse(R"([1, [2, 3], [4, [5, 6]]])");
+  EXPECT_THAT(FormatValueAsPython(array),
+              IsOkAndHolds(R"([1, [2, 3], [4, [5, 6]]])"));
+}
+
+TEST(PythonToolFormatUtilsTest, FormatValueAsPythonArrayWithObjects) {
+  nlohmann::ordered_json array = nlohmann::ordered_json::parse(
+      R"([{"key1": "value1"}, {"key2": "value2"}])");
+  EXPECT_THAT(FormatValueAsPython(array),
+              IsOkAndHolds(R"([{"key1": "value1"}, {"key2": "value2"}])"));
+}
 
 TEST(PythonToolFormatUtilsTest, FormatToolWithStringParameter) {
   nlohmann::ordered_json tool = nlohmann::ordered_json::parse(R"json(

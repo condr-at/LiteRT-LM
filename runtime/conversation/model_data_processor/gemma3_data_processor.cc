@@ -40,6 +40,69 @@ Gemma3DataProcessor::Create(Gemma3DataProcessorConfig config,
   return absl::WrapUnique(new Gemma3DataProcessor(config, preface));
 }
 
+absl::StatusOr<nlohmann::ordered_json>
+Gemma3DataProcessor::MessageToTemplateInput(
+    const nlohmann::ordered_json& message) const {
+  // If the message doesn't contain any tool calls and isn't a tool message,
+  // then the template input is the same as the message.
+  if (!message.contains("tool_calls") && message["role"] != "tool") {
+    return message;
+  }
+
+  nlohmann::ordered_json template_input = nlohmann::ordered_json::object();
+  if (message.contains("role")) {
+    template_input["role"] = message["role"];
+  }
+
+  if (message.contains("content")) {
+    // If the role is "tool", then convert "tool_response" items into "text"
+    // items, converting JSON to Python. All other content items are passed
+    // through unchanged.
+    if (template_input.contains("role") && template_input["role"] == "tool") {
+      template_input["content"] = nlohmann::ordered_json::array();
+      for (const auto& item : message["content"]) {
+        if (item.contains("tool_response")) {
+          ASSIGN_OR_RETURN(std::string formatted_tool_response,
+                           FormatValueAsPython(item["tool_response"]));
+          template_input["content"].push_back(
+              {{"type", "text"}, {"text", formatted_tool_response}});
+        } else {
+          template_input["content"].push_back(item);
+        }
+      }
+    } else {
+      // If the role is not "tool", then take content through unchanged.
+      template_input["content"] = message["content"];
+    }
+  }
+
+  // If the message contains tool calls, then convert them to Python and
+  // add them to the template input.
+  if (message.contains("tool_calls")) {
+    template_input["tool_calls"] = nlohmann::ordered_json::array();
+    for (const auto& tool_call : message["tool_calls"]) {
+      nlohmann::ordered_json tool_call_input = nlohmann::ordered_json::object();
+      tool_call_input["name"] = tool_call["name"];
+
+      if (tool_call.contains("arguments")) {
+        if (tool_call["arguments"].is_object()) {
+          for (const auto& [key, value] : tool_call["arguments"].items()) {
+            ASSIGN_OR_RETURN(std::string formatted_value,
+                             FormatValueAsPython(value));
+            tool_call_input["arguments"][key] = formatted_value;
+          }
+        } else {
+          tool_call_input["arguments"] = tool_call["arguments"];
+        }
+      }
+
+      template_input["tool_calls"].push_back(tool_call_input);
+    }
+  }
+
+  return template_input;
+}
+
 absl::StatusOr<std::vector<InputData>>
 Gemma3DataProcessor::ToInputDataVectorImpl(
     const std::string& rendered_template_prompt,

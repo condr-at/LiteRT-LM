@@ -22,9 +22,70 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
+#include "runtime/util/status_macros.h"
 
 namespace litert::lm {
 namespace {
+
+absl::StatusOr<std::string> FormatObjectAsPythonDict(
+    const nlohmann::ordered_json& object) {
+  if (!object.is_object()) {
+    return absl::InvalidArgumentError("Object must be a JSON object.");
+  }
+  std::stringstream ss;
+  ss << "{";
+  int count = 0;
+  for (const auto& [key, value] : object.items()) {
+    ss << "\"" << key << "\"" << ": ";
+    ss << FormatValueAsPython(value);
+    count += 1;
+    if (count < object.size()) {
+      ss << ", ";
+    }
+  }
+  ss << "}";
+  return ss.str();
+}
+
+absl::StatusOr<std::string> FormatObjectAsPythonInstance(
+    absl::string_view name, const nlohmann::ordered_json& object) {
+  if (!object.is_object()) {
+    return absl::InvalidArgumentError("Object must be a JSON object.");
+  }
+  std::stringstream ss;
+  ss << name << "(";
+  int count = 0;
+  for (const auto& [key, value] : object.items()) {
+    ss << key << "=";
+    ASSIGN_OR_RETURN(std::string formatted_value, FormatValueAsPython(value));
+    ss << formatted_value;
+    count += 1;
+    if (count < object.size()) {
+      ss << ", ";
+    }
+  }
+  ss << ")";
+  return ss.str();
+}
+
+absl::StatusOr<std::string> FormatArrayAsPython(
+    const nlohmann::ordered_json& array) {
+  if (!array.is_array()) {
+    return absl::InvalidArgumentError("Array must be a JSON array.");
+  }
+  std::stringstream ss;
+  ss << "[";
+  int count = 0;
+  for (const auto& element : array) {
+    ss << FormatValueAsPython(element);
+    count += 1;
+    if (count < array.size()) {
+      ss << ", ";
+    }
+  }
+  ss << "]";
+  return ss.str();
+}
 
 std::string FormatParameterType(absl::string_view key,
                                 const nlohmann::ordered_json& schema,
@@ -83,6 +144,34 @@ std::string GenerateDocstring(const nlohmann::ordered_json& tool) {
 }
 
 }  // namespace
+
+absl::StatusOr<std::string> FormatValueAsPython(
+    const nlohmann::ordered_json& value) {
+  std::stringstream ss;
+  if (value.is_null()) {
+    ss << "None";
+  } else if (value.is_string()) {
+    ss << "\"" << value.get<std::string>() << "\"";
+  } else if (value.is_number()) {
+    ss << value.dump();
+  } else if (value.is_boolean()) {
+    ss << (value.get<bool>() ? "True" : "False");
+  } else if (value.is_object()) {
+    if (value.contains("type") && value["type"].is_string()) {
+      nlohmann::ordered_json kwargs = value;
+      kwargs.erase("type");
+      ss << FormatObjectAsPythonInstance(value["type"].get<std::string>(),
+                                         kwargs);
+    } else {
+      ss << FormatObjectAsPythonDict(value);
+    }
+  } else if (value.is_array()) {
+    ss << FormatArrayAsPython(value);
+  } else {
+    return absl::InvalidArgumentError("Value is not a supported type.");
+  }
+  return ss.str();
+}
 
 absl::StatusOr<std::string> FormatToolAsPython(
     const nlohmann::ordered_json& tool) {

@@ -39,6 +39,7 @@ namespace {
 
 using json = nlohmann::ordered_json;
 using ::testing::ElementsAre;
+using ::testing::status::IsOkAndHolds;
 
 constexpr char kTestdataDir[] =
     "litert_lm/runtime/components/testdata/";
@@ -343,6 +344,258 @@ TEST(Gemma3DataProcessorTest, FormatToolsWithInvalidInput) {
 
   EXPECT_THAT(processor->FormatTools(tools),
               testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(Gemma3DataProcessorTest, MessageToTemplateInputWithStringContent) {
+  ASSERT_OK_AND_ASSIGN(auto processor, Gemma3DataProcessor::Create());
+  const nlohmann::ordered_json message = {
+      {"role", "user"},
+      {"content", "test prompt"},
+  };
+
+  // The template input is identical to the original message if the content is a
+  // string.
+  EXPECT_THAT(processor->MessageToTemplateInput(message),
+              IsOkAndHolds(message));
+}
+
+TEST(Gemma3DataProcessorTest, MessageToTemplateInputWithTextContent) {
+  ASSERT_OK_AND_ASSIGN(auto processor, Gemma3DataProcessor::Create());
+  const nlohmann::ordered_json message = {
+      {"role", "user"},
+      {"content", {{{"type", "text"}, {"text", "test prompt"}}}},
+  };
+
+  // Text content items should be unchanged.
+  EXPECT_THAT(processor->MessageToTemplateInput(message),
+              IsOkAndHolds(message));
+}
+
+TEST(Gemma3DataProcessorTest, MessageToTemplateInputNoContent) {
+  ASSERT_OK_AND_ASSIGN(auto processor, Gemma3DataProcessor::Create());
+  const nlohmann::ordered_json message = {
+      {"role", "user"},
+  };
+
+  // The template input should be unchanged if there is no content.
+  EXPECT_THAT(processor->MessageToTemplateInput(message),
+              IsOkAndHolds(message));
+}
+
+TEST(Gemma3DataProcessorTest, MessageToTemplateInputWithToolCalls) {
+  ASSERT_OK_AND_ASSIGN(auto processor, Gemma3DataProcessor::Create());
+  const nlohmann::ordered_json message = nlohmann::ordered_json::parse(R"json({
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "This is some text."
+      }
+    ],
+    "tool_calls": [
+      {
+        "name": "tool1",
+        "arguments": {
+          "x": 1
+        }
+      },
+      {
+        "name": "tool2",
+        "arguments": {
+          "y": "foo"
+        }
+      }
+    ]
+  })json");
+
+  EXPECT_THAT(processor->MessageToTemplateInput(message),
+              IsOkAndHolds(nlohmann::ordered_json::parse(R"json({
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "This is some text."
+    }
+  ],
+  "tool_calls": [
+    {
+      "name": "tool1",
+      "arguments": {
+        "x": "1"
+      }
+    },
+    {
+      "name": "tool2",
+      "arguments": {
+        "y": "\"foo\""
+      }
+    }
+  ]
+})json")));
+}
+
+TEST(Gemma3DataProcessorTest, MessageToTemplateInputWithToolResponse) {
+  ASSERT_OK_AND_ASSIGN(auto processor, Gemma3DataProcessor::Create());
+  const nlohmann::ordered_json message = nlohmann::ordered_json::parse(R"json({
+    "role": "tool",
+    "content": [
+      {
+        "type": "tool_response",
+        "tool_response": {
+          "key1": "value1",
+          "key2": "value2"
+        }
+      }
+    ]
+  })json");
+
+  // The template input should contain a tool_outputs item with the tool
+  // response formatted as a Python dict.
+  EXPECT_THAT(processor->MessageToTemplateInput(message),
+              IsOkAndHolds(nlohmann::ordered_json::parse(R"json({
+                "role": "tool",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\"key1\": \"value1\", \"key2\": \"value2\"}"
+                  }
+                ]
+              })json")));
+}
+
+TEST(Gemma3DataProcessorTest, MessageToTemplateInputWithMultipleToolResponses) {
+  ASSERT_OK_AND_ASSIGN(auto processor, Gemma3DataProcessor::Create());
+  const nlohmann::ordered_json message = nlohmann::ordered_json::parse(R"json({
+    "role": "tool",
+    "content": [
+      {
+        "type": "tool_response",
+        "tool_response": {
+          "key1": "value1",
+          "key2": "value2"
+        }
+      },
+      {
+        "type": "tool_response",
+        "tool_response": {
+          "key3": "value3",
+          "key4": "value4"
+        }
+      }
+    ]
+  })json");
+
+  // The template input should contain a tool_outputs item with the tool
+  // responses formatted as a Python dict.
+  EXPECT_THAT(processor->MessageToTemplateInput(message),
+              IsOkAndHolds(nlohmann::ordered_json::parse(R"json({
+                "role": "tool",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\"key1\": \"value1\", \"key2\": \"value2\"}"
+                  },
+                  {
+                    "type": "text",
+                    "text": "{\"key3\": \"value3\", \"key4\": \"value4\"}"
+                  }
+                ]
+              })json")));
+}
+
+TEST(Gemma3DataProcessorTest, RenderTemplateWithToolCalls) {
+  // Load the prompt template.
+  const std::string test_file_path =
+      GetTestdataPath("google-gemma-3n-e2b-it-tools.jinja");
+  ASSERT_OK_AND_ASSIGN(const std::string template_content,
+                       GetContents(test_file_path));
+  PromptTemplate prompt_template(template_content);
+
+  // Create the message history.
+  const nlohmann::ordered_json messages = nlohmann::ordered_json::parse(R"json([
+    {
+      "role": "user",
+      "content":[
+        {
+          "type": "text",
+          "text": "How is the weather in Paris and London?"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "Paris"
+          }
+        },
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "London"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": [
+        {
+          "type": "tool_response",
+          "tool_response": {
+            "location": "Paris",
+            "temperature": 20,
+            "unit": "C",
+            "weather": "Sunny"
+          }
+        },
+        {
+          "type": "tool_response",
+          "tool_response": {
+            "location": "London",
+            "temperature": 15,
+            "unit": "C",
+            "weather": "Cloudy"
+          }
+        }
+      ]
+    }
+  ])json");
+
+  // Create the model data processor.
+  ASSERT_OK_AND_ASSIGN(auto processor, Gemma3DataProcessor::Create());
+
+  // Convert the messages to template inputs.
+  nlohmann::ordered_json message_template_input =
+      nlohmann::ordered_json::array();
+  for (const auto& message : messages) {
+    ASSERT_OK_AND_ASSIGN(nlohmann::ordered_json input,
+                         processor->MessageToTemplateInput(message));
+    message_template_input.push_back(input);
+  }
+
+  // Render the template.
+  PromptTemplateInput template_input = {.messages = message_template_input,
+                                        .add_generation_prompt = true};
+  ASSERT_OK_AND_ASSIGN(const std::string rendered_prompt,
+                       prompt_template.Apply(template_input));
+
+  EXPECT_EQ(rendered_prompt, R"(<start_of_turn>user
+How is the weather in Paris and London?<end_of_turn>
+<start_of_turn>model
+```tool_code
+get_weather(location="Paris")
+get_weather(location="London")
+```<end_of_turn>
+<start_of_turn>user
+```tool_outputs
+{"location": "Paris", "temperature": 20, "unit": "C", "weather": "Sunny"}
+{"location": "London", "temperature": 15, "unit": "C", "weather": "Cloudy"}
+```<end_of_turn>
+<start_of_turn>model
+)");
 }
 
 }  // namespace

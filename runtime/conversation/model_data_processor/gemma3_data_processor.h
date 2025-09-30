@@ -43,6 +43,10 @@ class Gemma3DataProcessor
   // Returns the config of the Gemma3DataProcessor.
   const Gemma3DataProcessorConfig& GetConfig() override { return config_; }
 
+  // Converts a message into the template input for that message.
+  absl::StatusOr<nlohmann::ordered_json> MessageToTemplateInput(
+      const nlohmann::ordered_json& message) const override;
+
   // Formats tool declarations.
   absl::StatusOr<nlohmann::ordered_json> FormatTools(
       const nlohmann::ordered_json& tools) override;
