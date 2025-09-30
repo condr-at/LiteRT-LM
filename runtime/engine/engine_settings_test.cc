@@ -28,6 +28,8 @@
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/proto/engine.pb.h"
 #include "runtime/proto/llm_metadata.pb.h"
+#include "runtime/proto/llm_model_type.pb.h"
+#include "runtime/proto/token.pb.h"
 #include "runtime/util/test_utils.h"  // IWYU pragma: keep
 
 namespace litert::lm {
@@ -394,6 +396,15 @@ TEST(SessionConfigTest, SetAndGetStartTokenId) {
   EXPECT_EQ(session_config.GetStartTokenId(), -1);
   session_config.SetStartTokenId(1);
   EXPECT_EQ(session_config.GetStartTokenId(), 1);
+}
+
+TEST(SessionConfigTest, SetAndGetLlmModelType) {
+  SessionConfig session_config = SessionConfig::CreateDefault();
+  EXPECT_EQ(session_config.GetLlmModelType().model_type_case(),
+            proto::LlmModelType::MODEL_TYPE_NOT_SET);
+  session_config.GetMutableLlmModelType().mutable_gemma3n();
+  EXPECT_EQ(session_config.GetLlmModelType().model_type_case(),
+            proto::LlmModelType::kGemma3N);
 }
 
 TEST(SessionConfigTest, MaybeUpdateAndValidate) {

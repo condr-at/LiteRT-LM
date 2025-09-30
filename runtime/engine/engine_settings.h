@@ -29,6 +29,7 @@
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/proto/engine.pb.h"
 #include "runtime/proto/llm_metadata.pb.h"
+#include "runtime/proto/llm_model_type.pb.h"
 #include "runtime/proto/sampler_params.pb.h"
 
 namespace litert::lm {
@@ -179,6 +180,11 @@ class SessionConfig {
   const proto::PromptTemplates& GetPromptTemplates() const;
   proto::PromptTemplates& GetMutablePromptTemplates();
 
+  // Llm model type:
+  // Getters for the LLM model type.
+  const proto::LlmModelType& GetLlmModelType() const;
+  proto::LlmModelType& GetMutableLlmModelType();
+
  private:
   // Private constructor for the SessionConfig. The user should use the
   // CreateDefault() method to create a SessionConfig.
@@ -199,6 +205,10 @@ class SessionConfig {
   // Prompt templates for the session. This is loaded from the model assets (if
   // present).
   proto::PromptTemplates prompt_templates_;
+
+  // Llm model type for the session. This is loaded from the model assets (if
+  // present).
+  proto::LlmModelType llm_model_type_;
 
   // The number of output candidates to generate. Default value is 1 and setting
   // it to a value greater than 1 will require the model to support batching.

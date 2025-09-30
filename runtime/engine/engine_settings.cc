@@ -32,6 +32,7 @@
 #include "runtime/proto/engine.pb.h"
 #include "runtime/proto/llm_metadata.pb.h"
 #include "runtime/proto/sampler_params.pb.h"
+#include "runtime/proto/token.pb.h"
 #include "runtime/util/status_macros.h"  // IWYU pragma: keep
 
 namespace litert::lm {
@@ -402,6 +403,14 @@ proto::PromptTemplates& SessionConfig::GetMutablePromptTemplates() {
   return prompt_templates_;
 }
 
+const proto::LlmModelType& SessionConfig::GetLlmModelType() const {
+  return llm_model_type_;
+}
+
+proto::LlmModelType& SessionConfig::GetMutableLlmModelType() {
+  return llm_model_type_;
+}
+
 std::ostream& operator<<(std::ostream& os, const SessionConfig& config) {
   os << "SessionConfig: " << std::endl;
   os << "  SamplerParams: " << config.GetSamplerParams().DebugString()
@@ -415,6 +424,8 @@ std::ostream& operator<<(std::ostream& os, const SessionConfig& config) {
   os << "  NumOutputCandidates: " << config.GetNumOutputCandidates()
      << std::endl;
   os << "  PromptTemplates: " << config.GetPromptTemplates().DebugString()
+     << std::endl;
+  os << "  LlmModelType: " << config.GetLlmModelType().DebugString()
      << std::endl;
   return os;
 }

@@ -427,5 +427,6 @@ cc_test(
         ":metadata_util",
         "@com_google_googletest//:gtest_main",
         "//runtime/proto:llm_metadata_cc_proto",
+        "//runtime/proto:token_cc_proto",
     ],
 )

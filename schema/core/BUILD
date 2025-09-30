@@ -141,6 +141,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//runtime/proto:llm_metadata_cc_proto",
+        "//runtime/proto:token_cc_proto",
     ],
 )
 

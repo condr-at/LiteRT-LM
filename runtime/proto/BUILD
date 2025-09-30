@@ -64,7 +64,11 @@ alias(
 tf_proto_library(
     name = "llm_metadata",
     srcs = ["llm_metadata.proto"],
-    deps = [":sampler_params"],
+    deps = [
+        ":llm_model_type_proto",
+        ":sampler_params",
+        ":token_proto",
+    ],
 )
 
 alias(
@@ -80,4 +84,45 @@ alias(
 alias(
     name = "llm_metadata_py_pb2",
     actual = ":llm_metadata_py_proto",
+)
+
+tf_proto_library(
+    name = "token",
+    srcs = ["token.proto"],
+)
+
+alias(
+    name = "token_proto",
+    actual = ":token",
+)
+
+alias(
+    name = "token_cc_proto",
+    actual = ":token_cc",
+)
+
+alias(
+    name = "token_py_pb2",
+    actual = ":token_py_proto",
+)
+
+tf_proto_library(
+    name = "llm_model_type",
+    srcs = ["llm_model_type.proto"],
+    deps = [":token_proto"],
+)
+
+alias(
+    name = "llm_model_type_proto",
+    actual = ":llm_model_type",
+)
+
+alias(
+    name = "llm_model_type_cc_proto",
+    actual = ":llm_model_type_cc",
+)
+
+alias(
+    name = "llm_model_type_py_pb2",
+    actual = ":llm_model_type_py_proto",
 )

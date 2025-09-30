@@ -26,6 +26,7 @@
 #include <gtest/gtest.h>
 #include "absl/status/status.h"  // from @com_google_absl
 #include "runtime/proto/llm_metadata.pb.h"
+#include "runtime/proto/token.pb.h"
 
 namespace litert::lm::schema {
 namespace {

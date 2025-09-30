@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 #include "runtime/proto/llm_metadata.pb.h"
+#include "runtime/proto/token.pb.h"
 
 namespace litert::lm {
 namespace {

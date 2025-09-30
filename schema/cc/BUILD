@@ -100,6 +100,7 @@ cc_test(
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//runtime/proto:llm_metadata_cc_proto",
+        "//runtime/proto:token_cc_proto",
         "//schema/core:litertlm_print",
         "@sentencepiece//:sentencepiece_processor",
         "@litert//tflite:framework",
