@@ -128,8 +128,8 @@ absl::StatusOr<nlohmann::ordered_json> ParseTextAndToolCalls(
         result["tool_calls"].push_back(tool_call);
       }
     }
-    text = "";
-    code_block = "";
+    text.clear();
+    code_block.clear();
   }
 
   // Append the remaining text to the content array.

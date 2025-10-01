@@ -64,7 +64,7 @@ tool_name(x=1)
               })json")));
 }
 
-TEST(ParserUtilsTest, ParsePythonParallelCalls) {
+TEST(ParserUtilsTest, ParsePythonParallelToolCalls) {
   EXPECT_THAT(ParseTextAndToolCalls(R"(```tool_code
 tool_1(x=1)
 tool_2(y=2)
@@ -158,7 +158,7 @@ TEST(ParserUtilsTest, ParseJsonToolCall) {
               })json")));
 }
 
-TEST(ParserUtilsTest, ParseJsonParallelCalls) {
+TEST(ParserUtilsTest, ParseJsonParallelToolCalls) {
   EXPECT_THAT(ParseTextAndToolCalls(
                   R"(```tool_code
 [
