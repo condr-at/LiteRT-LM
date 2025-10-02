@@ -139,6 +139,9 @@ class Engine {
     virtual void CancelProcess() {
       ABSL_LOG(FATAL) << "CancelProcess is not implemented.";
     }
+
+    // Get the reference to the session config for the session.
+    virtual const SessionConfig& GetSessionConfig() const = 0;
   };
 
   // Method to create Engine. An input prompt can be given as a hint to adjust

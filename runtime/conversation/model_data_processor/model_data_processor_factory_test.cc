@@ -1,0 +1,86 @@
+// Copyright 2025 The ODML Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "runtime/conversation/model_data_processor/model_data_processor_factory.h"
+
+#include <variant>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status.h"  // from @com_google_absl
+#include "runtime/conversation/io_types.h"
+#include "runtime/conversation/model_data_processor/config_registry.h"
+#include "runtime/conversation/model_data_processor/gemma3_data_processor_config.h"
+#include "runtime/conversation/model_data_processor/generic_data_processor_config.h"
+#include "runtime/conversation/model_data_processor/model_data_processor.h"
+#include "runtime/engine/io_types.h"
+#include "runtime/proto/llm_model_type.pb.h"
+#include "runtime/util/status_macros.h"  // NOLINT
+#include "runtime/util/test_utils.h"     // NOLINT
+
+namespace litert::lm {
+namespace {
+
+using ::testing::status::StatusIs;
+
+TEST(ModelDataProcessorFactoryTest, CreateGenericModelDataProcessor) {
+  proto::LlmModelType llm_model_type;
+  llm_model_type.mutable_generic_model();
+  ASSERT_OK_AND_ASSIGN(auto processor,
+                       CreateModelDataProcessor(llm_model_type));
+  EXPECT_OK(processor->ToInputDataVector("test prompt", {},
+                                         GenericDataProcessorArguments()));
+  EXPECT_THAT(processor->ToInputDataVector("test prompt", {},
+                                           Gemma3DataProcessorArguments()),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  Responses responses(1);
+  responses.GetMutableResponseTexts()[0] = "test response";
+  EXPECT_OK(processor->ToMessage(responses, GenericDataProcessorArguments()));
+
+  EXPECT_THAT(processor->ToInputDataVector("test prompt", {},
+                                           Gemma3DataProcessorArguments()),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ModelDataProcessorFactoryTest, CreateGemma3DataProcessor) {
+  proto::LlmModelType llm_model_type;
+  llm_model_type.mutable_gemma3n();
+  ASSERT_OK_AND_ASSIGN(
+      auto processor,
+      CreateModelDataProcessor(
+          llm_model_type, std::monostate(),
+          JsonPreface{
+              .messages = {{{"role", "system"},
+                            {"content", "You are a helpful assistant."}}}}));
+  EXPECT_OK(processor->ToInputDataVector("test prompt", {},
+                                         Gemma3DataProcessorArguments()));
+  EXPECT_THAT(processor->ToInputDataVector("test prompt", {},
+                                           GenericDataProcessorArguments()),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  Responses responses(1);
+  responses.GetMutableResponseTexts()[0] = "test response";
+  EXPECT_OK(processor->ToMessage(responses, Gemma3DataProcessorArguments()));
+  EXPECT_THAT(processor->ToInputDataVector("test prompt", {},
+                                           GenericDataProcessorArguments()),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  llm_model_type.mutable_gemma3();
+  ASSERT_OK_AND_ASSIGN(processor, CreateModelDataProcessor(llm_model_type));
+  EXPECT_OK(processor->ToInputDataVector("test prompt", {},
+                                         Gemma3DataProcessorArguments()));
+}
+
+}  // namespace
+}  // namespace litert::lm

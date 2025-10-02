@@ -34,11 +34,11 @@
 #include "runtime/conversation/internal_observable_adapter.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/conversation/model_data_processor/config_registry.h"
-#include "runtime/conversation/model_data_processor/gemma3_data_processor.h"
-#include "runtime/conversation/model_data_processor/gemma3_data_processor_config.h"
 #include "runtime/conversation/model_data_processor/model_data_processor.h"
+#include "runtime/conversation/model_data_processor/model_data_processor_factory.h"
 #include "runtime/engine/engine.h"
 #include "runtime/engine/io_types.h"
+#include "runtime/proto/llm_model_type.pb.h"
 #include "runtime/util/status_macros.h"
 
 namespace litert::lm {
@@ -143,20 +143,12 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
   if (!preface.has_value()) {
     preface = JsonPreface();
   }
-  // TODO: b/435001805 - Use factory method to create the model data processor.
-  if (!processor_config.has_value()) {
-    processor_config = Gemma3DataProcessorConfig();
-  }
-  std::unique_ptr<ModelDataProcessor> model_data_processor;
-  if (std::holds_alternative<Gemma3DataProcessorConfig>(*processor_config)) {
-    ASSIGN_OR_RETURN(
-        model_data_processor,
-        Gemma3DataProcessor::Create(
-            std::get<Gemma3DataProcessorConfig>(*processor_config), preface));
-  } else {
-    return absl::InvalidArgumentError(
-        "Data processor config is not supported yet");
-  }
+  const proto::LlmModelType& llm_model_type =
+      session->GetSessionConfig().GetLlmModelType();
+  processor_config = processor_config.value_or(std::monostate());
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<ModelDataProcessor> model_data_processor,
+      CreateModelDataProcessor(llm_model_type, *processor_config, *preface));
   if (!prompt_template.has_value()) {
     // TODO: b/439648399 - get template from the session or model file when the
     // template is not provided by the user.
