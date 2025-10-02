@@ -54,6 +54,7 @@ struct LiteRtLmSettings {
   int num_logits_to_print_after_decode = 0;
   std::optional<std::string> score_target_text = std::nullopt;
   bool gpu_madvise_original_shared_tensors = true;
+  bool disable_cache = false;
 };
 
 absl::Status RunLiteRtLm(const LiteRtLmSettings& settings);

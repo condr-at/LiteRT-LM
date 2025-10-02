@@ -238,6 +238,9 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
     engine_settings.GetMutableMainExecutorSettings().SetActivationDataType(
         litert::lm::ActivationDataType::FLOAT32);
   }
+  if (settings.disable_cache) {
+    engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
+  }
   if (backend == Backend::CPU && settings.num_cpu_threads > 0) {
     auto& executor_settings = engine_settings.GetMutableMainExecutorSettings();
     ASSIGN_OR_RETURN(

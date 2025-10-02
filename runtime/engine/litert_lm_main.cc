@@ -113,6 +113,7 @@ ABSL_FLAG(std::optional<std::vector<std::string>>, audio_files, std::nullopt,
 ABSL_FLAG(bool, gpu_madvise_original_shared_tensors, true,
           "If true, the GPU backend will madvise the original shared tensors "
           "after use.");
+ABSL_FLAG(bool, disable_cache, false, "Disable weight cache.");
 
 namespace {
 
@@ -220,6 +221,7 @@ absl::Status MainHelper(int argc, char** argv) {
   settings.score_target_text = absl::GetFlag(FLAGS_score_target_text);
   settings.gpu_madvise_original_shared_tensors =
       absl::GetFlag(FLAGS_gpu_madvise_original_shared_tensors);
+  settings.disable_cache = absl::GetFlag(FLAGS_disable_cache);
 
   // Adjust max_num_tokens and prefill_batch_size if not set on benchmark mode.
   if (settings.benchmark && settings.benchmark_prefill_tokens > 0) {
