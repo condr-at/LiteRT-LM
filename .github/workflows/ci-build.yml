@@ -60,6 +60,7 @@ jobs:
         with:
           path: |
             ~/.cache/bazel-linux
+            ~/.cache/bazel-linux-shlib
             ~/.cache/bazel-android
           key: ${{ steps.cache-keys.outputs.CACHE_KEY }}
           restore-keys: |
@@ -94,6 +95,19 @@ jobs:
       - name: Run bazel test on Linux
         run: |
           bazel test --disk_cache=~/.cache/bazel-linux --test_output=errors //...
+
+      - name: Run bazel build on Linux with dynamic linking
+        run: |
+          bazel build --disk_cache=~/.cache/bazel-linux-shlib \
+            --define=litert_link_capi_so=true \
+            --define=resolve_symbols_in_exec=false \
+            //runtime/engine:litert_lm_main
+
+      - name: Check if litert_lm_main has only LiteRt symbols undefined.
+        # Return exit code 1 if libLiteRtRuntimeCApi.so has LiteRt symbols except for LiteRtTopK.
+        run: |
+          ! readelf -sW bazel-bin/runtime/engine/litert_lm_main \
+            | grep " LiteRt" | grep -v " UND LiteRt" | grep -v " LiteRtTopK"
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -131,5 +145,6 @@ jobs:
         with:
           path: |
             ~/.cache/bazel-linux
+            ~/.cache/bazel-linux-shlib
             ~/.cache/bazel-android
           key: ${{ steps.cache-keys.outputs.CACHE_KEY }}
