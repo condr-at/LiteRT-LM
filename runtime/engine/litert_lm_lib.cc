@@ -58,7 +58,7 @@ namespace lm {
 using ::litert::lm::Backend;
 using ::litert::lm::Engine;
 using ::litert::lm::EngineSettings;
-using ::litert::lm::InferenceObservable;
+using ::litert::lm::InferenceCallbacks;
 using ::litert::lm::InputAudio;
 using ::litert::lm::InputData;
 using ::litert::lm::InputImage;
@@ -73,9 +73,11 @@ const absl::Duration kWaitUntilDoneTimeout = absl::Minutes(10);
 
 namespace {
 
-class LiteRtLmLibObserver : public InferenceObservable {
+class LiteRtLmLibCallbacks : public InferenceCallbacks {
  public:
-  explicit LiteRtLmLibObserver(bool is_dummy_io) { is_dummy_io_ = is_dummy_io; }
+  explicit LiteRtLmLibCallbacks(bool is_dummy_io) {
+    is_dummy_io_ = is_dummy_io;
+  }
 
   void OnNext(const Responses& responses) override {
     if (!is_dummy_io_) {
@@ -133,8 +135,8 @@ void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* engine,
   }
 
   if (settings.async) {
-    InferenceObservable observable = LiteRtLmLibObserver(is_dummy_io);
-    absl::Status status = session->GenerateContentStream(inputs, &observable);
+    absl::Status status = session->GenerateContentStream(
+        inputs, std::make_unique<LiteRtLmLibCallbacks>(is_dummy_io));
     ABSL_CHECK_OK(status);
     ABSL_CHECK_OK(engine->WaitUntilDone(kWaitUntilDoneTimeout));
   } else {

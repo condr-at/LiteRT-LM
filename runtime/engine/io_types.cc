@@ -421,17 +421,17 @@ std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info) {
 }
 
 // Default implementation of OnNext. Print out the first response.
-void InferenceObservable::OnNext(const Responses& responses) {
+void InferenceCallbacks::OnNext(const Responses& responses) {
   std::cout << *responses.GetResponseTextAt(0) << std::flush;
 }
 
 // Called when the inference is done and finished successfully.
-void InferenceObservable::OnDone() {
+void InferenceCallbacks::OnDone() {
   LOG(INFO) << "Inference Done." << std::endl;
 }
 
 // Called when an error is encountered during the inference.
-void InferenceObservable::OnError(const absl::Status& status) {
+void InferenceCallbacks::OnError(const absl::Status& status) {
   LOG(ERROR) << "Inference Error: " << status.message() << std::endl;
 }
 

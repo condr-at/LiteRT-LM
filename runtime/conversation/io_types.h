@@ -47,9 +47,9 @@ using Preface = std::variant<JsonPreface>;
 
 // The high-level, public interface for clients to implement.
 // It handles streaming message events.
-class MessageObservable {
+class MessageCallbacks {
  public:
-  virtual ~MessageObservable() = default;
+  virtual ~MessageCallbacks() = default;
 
   // Called when a new chunk of the message is available.
   virtual void OnMessage(const Message& message) = 0;

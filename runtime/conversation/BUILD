@@ -32,9 +32,9 @@ cc_library(
 )
 
 cc_library(
-    name = "internal_observable_adapter",
-    srcs = ["internal_observable_adapter.cc"],
-    hdrs = ["internal_observable_adapter.h"],
+    name = "internal_callbacks_adapter",
+    srcs = ["internal_callbacks_adapter.cc"],
+    hdrs = ["internal_callbacks_adapter.h"],
     deps = [
         ":io_types",
         "@com_google_absl//absl/base:nullability",
@@ -48,10 +48,10 @@ cc_library(
 )
 
 cc_test(
-    name = "internal_observable_adapter_test",
-    srcs = ["internal_observable_adapter_test.cc"],
+    name = "internal_callbacks_adapter_test",
+    srcs = ["internal_callbacks_adapter_test.cc"],
     deps = [
-        ":internal_observable_adapter",
+        ":internal_callbacks_adapter",
         ":io_types",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/status",
@@ -70,10 +70,9 @@ cc_library(
     srcs = ["conversation.cc"],
     hdrs = ["conversation.h"],
     deps = [
-        ":internal_observable_adapter",
+        ":internal_callbacks_adapter",
         ":io_types",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",

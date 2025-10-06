@@ -31,7 +31,7 @@
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/components/prompt_template.h"
-#include "runtime/conversation/internal_observable_adapter.h"
+#include "runtime/conversation/internal_callbacks_adapter.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/conversation/model_data_processor/config_registry.h"
 #include "runtime/conversation/model_data_processor/model_data_processor.h"
@@ -169,7 +169,7 @@ absl::StatusOr<Message> Conversation::SendMessage(
 }
 
 absl::Status Conversation::SendMessageStream(
-    const Message& message, MessageObservable* observer,
+    const Message& message, std::unique_ptr<MessageCallbacks> callbacks,
     std::optional<DataProcessorArguments> args) {
   if (!std::holds_alternative<nlohmann::ordered_json>(message)) {
     return absl::InvalidArgumentError("Json message is required for now.");
@@ -188,25 +188,21 @@ absl::Status Conversation::SendMessageStream(
           single_turn_text, nlohmann::ordered_json::array({json_message}),
           args.value_or(std::monostate())));
 
-  auto internal_observable_adapter = InternalObservableAdapter::Create(
-      model_data_processor_.get(), observer, args.value_or(std::monostate()));
+  auto internal_callbacks_adapter = InternalCallbacksAdapter::Create(
+      model_data_processor_.get(), std::move(callbacks),
+      args.value_or(std::monostate()));
 
-  InternalObservableAdapter::CompleteMessageCallback complete_message_callback =
-      [&internal_observable_adapter, this](const Message& complete_message) {
+  InternalCallbacksAdapter::CompleteMessageCallback complete_message_callback =
+      [this](const Message& complete_message) {
         absl::MutexLock lock(&this->history_mutex_);  // NOLINT
         this->history_.push_back(complete_message);
-        this->observable_map_.erase(
-            reinterpret_cast<uintptr_t>(internal_observable_adapter.get()));
       };
-  internal_observable_adapter->SetCompleteMessageCallback(
+  internal_callbacks_adapter->SetCompleteMessageCallback(
       std::move(complete_message_callback));
 
-  auto internal_observable_adapter_ptr = internal_observable_adapter.get();
-  observable_map_[reinterpret_cast<uintptr_t>(
-      internal_observable_adapter_ptr)] =
-      std::move(internal_observable_adapter);
   RETURN_IF_ERROR(session_->RunPrefill(session_inputs));
-  RETURN_IF_ERROR(session_->RunDecodeAsync(internal_observable_adapter_ptr));
+  RETURN_IF_ERROR(
+      session_->RunDecodeAsync(std::move(internal_callbacks_adapter)));
   return absl::OkStatus();
 };
 

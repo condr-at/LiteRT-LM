@@ -14,6 +14,7 @@
 
 #include "runtime/conversation/conversation.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -24,7 +25,6 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/synchronization/notification.h"  // from @com_google_absl
-#include "absl/time/clock.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/conversation/io_types.h"
@@ -43,9 +43,9 @@ std::string GetTestdataPath(absl::string_view file_path) {
   return absl::StrCat(::testing::SrcDir(), "/", file_path);
 }
 
-class TestMessageObservable : public MessageObservable {
+class TestMessageCallbacks : public MessageCallbacks {
  public:
-  explicit TestMessageObservable(const Message& expected_message)
+  explicit TestMessageCallbacks(const Message& expected_message)
       : expected_message_(expected_message) {}
 
   void OnError(const absl::Status& status) override {
@@ -129,16 +129,14 @@ TEST(ConversationTest, SendMessageStream) {
   JsonMessage expected_message = {
       {"role", "assistant"},
       {"content",
-       {{{"type", "text"},
-         {"text", "하자ṅ kontroller thicknessesೊಂದಿಗೆ Decodingवर्ती"}}}}};
-  TestMessageObservable test_observable(expected_message);
+        {{{"type", "text"},
+        {"text", "하자ṅ kontroller thicknessesೊಂದಿಗೆ Decodingवर्ती"}}}}};
+
   EXPECT_OK(conversation->SendMessageStream(
       JsonMessage{{"role", "user"}, {"content", "Hello world!"}},
-      &test_observable));
+      std::make_unique<TestMessageCallbacks>(expected_message)));
   // Wait for the async message to be processed.
-  while (!test_observable.IsDone()) {
-    absl::SleepFor(absl::Milliseconds(100));
-  }
+  EXPECT_OK(engine->WaitUntilDone(absl::Seconds(100)));
 }
 
 TEST(ConversationTest, SendMessageWithPreface) {

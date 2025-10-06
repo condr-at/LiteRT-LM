@@ -18,6 +18,7 @@
 #include <stdbool.h>
 
 #include <atomic>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -30,6 +31,7 @@
 #include "runtime/components/tokenizer.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/llm_executor.h"
+#include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/proto/sampler_params.pb.h"
 
 namespace litert::lm {
@@ -60,15 +62,15 @@ absl::StatusOr<Responses> Decode(LlmExecutor& executor, Tokenizer& tokenizer,
                                  std::atomic<bool>* cancelled = nullptr);
 
 // Runs the pipeline to decode the input prompt. The function is similar to
-// Decode, but it outputs the result using the observer to achieve streaming
+// Decode, but it outputs the result using the callbacks to achieve streaming
 // behavior.
-// - observer: The inference observer to receive the intermediate results.
+// - callbacks: The inference callbacks to receive the intermediate results.
 // - cancelled: A pointer to an atomic boolean. If the boolean is set to true,
 //   the decoding process will be cancelled.
 absl::Status DecodeStreaming(LlmExecutor& executor, Tokenizer& tokenizer,
                              const StopTokenDetector& stop_token_detector,
                              std::optional<BenchmarkInfo>& benchmark_info,
-                             InferenceObservable* observer,
+                             std::unique_ptr<InferenceCallbacks> callbacks,
                              std::atomic<bool>* cancelled = nullptr);
 
 // Runs the pipeline to decode the input prompt.
@@ -90,16 +92,17 @@ absl::StatusOr<Responses> DecodeCustomSampling(
     std::atomic<bool>* cancelled = nullptr);
 
 // Runs the pipeline to decode the input prompt. The function is similar to
-// DecodeCustomSampling, but it outputs the result using the observer to achieve
-// streaming behavior.
-// - observer: The inference observer to receive the intermediate results.
+// DecodeCustomSampling, but it outputs the result using the callbacks to
+// achieve streaming behavior.
+// - callbacks: The inference callbacks to receive the intermediate results.
 // - cancelled: A pointer to an atomic boolean. If the boolean is set to true,
 //   the decoding process will be cancelled.
 absl::Status DecodeCustomSamplingStreaming(
     LlmExecutor& executor, Tokenizer& tokenizer,
     const StopTokenDetector& stop_token_detector, int num_output_candidates,
     Sampler& sampler, litert::TensorBuffer& decoded_ids,
-    std::optional<BenchmarkInfo>& benchmark_info, InferenceObservable* observer,
+    std::optional<BenchmarkInfo>& benchmark_info,
+    std::unique_ptr<InferenceCallbacks> callbacks,
     std::atomic<bool>* cancelled = nullptr);
 
 // Runs the pipeline to score the input prompt.

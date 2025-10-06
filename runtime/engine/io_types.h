@@ -282,12 +282,55 @@ class BenchmarkInfo {
 };
 std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info);
 
-// An interface with default implementations for the inference observer. The
-// default implementations are print out the first response text and the final
+// An interface with default implementations for the inference callbacks. The
+// example implementations are print out the first response text and the final
 // (or error) status to the stderr.
-class InferenceObservable {
+//
+// When using this interface with asynchronous decoding, you may need to
+// capture state within your callback implementation to get the results after
+// the asynchronous operation completes. For example, you might pass references
+// to variables in the constructor of your callback implementation to store
+// the final response or status.
+//
+// Example Usage Pattern:
+//
+// class MyCallbacks : public InferenceCallbacks {
+//  public:
+//   MyCallbacks(bool& done, std::string& final_response)
+//       : done_(done), final_response_(final_response) {}
+//
+//   void OnNext(const Responses& responses) override {
+//     // Potentially update a partial response
+//   }
+//
+//   void OnDone(const Responses& responses) override {
+//     if (responses.GetNumOutputCandidates() > 0) {
+//       final_response_ = responses.GetResponseTextAt(0).value_or("");
+//     }
+//     done_ = true;
+//   }
+//
+//   void OnError(const absl::Status& status) override {
+//     // Handle error
+//     done_ = true;
+//   }
+//
+//  private:
+//   bool& done_;
+//   std::string& final_response_;
+// };
+//
+// // In the calling code:
+// bool done_decode = false;
+// std::string final_response;
+// session->RunDecodeAsync(std::make_unique<MyCallbacks>(done_decode,
+// final_response));
+// // ... wait for done_decode to be true ...
+// // final_response now contains the result.
+//
+class InferenceCallbacks {
  public:
-  virtual ~InferenceObservable() = default;
+  virtual ~InferenceCallbacks() = default;
 
   // Called when a new response is generated.
   virtual void OnNext(const Responses& responses);

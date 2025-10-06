@@ -78,15 +78,14 @@ class Engine {
         const std::vector<InputData>& contents) = 0;
 
     // This is a not blocking call and the function will return right away. The
-    // result will be streamed through the observer.
+    // result will be streamed through the callbacks.
     //
-    // The observer will only receive callbacks if the function returns an OK
-    // status. If the function returns an error status, the observer will not
+    // The callbacks will only receive callbacks if the function returns an OK
+    // status. If the function returns an error status, the callbacks will not
     // receive any callbacks.
     virtual absl::Status GenerateContentStream(
         const std::vector<InputData>& contents,
-        InferenceObservable* observer) = 0;
-
+        std::unique_ptr<InferenceCallbacks> callbacks) = 0;
 
     // Scores the target text after the prefill process is done. This function
     // will only run the decode process to fetch the decode output logits, which
@@ -109,9 +108,10 @@ class Engine {
     virtual absl::Status RunPrefill(const std::vector<InputData>& contents) = 0;
 
     // This is a not blocking call and the function will return right away. The
-    // processing status will be signaled through the observer.
-    virtual absl::Status RunPrefillAsync(const std::vector<InputData>& contents,
-                                         InferenceObservable* observer) {
+    // processing status will be signaled through the callbacks.
+    virtual absl::Status RunPrefillAsync(
+        const std::vector<InputData>& contents,
+        std::unique_ptr<InferenceCallbacks> callbacks) {
       return absl::UnimplementedError("Not implemented.");
     }
 
@@ -124,8 +124,9 @@ class Engine {
     // Startes the decoding process for the model to predict the response based
     // on the input prompt/query added after using RunPrefill* functions.
     // This is a not blocking call and the function will return right away. The
-    // result will be streamed through the observer.
-    virtual absl::Status RunDecodeAsync(InferenceObservable* observer) {
+    // result will be streamed through the callbacks.
+    virtual absl::Status RunDecodeAsync(
+        std::unique_ptr<InferenceCallbacks> callbacks) {
       return absl::UnimplementedError("Not implemented.");
     }
 

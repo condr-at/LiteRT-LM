@@ -71,9 +71,9 @@ class SessionBasic : public Engine::Session {
 
   absl::StatusOr<Responses> GenerateContent(
       const std::vector<InputData>& contents) override;
-  absl::Status GenerateContentStream(const std::vector<InputData>& contents,
-                                     InferenceObservable* observer) override;
-
+  absl::Status GenerateContentStream(
+      const std::vector<InputData>& contents,
+      std::unique_ptr<InferenceCallbacks> callbacks) override;
 
   // Scores the target text after the prefill process is done. This function
   // will only run the decode process to fetch the decode output logits, which
@@ -88,16 +88,22 @@ class SessionBasic : public Engine::Session {
       const std::vector<absl::string_view>& target_text) override;
 
   absl::Status RunPrefill(const std::vector<InputData>& contents) override;
-  absl::Status RunPrefillAsync(const std::vector<InputData>& contents,
-                               InferenceObservable* observer) override;
+
+  absl::Status RunPrefillAsync(
+      const std::vector<InputData>& contents,
+      std::unique_ptr<InferenceCallbacks> callbacks) override;
 
   absl::StatusOr<Responses> RunDecode() override;
 
-  absl::Status RunDecodeAsync(InferenceObservable* observer) override;
+  absl::Status RunDecodeAsync(
+      std::unique_ptr<InferenceCallbacks> callbacks) override;
 
   absl::StatusOr<BenchmarkInfo> GetBenchmarkInfo() override;
 
-  void CancelProcess() override { cancelled_ = true; }
+  void CancelProcess() override {
+    ABSL_LOG(INFO) << "SessionBasic::CancelProcess";
+    cancelled_.store(true);
+  }
 
   const SessionConfig& GetSessionConfig() const override {
     return session_config_;
@@ -198,7 +204,8 @@ class SessionBasic : public Engine::Session {
   // The internal functions to decode the input prompt. It is for convenience to
   // wrap it with lambda function for scheduling.
   absl::StatusOr<Responses> DecodeInternal();
-  absl::Status DecodeInternalStreaming(InferenceObservable* observer = nullptr);
+  absl::Status DecodeInternalStreaming(
+      std::unique_ptr<InferenceCallbacks> callbacks);
 
   // The util function to convert the string to processed input text.
   absl::StatusOr<InputText> StringToProcessedInputText(absl::string_view text);

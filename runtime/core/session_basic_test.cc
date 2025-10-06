@@ -42,7 +42,6 @@
 #include "runtime/executor/audio_litert_compiled_model_executor.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/fake_llm_executor.h"
-#include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/framework/threadpool.h"
 #include "runtime/util/convert_tensor_buffer.h"
@@ -188,14 +187,14 @@ TEST_F(SessionBasicTest, RunDecode) {
   EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going?");
 }
 
-class TestObserver : public InferenceObservable {
+class TestCallbacks : public InferenceCallbacks {
  public:
+  explicit TestCallbacks(bool& done) : done_(done) {}
+
   void OnDone() override { done_ = true; }
 
-  bool IsDone() { return done_; }
-
  private:
-  bool done_ = false;
+  bool& done_;
 };
 
 TEST_F(SessionBasicTest, RunPrefillAsync) {
@@ -222,11 +221,12 @@ TEST_F(SessionBasicTest, RunPrefillAsync) {
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
-  TestObserver observer;
-  EXPECT_OK((*session)->RunPrefillAsync(inputs, &observer));
+  bool done = false;
+  auto callbacks = std::make_unique<TestCallbacks>(done);
+  EXPECT_OK((*session)->RunPrefillAsync(inputs, std::move(callbacks)));
   // Wait for the async call to finish.
   EXPECT_OK(worker_thread_pool_->WaitUntilDone(absl::Seconds(100)));
-  EXPECT_TRUE(observer.IsDone());
+  EXPECT_TRUE(done);
 }
 
 TEST_F(SessionBasicTest, RunDecodeAsync) {
@@ -253,15 +253,23 @@ TEST_F(SessionBasicTest, RunDecodeAsync) {
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
-  TestObserver observer;
-  EXPECT_OK((*session)->RunPrefillAsync(inputs, &observer));
-  EXPECT_OK((*session)->RunDecodeAsync(&observer));
+  bool done_prefill = false;
+  EXPECT_OK((*session)->RunPrefillAsync(
+      inputs, std::make_unique<TestCallbacks>(done_prefill)));
+  bool done_decode = false;
+  EXPECT_OK(
+      (*session)->RunDecodeAsync(std::make_unique<TestCallbacks>(done_decode)));
   EXPECT_OK(worker_thread_pool_->WaitUntilDone(absl::Seconds(100)));
-  EXPECT_TRUE(observer.IsDone());
+  EXPECT_TRUE(done_prefill);
+  EXPECT_TRUE(done_decode);
 }
 
-class StreamingTestObserver : public InferenceObservable {
+class StreamingTestCallbacks : public InferenceCallbacks {
  public:
+  StreamingTestCallbacks(absl::Status& status, std::vector<std::string>& texts,
+                         absl::Notification& done)
+      : status_(status), texts_(texts), done_(done) {}
+
   void OnNext(const Responses& responses) override {
     ASSERT_EQ(responses.GetNumOutputCandidates(), 1);
     texts_.push_back(std::string(*responses.GetResponseTextAt(0)));
@@ -274,17 +282,10 @@ class StreamingTestObserver : public InferenceObservable {
 
   void OnDone() override { done_.Notify(); }
 
-  absl::Status WaitUntilDone() {
-    done_.WaitForNotificationWithTimeout(absl::Seconds(10));
-    return status_;
-  }
-
-  std::vector<std::string> GetTexts() { return texts_; }
-
  private:
-  absl::Notification done_;
-  absl::Status status_;
-  std::vector<std::string> texts_;
+  absl::Status& status_;
+  std::vector<std::string>& texts_;
+  absl::Notification& done_;
 };
 
 TEST_F(SessionBasicTest, RunTextScoringEmptyTargetTextFailure) {
@@ -371,11 +372,16 @@ TEST_F(SessionBasicTest, GenerateContentStream) {
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
-  StreamingTestObserver observer;
-  EXPECT_OK((*session)->GenerateContentStream(inputs, &observer));
+  absl::Status status;
+  std::vector<std::string> texts;
+  absl::Notification done = absl::Notification();
+  EXPECT_OK((*session)->GenerateContentStream(
+      inputs, std::make_unique<StreamingTestCallbacks>(status, texts, done)));
 
-  EXPECT_OK(observer.WaitUntilDone());
-  EXPECT_THAT(observer.GetTexts(),
+  done.WaitForNotification();
+  EXPECT_OK(status);
+  EXPECT_EQ(texts.size(), 7);
+  EXPECT_THAT(texts,
               testing::ElementsAre(" How", "'", "s", " it", " go", "ing", "?"));
 }
 
@@ -402,8 +408,12 @@ TEST_F(SessionBasicTest, GenerateContentStreamEmptyInput) {
       worker_thread_pool_.get());
 
   std::vector<InputData> inputs;
-  StreamingTestObserver observer;
-  EXPECT_THAT((*session)->GenerateContentStream(inputs, &observer),
+  absl::Status status;
+  std::vector<std::string> texts;
+  absl::Notification done;
+  EXPECT_THAT((*session)->GenerateContentStream(
+                  inputs, std::make_unique<StreamingTestCallbacks>(
+                              status, texts, done)),
               testing::status::StatusIs(absl::StatusCode::kInvalidArgument,
                                         "Input is empty."));
 }
@@ -437,10 +447,14 @@ TEST_F(SessionBasicTest, GenerateContentStreamPrefillError) {
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
-  StreamingTestObserver observer;
-  EXPECT_OK((*session)->GenerateContentStream(inputs, &observer));
+  absl::Status status;
+  std::vector<std::string> texts;
+  absl::Notification done;
+  EXPECT_OK((*session)->GenerateContentStream(
+      inputs, std::make_unique<StreamingTestCallbacks>(status, texts, done)));
 
-  absl::Status status = observer.WaitUntilDone();
+  done.WaitForNotification();
+  EXPECT_FALSE(status.ok());
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kInternal,
                                                 "Prefill failed"));
 }
@@ -473,10 +487,14 @@ TEST_F(SessionBasicTest, GenerateContentStreamDecodeError) {
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
-  StreamingTestObserver observer;
-  EXPECT_OK((*session)->GenerateContentStream(inputs, &observer));
+  absl::Status status;
+  std::vector<std::string> texts;
+  absl::Notification done;
+  EXPECT_OK((*session)->GenerateContentStream(
+      inputs, std::make_unique<StreamingTestCallbacks>(status, texts, done)));
 
-  absl::Status status = observer.WaitUntilDone();
+  done.WaitForNotification();
+  EXPECT_FALSE(status.ok());
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kInternal,
                                                 "Decode failed"));
 }
@@ -1298,12 +1316,15 @@ TEST_F(SessionBasicTest, GenerateContentStreamWithCancellation) {
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
-  StreamingTestObserver observer;
 
-  // Run GenerateContentStream in a separate thread.
-  ASSERT_OK(worker_thread_pool_->Schedule([&]() {
-    (*session)->GenerateContentStream(inputs, &observer).IgnoreError();
-  }));
+  absl::Status status;
+  std::vector<std::string> responses;
+  absl::Notification done;
+
+  (*session)
+      ->GenerateContentStream(inputs, std::make_unique<StreamingTestCallbacks>(
+                                          status, responses, done))
+      .IgnoreError();
 
   // Wait for a short time to ensure the decoding has started.
   absl::SleepFor(absl::Milliseconds(100));
@@ -1311,8 +1332,8 @@ TEST_F(SessionBasicTest, GenerateContentStreamWithCancellation) {
   // Cancel the process.
   (*session)->CancelProcess();
 
-  // Wait for the observer to be done.
-  absl::Status status = observer.WaitUntilDone();
+  // Wait for the callbacks to be done.
+  done.WaitForNotification();
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kCancelled));
 }
 
@@ -1343,12 +1364,17 @@ TEST_F(SessionBasicTest, GenerateContentStreamOnCancelledSession) {
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
-  StreamingTestObserver observer;
+  absl::Status status;
+  std::vector<std::string> responses;
+  absl::Notification done;
   // The session is cancelled, so the call should return with a kCancelled
   // error.
-  EXPECT_OK((*session)->GenerateContentStream(inputs, &observer));
-  // Wait for the observer to be done.
-  EXPECT_OK(observer.WaitUntilDone());
+  EXPECT_OK((*session)->GenerateContentStream(
+      inputs,
+      std::make_unique<StreamingTestCallbacks>(status, responses, done)));
+  // Wait for the callbacks to be done.
+  done.WaitForNotification();
+  EXPECT_OK(status);
 }
 
 TEST_F(SessionBasicTest,

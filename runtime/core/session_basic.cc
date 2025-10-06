@@ -510,7 +510,8 @@ absl::Status SessionBasic::RunPrefill(const std::vector<InputData>& contents) {
 }
 
 absl::Status SessionBasic::RunPrefillAsync(
-    const std::vector<InputData>& contents, InferenceObservable* observer) {
+    const std::vector<InputData>& contents,
+    std::unique_ptr<InferenceCallbacks> callbacks) {
   if (contents.empty()) {
     return absl::InvalidArgumentError("Input is empty.");
   }
@@ -533,14 +534,14 @@ absl::Status SessionBasic::RunPrefillAsync(
   }
   RETURN_IF_ERROR(worker_thread_pool_.Schedule(
       [this, preprocessed_contents = std::move(preprocessed_contents),
-       observer]() {
+       callbacks = std::move(callbacks)]() {
         absl::Status status = this->PrefillInternal(
             preprocessed_contents, /*wait_for_completion=*/false);
         ABSL_LOG(INFO) << "RunPrefillAsync status: " << status;
         if (status.ok()) {
-          observer->OnDone();
+          callbacks->OnDone();
         } else {
-          observer->OnError(status);
+          callbacks->OnError(status);
         }
       }));
   return absl::OkStatus();
@@ -567,10 +568,11 @@ absl::StatusOr<Responses> SessionBasic::DecodeInternal() {
 }
 
 absl::Status SessionBasic::DecodeInternalStreaming(
-    InferenceObservable* observer) {
+    std::unique_ptr<InferenceCallbacks> callbacks) {
   if (sampler_ == nullptr) {
     RETURN_IF_ERROR(DecodeStreaming(executor_, tokenizer_, stop_token_detector_,
-                                    benchmark_info_, observer, &cancelled_));
+                                    benchmark_info_, std::move(callbacks),
+                                    &cancelled_));
   } else {
     std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
                                  last_prefill_token_id_);
@@ -579,7 +581,7 @@ absl::Status SessionBasic::DecodeInternalStreaming(
     RETURN_IF_ERROR(DecodeCustomSamplingStreaming(
         executor_, tokenizer_, stop_token_detector_,
         /*num_output_candidates=*/1, *sampler_, *decoded_ids_buffer,
-        benchmark_info_, observer, &cancelled_));
+        benchmark_info_, std::move(callbacks), &cancelled_));
   }
   return absl::OkStatus();
 }
@@ -597,15 +599,17 @@ absl::StatusOr<Responses> SessionBasic::RunDecode() {
   return responses;
 }
 
-absl::Status SessionBasic::RunDecodeAsync(InferenceObservable* observer) {
+absl::Status SessionBasic::RunDecodeAsync(
+    std::unique_ptr<InferenceCallbacks> callbacks) {
   ABSL_LOG(INFO) << "RunDecodeAsync";
   if (cancelled_.load()) {
     // Reset the cancelled flag before processing the next turn.
     cancelled_ = false;
   }
-  return worker_thread_pool_.Schedule([this, observer]() {
-    this->DecodeInternalStreaming(observer).IgnoreError();
-  });
+  return worker_thread_pool_.Schedule(
+      [this, callbacks = std::move(callbacks)]() mutable {
+        this->DecodeInternalStreaming(std::move(callbacks)).IgnoreError();
+      });
 }
 
 absl::StatusOr<Responses> SessionBasic::GenerateContent(
@@ -646,47 +650,46 @@ absl::StatusOr<Responses> SessionBasic::RunTextScoring(
 }
 
 absl::Status SessionBasic::GenerateContentStream(
-    const std::vector<InputData>& contents, InferenceObservable* observer) {
+    const std::vector<InputData>& contents,
+    std::unique_ptr<InferenceCallbacks> callbacks) {
   if (cancelled_.load()) {
     // Reset the cancelled flag before processing the next turn.
     cancelled_ = false;
   }
-  // An observer to handle the result of the async prefill operation.
+  // An callbacks to handle the result of the async prefill operation.
   // It triggers the decode step if prefill is successful, or propagates the
   // error.
-  class PrefillObserver : public InferenceObservable {
+  class PrefillCallbacks : public InferenceCallbacks {
    public:
-    PrefillObserver(SessionBasic* session, InferenceObservable* decode_observer)
-        : session_(session), decode_observer_(decode_observer) {}
+    PrefillCallbacks(SessionBasic* session,
+                     std::unique_ptr<InferenceCallbacks> next_callbacks)
+        : session_(session), next_callbacks_(std::move(next_callbacks)) {}
 
     void OnNext(const Responses& responses) override {
       ABSL_LOG(WARNING) << "OnNext should not be called during prefill!";
     }
 
     void OnError(const absl::Status& status) override {
-      decode_observer_->OnError(status);
-      delete this;
+      next_callbacks_->OnError(status);
     }
 
     void OnDone() override {
-      absl::Status status = session_->RunDecodeAsync(decode_observer_);
+      absl::Status status =
+          session_->RunDecodeAsync(std::move(next_callbacks_));
       if (!status.ok()) {
-        decode_observer_->OnError(status);
+        ABSL_LOG(ERROR) << "Failed to start decode async: " << status;
       }
-      delete this;
     }
 
    private:
     SessionBasic* session_;
-    InferenceObservable* decode_observer_;
+    mutable std::unique_ptr<InferenceCallbacks> next_callbacks_;
   };
 
-  auto* prefill_observer = new PrefillObserver(this, observer);
-  auto status = RunPrefillAsync(contents, prefill_observer);
-  if (!status.ok()) {
-    delete prefill_observer;
-  }
-  return status;
+  auto prefill_callbacks =
+      std::make_unique<PrefillCallbacks>(this, std::move(callbacks));
+  RETURN_IF_ERROR(RunPrefillAsync(contents, std::move(prefill_callbacks)));
+  return absl::OkStatus();
 }
 
 absl::StatusOr<BenchmarkInfo> SessionBasic::GetBenchmarkInfo() {

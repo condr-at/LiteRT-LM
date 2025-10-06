@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "absl/base/thread_annotations.h"  // from @com_google_absl
-#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
@@ -32,7 +31,6 @@
 #include "runtime/conversation/model_data_processor/config_registry.h"
 #include "runtime/conversation/model_data_processor/model_data_processor.h"
 #include "runtime/engine/engine.h"
-#include "runtime/engine/io_types.h"
 
 namespace litert::lm {
 
@@ -63,8 +61,8 @@ namespace litert::lm {
 //                        {"role", "user"}, {"content", "Hello world!"}}));
 //
 //   // Send a message to the LLM and process the asynchronous message results
-//   // via the observer.
-//   // The observer is a user-defined callback class that handles the message
+//   // via the callbacks.
+//   // The callbacks is a user-defined callback class that handles the message
 //   // results.
 //   MyMessageObservable my_message_observable();
 //   EXPECT_OK(conversation->SendMessageStream(
@@ -105,10 +103,10 @@ class Conversation {
       std::optional<DataProcessorArguments> args = std::nullopt);
 
   // Sends a message to the LLM and process the asynchronous message results via
-  // the observer.
+  // the callbacks.
   // Args:
   // - `message`: The message to be sent to the LLM.
-  // - `observer`: The observer to receive the message events.
+  // - `callbacks`: The callbacks to receive the message events.
   // - `args`: The optional arguments for the corresponding model data
   //    processor. Most of the time, the users don't need to provide this
   //    argument.
@@ -116,7 +114,7 @@ class Conversation {
   // - absl::OkStatus if the message is sent and processing successfully,
   //   otherwise the error status.
   absl::Status SendMessageStream(
-      const Message& message, MessageObservable* observer,
+      const Message& message, std::unique_ptr<MessageCallbacks> callbacks,
       std::optional<DataProcessorArguments> args = std::nullopt);
 
  private:
@@ -137,11 +135,6 @@ class Conversation {
   PromptTemplate prompt_template_;
   mutable absl::Mutex history_mutex_;
   std::vector<Message> history_ ABSL_GUARDED_BY(history_mutex_);
-
-  // A holder for the InferenceObservable objects created by SendStream(), to
-  // prevent them from being destroyed before the stream is done.
-  absl::flat_hash_map<uintptr_t, std::unique_ptr<InferenceObservable>>
-      observable_map_;
 };
 }  // namespace litert::lm
 

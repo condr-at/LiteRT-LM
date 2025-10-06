@@ -30,12 +30,11 @@
 #include "runtime/executor/executor_settings_base.h"
 
 namespace {
-// An implementation of InferenceObservable that forwards calls to a C-style
-// callback function. It manages its own lifetime, deleting itself when the
-// stream is complete.
-class CCallbackObserver : public litert::lm::InferenceObservable {
+// An implementation of InferenceCallbacks that forwards calls to a C-style
+// callback function.
+class CCallbacks : public litert::lm::InferenceCallbacks {
  public:
-  CCallbackObserver(LiteRtLmStreamCallback callback, void* callback_data)
+  CCallbacks(LiteRtLmStreamCallback callback, void* callback_data)
       : callback_(callback), callback_data_(callback_data) {}
 
   // Called when a new response is generated.
@@ -52,7 +51,6 @@ class CCallbackObserver : public litert::lm::InferenceObservable {
   // Called when the inference is done and finished successfully.
   void OnDone() override {
     callback_(callback_data_, nullptr, true, nullptr);
-    delete this;
   };
 
   void OnError(const absl::Status& status) override {
@@ -60,7 +58,6 @@ class CCallbackObserver : public litert::lm::InferenceObservable {
       std::string error_message = status.ToString();
       callback_(callback_data_, nullptr, true, error_message.c_str());
     }
-    delete this;
   }
 
  private:
@@ -244,16 +241,14 @@ int litert_lm_session_generate_content_stream(LiteRtLmSession* session,
     }
   }
 
-  // The observer is heap-allocated and will manage its own lifetime.
-  // It will be deleted in OnResponse(is_final=true) or OnError.
-  auto* observer = new CCallbackObserver(callback, callback_data);
+  auto callbacks = std::make_unique<CCallbacks>(callback, callback_data);
 
   absl::Status status = session->session->GenerateContentStream(
-      std::move(engine_inputs), observer);
+      std::move(engine_inputs), std::move(callbacks));
 
   if (!status.ok()) {
     ABSL_LOG(ERROR) << "Failed to start content stream: " << status;
-    delete observer;  // Observer will not be called, so delete it here.
+    // No need to delete callbacks, unique_ptr handles it if not moved.
     return static_cast<int>(status.code());
   }
   return 0;  // The call is non-blocking and returns immediately.

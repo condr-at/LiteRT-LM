@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <string>
@@ -298,9 +299,9 @@ absl::StatusOr<Responses> DecodeLoop(
     std::optional<BenchmarkInfo>& benchmark_info,
     std::optional<Sampler*> sampler,
     std::optional<litert::TensorBuffer*> decoded_ids,
-    std::optional<InferenceObservable*> observer,
+    std::optional<std::unique_ptr<InferenceCallbacks>> callbacks,
     std::atomic<bool>* cancelled) {
-  const bool is_streaming = observer.has_value();
+  const bool is_streaming = callbacks.has_value();
   const bool is_custom_sampling = sampler.has_value();
 
   int benchmark_decode_token_count = 0;
@@ -321,13 +322,13 @@ absl::StatusOr<Responses> DecodeLoop(
   while (true) {
     if (cancelled != nullptr && cancelled->load()) {
       if (is_streaming) {
-        observer.value()->OnError(absl::CancelledError("Process cancelled."));
+        callbacks.value()->OnError(absl::CancelledError("Process cancelled."));
       }
       return absl::CancelledError("Process cancelled.");
     }
     absl::StatusOr<bool> all_done = run_one_step.Run(decoded_ids);
     if (!all_done.ok()) {
-      if (is_streaming) observer.value()->OnError(all_done.status());
+      if (is_streaming) callbacks.value()->OnError(all_done.status());
       return all_done.status();
     }
     num_decode_steps++;
@@ -361,7 +362,7 @@ absl::StatusOr<Responses> DecodeLoop(
     }
 
     if (is_streaming && any_updates && !*all_done) {
-      observer.value()->OnNext(step_responses);
+      callbacks.value()->OnNext(step_responses);
     }
 
     if (ShouldStop(*all_done, benchmark_decode_token_count, num_decode_steps,
@@ -377,10 +378,10 @@ absl::StatusOr<Responses> DecodeLoop(
 
   if (is_streaming) {
     if (executor.GetCurrentStep().value() >= max_num_tokens) {
-      observer.value()->OnError(
+      callbacks.value()->OnError(
           absl::InternalError("Maximum kv-cache size reached."));
     } else {
-      observer.value()->OnDone();
+      callbacks.value()->OnDone();
     }
     return Responses(0);  // Return empty response for streaming.
   }
@@ -511,16 +512,16 @@ absl::StatusOr<Responses> Decode(LlmExecutor& executor, Tokenizer& tokenizer,
 absl::Status DecodeStreaming(LlmExecutor& executor, Tokenizer& tokenizer,
                              const StopTokenDetector& stop_token_detector,
                              std::optional<BenchmarkInfo>& benchmark_info,
-                             InferenceObservable* observer,
+                             std::unique_ptr<InferenceCallbacks> callbacks,
                              std::atomic<bool>* cancelled) {
-  if (observer == nullptr) {
+  if (callbacks == nullptr) {
     return absl::InvalidArgumentError(
-        "Observer must not be null for streaming.");
+        "Callbacks must not be null for streaming.");
   }
   const int num_output_candidates = 1;
   return DecodeLoop(executor, tokenizer, stop_token_detector,
                     num_output_candidates, benchmark_info, std::nullopt,
-                    std::nullopt, observer, cancelled)
+                    std::nullopt, std::move(callbacks), cancelled)
       .status();
 }
 
@@ -539,15 +540,16 @@ absl::Status DecodeCustomSamplingStreaming(
     LlmExecutor& executor, Tokenizer& tokenizer,
     const StopTokenDetector& stop_token_detector, int num_output_candidates,
     Sampler& sampler, litert::TensorBuffer& decoded_ids,
-    std::optional<BenchmarkInfo>& benchmark_info, InferenceObservable* observer,
+    std::optional<BenchmarkInfo>& benchmark_info,
+    std::unique_ptr<InferenceCallbacks> callbacks,
     std::atomic<bool>* cancelled) {
-  if (observer == nullptr) {
+  if (callbacks == nullptr) {
     return absl::InvalidArgumentError(
-        "Observer must not be null for streaming.");
+        "Callbacks must not be null for streaming.");
   }
   return DecodeLoop(executor, tokenizer, stop_token_detector,
                     num_output_candidates, benchmark_info, &sampler,
-                    &decoded_ids, observer, cancelled)
+                    &decoded_ids, std::move(callbacks), cancelled)
       .status();
 }
 

@@ -13,12 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "runtime/conversation/internal_observable_adapter.h"
+#include "runtime/conversation/internal_callbacks_adapter.h"
 
 #include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
@@ -52,34 +53,34 @@ size_t SuffixPrefixOverlap(absl::string_view a, absl::string_view b) {
 
 }  // namespace
 
-std::unique_ptr<InternalObservableAdapter> InternalObservableAdapter::Create(
-    ModelDataProcessor* model_data_processor, MessageObservable* user_observer,
+std::unique_ptr<InternalCallbacksAdapter> InternalCallbacksAdapter::Create(
+    ModelDataProcessor* model_data_processor,
+    std::unique_ptr<MessageCallbacks> user_callbacks,
     DataProcessorArguments processor_args) {
-  return std::unique_ptr<InternalObservableAdapter>(
-      new InternalObservableAdapter(model_data_processor, user_observer,
-                                    processor_args));
+  return std::unique_ptr<InternalCallbacksAdapter>(new InternalCallbacksAdapter(
+      model_data_processor, std::move(user_callbacks), processor_args));
 }
 
-void InternalObservableAdapter::SetCompleteMessageCallback(
+void InternalCallbacksAdapter::SetCompleteMessageCallback(
     CompleteMessageCallback complete_message_callback) {
   complete_message_callback_ = complete_message_callback;
 }
 
-void InternalObservableAdapter::OnNext(const Responses& responses) {
+void InternalCallbacksAdapter::OnNext(const Responses& responses) {
   const auto& response_text = responses.GetResponseTextAt(0);
   if (!response_text.ok()) {
-    user_observer_->OnError(response_text.status());
+    user_callbacks_->OnError(response_text.status());
     return;
   }
   auto status = ProcessResponseText(*response_text);
   if (!status.ok()) {
-    user_observer_->OnError(status);
+    user_callbacks_->OnError(status);
     return;
   }
 }
 
-void InternalObservableAdapter::OnDone() {
-  // Send the remaining text to the user observer when done.
+void InternalCallbacksAdapter::OnDone() {
+  // Send the remaining text to the user callbacks when done.
   if (cursor_ < accumulated_response_text_.size()) {
     SendMessage(absl::string_view(accumulated_response_text_).substr(cursor_));
   }
@@ -88,17 +89,17 @@ void InternalObservableAdapter::OnDone() {
   const auto& complete_message =
       model_data_processor_->ToMessage(responses, processor_args_);
   if (!complete_message.ok()) {
-    user_observer_->OnError(complete_message.status());
+    user_callbacks_->OnError(complete_message.status());
     return;
   }
-  user_observer_->OnComplete();
+  user_callbacks_->OnComplete();
   if (complete_message_callback_) {
     complete_message_callback_(*complete_message);
   }
   complete_message_callback_ = nullptr;
 }
 
-void InternalObservableAdapter::OnError(const absl::Status& status) {
+void InternalCallbacksAdapter::OnError(const absl::Status& status) {
   // TODO: b/435001805 - handle the max kv-cache size reached situation more
   // robustly.
   if (absl::StrContainsIgnoreCase(status.message(),
@@ -107,17 +108,18 @@ void InternalObservableAdapter::OnError(const absl::Status& status) {
     OnDone();
     return;
   }
-  user_observer_->OnError(status);
+  user_callbacks_->OnError(status);
 }
 
-InternalObservableAdapter::InternalObservableAdapter(
-    ModelDataProcessor* model_data_processor, MessageObservable* user_observer,
+InternalCallbacksAdapter::InternalCallbacksAdapter(
+    ModelDataProcessor* model_data_processor,
+    std::unique_ptr<MessageCallbacks> user_callbacks,
     DataProcessorArguments processor_args)
     : model_data_processor_(model_data_processor),
-      user_observer_(user_observer),
+      user_callbacks_(std::move(user_callbacks)),
       processor_args_(processor_args) {}
 
-void InternalObservableAdapter::SendMessage(absl::string_view text) {
+void InternalCallbacksAdapter::SendMessage(absl::string_view text) {
   if (text.empty()) {
     return;
   }
@@ -126,13 +128,13 @@ void InternalObservableAdapter::SendMessage(absl::string_view text) {
   const auto& message =
       model_data_processor_->ToMessage(responses, processor_args_);
   if (!message.ok()) {
-    user_observer_->OnError(message.status());
+    user_callbacks_->OnError(message.status());
     return;
   }
-  user_observer_->OnMessage(*message);
+  user_callbacks_->OnMessage(*message);
 }
 
-absl::Status InternalObservableAdapter::ProcessResponseText(
+absl::Status InternalCallbacksAdapter::ProcessResponseText(
     absl::string_view response_text) {
   accumulated_response_text_.append(response_text);
   if (model_data_processor_ == nullptr) {
