@@ -42,6 +42,8 @@ class HuggingFaceTokenizer : public Tokenizer {
   absl::StatusOr<std::vector<int>> TextToTokenIds(
       absl::string_view text) override;
 
+  absl::StatusOr<int> TokenToId(absl::string_view token) override;
+
   // Decodes the given sequence of token ids into a string.
   // Returns absl::DataLossError if any of the tokens are part of an incomplete
   // BPE sequence.

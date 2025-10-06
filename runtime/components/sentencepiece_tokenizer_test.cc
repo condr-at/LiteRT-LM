@@ -30,9 +30,13 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "runtime/util/test_utils.h"  // IWYU pragma: keep
 
 namespace litert::lm {
 namespace {
+
+using ::testing::status::IsOkAndHolds;
+using ::testing::status::StatusIs;
 
 constexpr char kTestdataDir[] =
     "litert_lm/runtime/components/testdata/";
@@ -109,6 +113,19 @@ TEST(SentencePieceTokenizerTest, TextToTokenIds) {
 
   EXPECT_THAT(ids_or.value(),
               ::testing::ElementsAre(224, 24, 8, 66, 246, 18, 2295));
+}
+
+TEST(SentencePieceTokenizerTest, TokenToId) {
+  ASSERT_OK_AND_ASSIGN(auto tokenizer, SentencePieceTokenizer::CreateFromFile(
+                                           GetSentencePieceModelPath()));
+  EXPECT_THAT(tokenizer->TokenToId("X"), IsOkAndHolds(882));
+}
+
+TEST(SentencePieceTokenizerTest, TokenToIdUnknownTokenReturnsError) {
+  ASSERT_OK_AND_ASSIGN(auto tokenizer, SentencePieceTokenizer::CreateFromFile(
+                                           GetSentencePieceModelPath()));
+  EXPECT_THAT(tokenizer->TokenToId("unknown_token"),
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(SentencePieceTokenizerTest, TokenIdsToText) {

@@ -74,6 +74,10 @@ absl::StatusOr<std::vector<int>> HuggingFaceTokenizer::TextToTokenIds(
   }
 }
 
+absl::StatusOr<int> HuggingFaceTokenizer::TokenToId(absl::string_view token) {
+  return tokenizer_->TokenToId(std::string{token});
+}
+
 // Decodes the given TensorBuffer of token ids into a vector of strings.
 absl::StatusOr<std::string> HuggingFaceTokenizer::TokenIdsToText(
     const std::vector<int>& token_ids) {

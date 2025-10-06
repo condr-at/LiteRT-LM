@@ -41,6 +41,10 @@ class FakeTokenizer : public Tokenizer {
     return std::vector<int>{1, 2, 3};
   }
 
+  absl::StatusOr<int> TokenToId(absl::string_view token) override {
+    return token == "BOS" ? 2 : 1;
+  }
+
   absl::StatusOr<std::string> TokenIdsToText(
       const std::vector<int>& token_ids) override {
     return "fake_text";

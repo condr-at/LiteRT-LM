@@ -22,6 +22,7 @@
 #include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "sentencepiece_processor.h"  // from @sentencepiece
 
@@ -56,6 +57,14 @@ absl::StatusOr<std::vector<int>> SentencePieceTokenizer::TextToTokenIds(
     return status;
   }
   return ids;
+}
+
+absl::StatusOr<int> SentencePieceTokenizer::TokenToId(absl::string_view token) {
+  int id = processor_->PieceToId(token);
+  if (id == processor_->unk_id()) {
+    return absl::NotFoundError(absl::StrCat("Unknown token: ", token));
+  }
+  return id;
 }
 
 // Decodes the given TensorBuffer of token ids into a string.

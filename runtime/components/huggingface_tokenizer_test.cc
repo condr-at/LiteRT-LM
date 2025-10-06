@@ -35,6 +35,8 @@
 namespace litert::lm {
 namespace {
 
+using ::testing::status::IsOkAndHolds;
+
 constexpr char kTestdataDir[] =
     "litert_lm/runtime/components/testdata/";
 
@@ -85,6 +87,12 @@ TEST(HuggingFaceTokenizerTest, TextToTokenIds) {
   ASSERT_OK(ids_or);
 
   EXPECT_THAT(ids_or.value(), ::testing::ElementsAre(2020, 506, 357, 2045, 47));
+}
+
+TEST(HuggingFaceTokenizerTest, TokenToId) {
+  ASSERT_OK_AND_ASSIGN(auto tokenizer, HuggingFaceTokenizer::CreateFromFile(
+                                           GetHuggingFaceModelPath()));
+  EXPECT_THAT(tokenizer->TokenToId("X"), IsOkAndHolds(72));
 }
 
 TEST(HuggingFaceTokenizerTest, TokenIdsToText) {

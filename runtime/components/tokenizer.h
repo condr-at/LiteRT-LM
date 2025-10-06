@@ -34,8 +34,14 @@ class Tokenizer {
  public:
   virtual ~Tokenizer() = default;
 
-  // Encodes the given text into a sequence of token ids.
+  // Encodes the given input text to token ids. Includes tokenizer pre/post
+  // processing.
   virtual absl::StatusOr<TokenIds> TextToTokenIds(absl::string_view text) = 0;
+
+  // Converts a token string to its token id. This is a raw token look up,
+  // without any tokenizer pre/post processing. The implementation is expected
+  // to return absl::NotFoundError if the token is not found.
+  virtual absl::StatusOr<int> TokenToId(absl::string_view token) = 0;
 
   // Helper function to convert a vector of token ids into a 1D
   // litert::TensorBuffer of shape [batch_size(==1), num_tokens].

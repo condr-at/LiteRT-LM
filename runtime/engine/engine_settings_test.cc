@@ -260,6 +260,8 @@ class MockTokenizer : public Tokenizer {
               (const std::vector<int>& token_ids), (override));
   MOCK_METHOD(absl::StatusOr<std::vector<int>>, TextToTokenIds,
               (absl::string_view text), (override));
+  MOCK_METHOD(absl::StatusOr<int>, TokenToId, (absl::string_view token),
+              (override));
 };
 
 absl::Status IsExpectedLlmMetadata(const proto::LlmMetadata& llm_metadata) {

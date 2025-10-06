@@ -55,13 +55,15 @@ class BytePairEncodingTokenizer : public Tokenizer {
               (absl::string_view text), (override));
   MOCK_METHOD(absl::StatusOr<std::string>, TokenIdsToText,
               (const std::vector<int>& token_ids), (override));
+  MOCK_METHOD(absl::StatusOr<int>, TokenToId, (absl::string_view token),
+              (override));
 };
 
 // Test observer to collect the streaming results, also ensure that no more
 // events is received after OnError or OnDone.
 class TestObserver : public InferenceObservable {
  public:
-  explicit TestObserver(int num_candidates): done_(false) {
+  explicit TestObserver(int num_candidates) : done_(false) {
     responses_.resize(num_candidates);
   }
   void OnNext(const Responses& responses) override {

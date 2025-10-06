@@ -38,6 +38,8 @@ class MockTokenizer : public Tokenizer {
  public:
   MOCK_METHOD(absl::StatusOr<std::vector<int>>, TextToTokenIds,
               (absl::string_view text), (override));
+  MOCK_METHOD(absl::StatusOr<int>, TokenToId, (absl::string_view token),
+              (override));
   MOCK_METHOD(absl::StatusOr<std::string>, TokenIdsToText,
               (const std::vector<int>& token_ids), (override));
 };
@@ -114,6 +116,12 @@ TEST(TokenizerTest, TokenIdsToTextsWithIncompleteBPESequence) {
   EXPECT_EQ(texts.value().size(), 2);
   EXPECT_EQ(texts.value()[0].status().code(), absl::StatusCode::kDataLoss);
   EXPECT_EQ(texts.value()[1].value(), "▁How's▁it▁going?");
+}
+
+TEST(TokenizerTest, TokenToId) {
+  auto tokenizer = std::make_unique<MockTokenizer>();
+  EXPECT_CALL(*tokenizer, TokenToId("X")).WillOnce(testing::Return(123));
+  EXPECT_EQ(tokenizer->TokenToId("X").value(), 123);
 }
 
 TEST(TokenizerTest, MergeTokenIds) {
