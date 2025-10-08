@@ -16,6 +16,7 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_EXECUTOR_LLM_LITERT_COMPILED_MODEL_EXECUTOR_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -95,7 +96,7 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
   // users prefill 100 tokens, then they expect the current step to be 100). It
   // is different from the internal current step.
   absl::StatusOr<int> GetCurrentStep() const override {
-    return current_step_ + (next_input_token_id_ == -1 ? 0 : 1);
+    return current_step_ + (next_input_token_id_.has_value() ? 0 : 1);
   }
 
   // Resets all of the internal states.
@@ -165,6 +166,8 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
   // Create Prefill input buffers for a given signature.
   absl::Status CreatePrefillInputBuffers(absl::string_view prefill_signature);
 
+  absl::StatusOr<int> GetIdToDecode(const ExecutorInputs& inputs);
+
   LlmExecutorSettings executor_settings_;
   ::litert::Environment env_;
   const ::litert::Model& model_;
@@ -219,7 +222,7 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
 
   // The token served as the first input token to the model for next Prefill or
   // Decode.
-  int next_input_token_id_ = -1;
+  std::optional<int> next_input_token_id_ = std::nullopt;
 
   // A tensor buffer to store the logits decoded before sampling the final
   // tokens. It's to avoid creating a new tensor buffer for each Decode() call.

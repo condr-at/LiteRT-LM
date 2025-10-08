@@ -212,6 +212,11 @@ absl::Status EmbeddingLookupManager::LookupPrefill(
              default_embedding_vector_.size() * sizeof(float));
     }
   }
+  // Remove fully used multi modal embedding lookups.
+  std::erase_if(multi_modal_embedding_lookups_,
+                [](const auto& embedding_lookup) {
+                  return !embedding_lookup->HasRemainingEmbeddings();
+                });
   return absl::OkStatus();
 }
 

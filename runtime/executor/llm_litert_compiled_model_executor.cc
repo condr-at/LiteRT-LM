@@ -14,6 +14,7 @@
 
 #include "runtime/executor/llm_litert_compiled_model_executor.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -287,13 +288,8 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
           prefill_input_buffers_[signatures_.input_attn_mask.value()],
           IsCalculationPrecisionF16()));
     }
-    // We will not fill the last token of the current input into the
-    // interpreter now. It will be stored in next_input_token_id_ and used in
-    // the next prefill or decode.
-    int start_step = current_step_;
-    std::vector<int> tokens_to_lookup;
+
     // TODO(b/425396146): Add the unit tests for checking the prefill length.
-    int input_idx = 0;
     int prefill_length = ids.size();
     if (prefill_length > 1) {
       // If the prefill length is larger than 1, we will not use the last token
@@ -301,22 +297,25 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
       // prefill.
       prefill_length = ids.size() - 1;
     }
-    for (int i = 0; i < prefill_length; input_idx++, current_step_++) {
-      if (next_input_token_id_ != -1) {
-        // Use next_input_token_id_ if it is valid.
-        // Currently we use -1 to indicate that next_input_token_id_ is
-        // invalid.
-        tokens_to_lookup.push_back(next_input_token_id_);
-        // next_input_token_id_ should only be used once at the beginning of
-        // the loop.
-        next_input_token_id_ = -1;
-      } else {
-        tokens_to_lookup.push_back(ids[input_idx]);
-        // Only increase i if we used the token inside ids.
-        i++;
-      }
-      prefill_input_pos_ptr[input_idx] = current_step_;
+
+    const int start_step = current_step_;
+    std::vector<int> tokens_to_lookup;
+    // If next_input_token_id_ is set, we will use it as the first token of the
+    // current prefill.
+    if (next_input_token_id_.has_value()) {
+      tokens_to_lookup.push_back(*next_input_token_id_);
     }
+    // Append the rest of the tokens to the tokens_to_lookup.
+    tokens_to_lookup.insert(tokens_to_lookup.end(), ids.begin(),
+                            ids.begin() + prefill_length);
+    std::transform(prefill_input_pos_ptr,
+                   prefill_input_pos_ptr + tokens_to_lookup.size(),
+                   prefill_input_pos_ptr,
+                   [&](int token) mutable { return current_step_++; });
+    // Store the last token of the current input in next_input_token_id_ for
+    // next prefill or decode.
+    next_input_token_id_ = ids[ids.size() - 1];
+
     if (!signatures_.input_tokens.empty()) {
       auto& prefill_input_buffer =
           prefill_input_buffers_[signatures_.input_tokens];
@@ -356,7 +355,6 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
           /*steps=*/current_step_ - start_step));
     }
   }
-  next_input_token_id_ = ids[ids.size() - 1];
 
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       prefill_input_buffers;
@@ -388,6 +386,29 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
   RET_CHECK(res) << "Failed to run compiled model." << res.Error().Message();
   std::swap(input_kv_cache_buffers_, output_kv_cache_buffers_);
   return absl::OkStatus();
+}
+
+absl::StatusOr<int> LlmLiteRtCompiledModelExecutor::GetIdToDecode(
+    const ExecutorInputs& inputs) {
+  int id = 0;
+  if (inputs.GetTextDataPtr().ok()) {
+    auto input_tensor_size = (*inputs.GetTextTokenIdsPtr())->PackedSize();
+    if (input_tensor_size && *input_tensor_size != 0) {
+      // Input token ids provided, so use it regardless of whether next input
+      // token id is set. Only accept batch size 1 and a single token for now.
+      RET_CHECK_EQ(*input_tensor_size, 1 * sizeof(int32_t));
+      LITERT_ASSIGN_OR_RETURN_ABSL(
+          auto ids,
+          ReferTensorBufferAsSpan<int32_t>(*(*inputs.GetTextTokenIdsPtr())));
+      id = ids[0];
+    }
+  } else {
+    if (!next_input_token_id_.has_value()) {
+      return absl::InvalidArgumentError("No id available to be decoded.");
+    }
+    id = *next_input_token_id_;
+  }
+  return id;
 }
 
 absl::Status LlmLiteRtCompiledModelExecutor::Decode(
@@ -427,27 +448,10 @@ absl::Status LlmLiteRtCompiledModelExecutor::Decode(
 absl::Status LlmLiteRtCompiledModelExecutor::Decode(
     const ExecutorInputs& inputs, ::litert::TensorBuffer& output_logits) {
 
-  int id = next_input_token_id_;
-
-  if (inputs.GetTextDataPtr().ok()) {
-    auto input_tensor_size = (*inputs.GetTextTokenIdsPtr())->PackedSize();
-    if (input_tensor_size && *input_tensor_size != 0) {
-      // Input token ids provided, so use it regardless of whether next input
-      // token id is set. Only accept batch size 1 and a single token for now.
-      RET_CHECK_EQ(*input_tensor_size, 1 * sizeof(int32_t));
-      LITERT_ASSIGN_OR_RETURN_ABSL(
-          auto ids,
-          ReferTensorBufferAsSpan<int32_t>(*(*inputs.GetTextTokenIdsPtr())));
-      id = ids[0];
-    }
-  }
-  if (id == -1) {
-    return absl::InvalidArgumentError("No id available to be decoded.");
-  }
-
+  ASSIGN_OR_RETURN(int id, GetIdToDecode(inputs));
   // Invalidate the previous next_input_token_id_, regardless of whether it is
   // used.
-  next_input_token_id_ = -1;
+  next_input_token_id_.reset();
 
   {
     // Fill the input buffers with scoped locks.
@@ -539,27 +543,10 @@ absl::Status LlmLiteRtCompiledModelExecutor::Decode(
 
 absl::StatusOr<::litert::TensorBuffer>
 LlmLiteRtCompiledModelExecutor::DecodeLogits(const ExecutorInputs& inputs) {
-  int id = next_input_token_id_;
-
-  if (inputs.GetTextDataPtr().ok()) {
-    auto input_tensor_size = (*inputs.GetTextTokenIdsPtr())->PackedSize();
-    if (input_tensor_size && *input_tensor_size != 0) {
-      // Input token ids provided, so use it regardless of whether next input
-      // token id is set. Only accept batch size 1 and a single token for now.
-      RET_CHECK_EQ(*input_tensor_size, 1 * sizeof(int32_t));
-      LITERT_ASSIGN_OR_RETURN_ABSL(
-          auto ids,
-          ReferTensorBufferAsSpan<int32_t>(*(*inputs.GetTextTokenIdsPtr())));
-      id = ids[0];
-    }
-  }
-  if (id == -1) {
-    return absl::InvalidArgumentError("No id available to be decoded.");
-  }
-
+  ASSIGN_OR_RETURN(int id, GetIdToDecode(inputs));
   // Invalidate the previous next_input_token_id_, regardless of whether it is
   // used.
-  next_input_token_id_ = -1;
+  next_input_token_id_.reset();
 
   {
     // Fill the input buffers with scoped locks.
@@ -691,7 +678,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::SampleLogits(
 
 absl::Status LlmLiteRtCompiledModelExecutor::Reset() {
   current_step_ = 0;
-  next_input_token_id_ = -1;
+  next_input_token_id_.reset();
   processed_tokens_.clear();
   sampler_.reset();
   return absl::OkStatus();

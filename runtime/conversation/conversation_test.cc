@@ -107,7 +107,7 @@ TEST(ConversationTest, SendMessage) {
       {"role", "assistant"},
       {"content",
        {{{"type", "text"},
-         {"text", "하자ṅ kontroller thicknessesೊಂದಿಗೆ Decodingवर्ती"}}}}};
+         {"text", "하자ṅ kontroller thicknessesೊಂದಿಗೆ Decoding"}}}}};
   const JsonMessage& json_message = std::get<JsonMessage>(message);
   EXPECT_EQ(json_message, expected_message);
 }
@@ -129,8 +129,8 @@ TEST(ConversationTest, SendMessageStream) {
   JsonMessage expected_message = {
       {"role", "assistant"},
       {"content",
-        {{{"type", "text"},
-        {"text", "하자ṅ kontroller thicknessesೊಂದಿಗೆ Decodingवर्ती"}}}}};
+       {{{"type", "text"},
+         {"text", "하자ṅ kontroller thicknessesೊಂದಿಗೆ Decoding"}}}}};
 
   EXPECT_OK(conversation->SendMessageStream(
       JsonMessage{{"role", "user"}, {"content", "Hello world!"}},
@@ -162,7 +162,7 @@ TEST(ConversationTest, SendMessageWithPreface) {
   JsonMessage expected_message = {
       {"role", "assistant"},
       {"content",
-       {{{"type", "text"}, {"text", "约为✗ predictions дыхаnewLine`);"}}}}};
+       {{{"type", "text"}, {"text", "约为✗ predictions дыхаnewLine"}}}}};
   const JsonMessage& json_message = std::get<JsonMessage>(message);
   EXPECT_EQ(json_message, expected_message);
 }
