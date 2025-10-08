@@ -200,9 +200,8 @@ absl::Status LlmLiteRtCompiledModelExecutor::Prefill(
   for (const auto& [prefill_signature, prefill_length] : work_groups) {
     // Keep track of the signatures that have already had their buffers
     // created only create them once.
-    if (!prefill_signatures_with_created_buffers_.contains(prefill_signature)) {
+    if (!prefill_input_buffers_.contains(prefill_signature)) {
       RETURN_IF_ERROR(CreatePrefillInputBuffers(prefill_signature));
-      prefill_signatures_with_created_buffers_.insert(prefill_signature);
     }
     RETURN_IF_ERROR(PrefillInternal(prefill_signature,
                                     ids.subspan(/*pos=*/0, prefill_length)));
@@ -215,12 +214,13 @@ absl::Status LlmLiteRtCompiledModelExecutor::Prefill(
 
 absl::Status LlmLiteRtCompiledModelExecutor::CreatePrefillInputBuffers(
     absl::string_view prefill_signature) {
+  auto& curr_prefill_input_buffers = prefill_input_buffers_[prefill_signature];
   // Create input_token, positions and attn_mask buffers after determining
   // the prefill length.
   if (!signatures_.input_tokens.empty()) {
     auto tokens_buffer = compiled_model_.CreateInputBuffer(
         prefill_signature, signatures_.input_tokens);
-    prefill_input_buffers_[signatures_.input_tokens] =
+    curr_prefill_input_buffers[signatures_.input_tokens] =
         std::move(*tokens_buffer);
   } else {
     // If input_tokens is empty, we must have input_embeddings.
@@ -235,7 +235,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::CreatePrefillInputBuffers(
     }
     auto embeddings_buffer = compiled_model_.CreateInputBuffer(
         prefill_signature, signatures_.input_embeddings.value());
-    prefill_input_buffers_[signatures_.input_embeddings.value()] =
+    curr_prefill_input_buffers[signatures_.input_embeddings.value()] =
         std::move(*embeddings_buffer);
 
     // We may have per layer embedding as well.
@@ -247,19 +247,20 @@ absl::Status LlmLiteRtCompiledModelExecutor::CreatePrefillInputBuffers(
       }
       auto per_layer_embeddings_buffer = compiled_model_.CreateInputBuffer(
           prefill_signature, signatures_.input_per_layer_embeddings.value());
-      prefill_input_buffers_[signatures_.input_per_layer_embeddings.value()] =
+      curr_prefill_input_buffers[signatures_.input_per_layer_embeddings
+                                     .value()] =
           std::move(*per_layer_embeddings_buffer);
     }
   }
   auto positions_buffer = compiled_model_.CreateInputBuffer(
       prefill_signature, signatures_.input_positions);
-  prefill_input_buffers_[signatures_.input_positions] =
+  curr_prefill_input_buffers[signatures_.input_positions] =
       std::move(*positions_buffer);
 
   if (signatures_.input_attn_mask.has_value()) {
     auto attn_mask_buffer = compiled_model_.CreateInputBuffer(
         prefill_signature, signatures_.input_attn_mask.value());
-    prefill_input_buffers_[signatures_.input_attn_mask.value()] =
+    curr_prefill_input_buffers[signatures_.input_attn_mask.value()] =
         std::move(*attn_mask_buffer);
   }
   return absl::OkStatus();
@@ -268,10 +269,11 @@ absl::Status LlmLiteRtCompiledModelExecutor::CreatePrefillInputBuffers(
 absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
     absl::string_view prefill_signature, Span<const int> ids) {
 
+  auto& curr_prefill_input_buffers = prefill_input_buffers_[prefill_signature];
   {
     // Fill the input buffers with scoped locks.
     auto& prefill_input_pos =
-        prefill_input_buffers_[signatures_.input_positions];
+        curr_prefill_input_buffers[signatures_.input_positions];
     LITERT_ASSIGN_OR_RETURN_ABSL(auto prefill_input_pos_size,
                                  prefill_input_pos.PackedSize());
     LITERT_ASSIGN_OR_RETURN_ABSL(
@@ -285,7 +287,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
     memset(prefill_input_pos_ptr, 0, prefill_input_pos_size);
     if (has_input_attn_mask) {
       RETURN_IF_ERROR(InitializeAttentionMask(
-          prefill_input_buffers_[signatures_.input_attn_mask.value()],
+          curr_prefill_input_buffers[signatures_.input_attn_mask.value()],
           IsCalculationPrecisionF16()));
     }
 
@@ -318,7 +320,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
 
     if (!signatures_.input_tokens.empty()) {
       auto& prefill_input_buffer =
-          prefill_input_buffers_[signatures_.input_tokens];
+          curr_prefill_input_buffers[signatures_.input_tokens];
       LITERT_ASSIGN_OR_RETURN_ABSL(auto prefill_input_size,
                                    prefill_input_buffer.PackedSize());
       LITERT_ASSIGN_OR_RETURN_ABSL(
@@ -335,22 +337,22 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
       // need to create input_embeddings_ptr because TensorBuffer locking and
       // filling is handled by the embedding lookup.
       TensorBuffer* prefill_input_embeddings_buffer =
-          &(prefill_input_buffers_[signatures_.input_embeddings.value()]);
+          &(curr_prefill_input_buffers[signatures_.input_embeddings.value()]);
       RETURN_IF_ERROR(embedding_lookup_->LookupPrefill(
           tokens_to_lookup, prefill_input_embeddings_buffer, 0));
 
       // We may have per layer embedding as well.
       if (signatures_.input_per_layer_embeddings.has_value()) {
         TensorBuffer* prefill_input_per_layer_embeddings_buffer =
-            &(prefill_input_buffers_[signatures_.input_per_layer_embeddings
-                                         .value()]);
+            &(curr_prefill_input_buffers[signatures_.input_per_layer_embeddings
+                                             .value()]);
         RETURN_IF_ERROR(per_layer_embedding_lookup_->LookupPrefill(
             tokens_to_lookup, prefill_input_per_layer_embeddings_buffer, 0));
       }
     }
     if (has_input_attn_mask) {
       RETURN_IF_ERROR(FillAttentionMask(
-          prefill_input_buffers_[signatures_.input_attn_mask.value()],
+          curr_prefill_input_buffers[signatures_.input_attn_mask.value()],
           start_step,
           /*steps=*/current_step_ - start_step));
     }
@@ -358,7 +360,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
 
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       prefill_input_buffers;
-  for (const auto& [input_name, input_buffer] : prefill_input_buffers_) {
+  for (const auto& [input_name, input_buffer] : curr_prefill_input_buffers) {
     auto duplicated_input_buffer = input_buffer.Duplicate();
     RET_CHECK(duplicated_input_buffer) << "Failed to duplicate input buffer.";
     prefill_input_buffers[input_name] = std::move(*duplicated_input_buffer);
@@ -370,11 +372,6 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
   }
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       prefill_output_buffers;
-  for (const auto& [output_name, output_buffer] : prefill_output_buffers_) {
-    auto duplicated_output_buffer = output_buffer.Duplicate();
-    RET_CHECK(duplicated_output_buffer) << "Failed to duplicate output buffer.";
-    prefill_output_buffers[output_name] = std::move(*duplicated_output_buffer);
-  }
   for (const auto& [output_name, output_buffer] : *output_kv_cache_buffers_) {
     auto duplicated_output_buffer = output_buffer.Duplicate();
     RET_CHECK(duplicated_output_buffer) << "Failed to duplicate output buffer.";
@@ -830,8 +827,6 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
                                             compiled_model.Error().Message()));
   }
 
-  absl::flat_hash_map<absl::string_view, TensorBuffer> prefill_input_buffers;
-  absl::flat_hash_map<absl::string_view, TensorBuffer> prefill_output_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_input_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_output_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> input_kv_cache_buffers;
@@ -862,9 +857,8 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
   for (auto input_name : prefill_signature->InputNames()) {
     // Skip creating buffers for the input tokens, positions and attn mask. Move
     // into prefill function to create them based on the ids size.
-    if (input_name == signatures.input_tokens ||
-        input_name == signatures.input_positions ||
-        input_name == signatures.input_attn_mask) {
+    if (!absl::StartsWith(input_name, kv_cache_k_root_name) &&
+        !absl::StartsWith(input_name, kv_cache_v_root_name)) {
       continue;
     }
     auto input_buffer =
@@ -874,25 +868,20 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
           absl::StrCat("Failed to create prefill input buffer for ", "'",
                        input_name, "' : ", input_buffer.Error().Message()));
     }
-    if (absl::StartsWith(input_name, kv_cache_k_root_name) ||
-        absl::StartsWith(input_name, kv_cache_v_root_name)) {
-      if (backend == Backend::CPU) {
-        auto output_buffer = input_buffer->Duplicate();
-        RET_CHECK(output_buffer) << "Failed to duplicate input buffer.";
-        output_kv_cache_buffers[input_name] = std::move(*output_buffer);
+    if (backend == Backend::CPU) {
+      auto output_buffer = input_buffer->Duplicate();
+      RET_CHECK(output_buffer) << "Failed to duplicate input buffer.";
+      output_kv_cache_buffers[input_name] = std::move(*output_buffer);
+    }
+    input_kv_cache_buffers[input_name] = std::move(*input_buffer);
+    const auto& settings = executor_settings.GetAdvancedSettings();
+    if (settings && settings->clear_kv_cache_before_prefill) {
+      auto kv_cache_span =
+          ReferTensorBufferAsSpan<float>(input_kv_cache_buffers[input_name]);
+      if (kv_cache_span) {
+        ABSL_LOG(INFO) << "Clearing kv cache: " << input_name;
+        for (float& v : *kv_cache_span) v = 0.0f;
       }
-      input_kv_cache_buffers[input_name] = std::move(*input_buffer);
-      const auto& settings = executor_settings.GetAdvancedSettings();
-      if (settings && settings->clear_kv_cache_before_prefill) {
-        auto kv_cache_span =
-            ReferTensorBufferAsSpan<float>(input_kv_cache_buffers[input_name]);
-        if (kv_cache_span) {
-          ABSL_LOG(INFO) << "Clearing kv cache: " << input_name;
-          for (float& v : *kv_cache_span) v = 0.0f;
-        }
-      }
-    } else {
-      prefill_input_buffers[input_name] = std::move(*input_buffer);
     }
   }
   for (auto output_name : prefill_signature->OutputNames()) {
@@ -911,7 +900,14 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
       // For CPU, we will use single buffer for kv cache input and output to
       // improve performance and memory usage.
     } else {
-      prefill_output_buffers[output_name] = std::move(*output_buffer);
+      // TODO b/444063139 - Support non-kv_cache tensors as prefill outputs.
+      // This should be done once we have a model that has non-kv_cache tensors
+      // as prefill outputs. It should be done in the same place as the prefill
+      // inputs are created.
+      return absl::UnimplementedError(absl::StrCat(
+          "Failed to create prefill output buffer for '", output_name,
+          "'. Only kv_cache tensors are supported as outputs to "
+          "prefill at the moment."));
     }
   }
 
@@ -967,8 +963,7 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
 
   return absl::WrapUnique(new LlmLiteRtCompiledModelExecutor(
       std::move(executor_settings), std::move(*lrt_env), litert_model,
-      std::move(*compiled_model), std::move(prefill_input_buffers),
-      std::move(prefill_output_buffers), std::move(decode_input_buffers),
+      std::move(*compiled_model), std::move(decode_input_buffers),
       std::move(decode_output_buffers), std::move(input_kv_cache_buffers),
       std::move(output_kv_cache_buffers), std::move(prefill_runner_set),
       signatures, batch_size, std::move(weight_cache_path),

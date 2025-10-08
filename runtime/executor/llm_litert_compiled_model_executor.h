@@ -112,10 +112,6 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
       const ::litert::Model* absl_nonnull model,
       ::litert::CompiledModel compiled_model,
       absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
-          prefill_input_buffers,
-      absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
-          prefill_output_buffers,
-      absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
           decode_input_buffers,
       absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
           decode_output_buffers,
@@ -133,8 +129,6 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
         env_(std::move(env)),
         model_(*model),
         compiled_model_(std::move(compiled_model)),
-        prefill_input_buffers_(std::move(prefill_input_buffers)),
-        prefill_output_buffers_(std::move(prefill_output_buffers)),
         decode_input_buffers_(std::move(decode_input_buffers)),
         decode_output_buffers_(std::move(decode_output_buffers)),
         kv_cache_buffers_1_(std::move(input_kv_cache_buffers)),
@@ -172,17 +166,16 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
   ::litert::Environment env_;
   const ::litert::Model& model_;
   ::litert::CompiledModel compiled_model_;
-  // The signatures in the set below have already had their buffers created and
-  // those buffers can be found in the prefill_input_buffers_ and
-  // prefill_output_buffers_.
+  // The prefill input buffers for each signature.
+  // The key is the prefill signature name, and the value is a map of input
+  // name to input buffer.
   //
   // Signature names are unique across all signatures in a model so it is safe
   // to refer to them by just their unique name.
-  absl::flat_hash_set<std::string> prefill_signatures_with_created_buffers_;
-  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
+  absl::flat_hash_map<std::string /*prefill_signature_name*/,
+                      absl::flat_hash_map<absl::string_view /*input_name*/,
+                                          ::litert::TensorBuffer>>
       prefill_input_buffers_;
-  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
-      prefill_output_buffers_;
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       decode_input_buffers_;
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
