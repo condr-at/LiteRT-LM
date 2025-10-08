@@ -36,6 +36,7 @@
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_expected.h"  // from @litert
+#include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_options.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
@@ -787,7 +788,10 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
         cpu_compilation_options->SetXNNPackWeightCachePath(
             weight_cache_path.c_str());
       }
+      LITERT_ASSIGN_OR_RETURN(const uint32_t default_xnnpack_flags,
+                              cpu_compilation_options->GetXNNPackFlags());
       cpu_compilation_options->SetXNNPackFlags(
+          default_xnnpack_flags |
           TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS |
           TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING);
       LITERT_ASSIGN_OR_RETURN_ABSL(RuntimeOptions runtime_options,

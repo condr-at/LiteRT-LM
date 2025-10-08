@@ -106,7 +106,7 @@ TEST(ConversationTest, SendMessage) {
   JsonMessage expected_message = {
       {"role", "assistant"},
       {"content",
-       {{{"type", "text"}, {"text", "TarefaměAPI什么是 دارای Venom"}}}}};
+       {{{"type", "text"}, {"text", "TarefaByte دارایेत्र investigaciónప్రదేశ"}}}}};
   const JsonMessage& json_message = std::get<JsonMessage>(message);
   EXPECT_EQ(json_message, expected_message);
 }
@@ -128,7 +128,7 @@ TEST(ConversationTest, SendMessageStream) {
   JsonMessage expected_message = {
       {"role", "assistant"},
       {"content",
-       {{{"type", "text"}, {"text", "TarefaměAPI什么是 دارای Venom"}}}}};
+       {{{"type", "text"}, {"text", "TarefaByte دارایेत्र investigaciónప్రదేశ"}}}}};
 
   EXPECT_OK(conversation->SendMessageStream(
       JsonMessage{{"role", "user"}, {"content", "Hello world!"}},
@@ -160,7 +160,8 @@ TEST(ConversationTest, SendMessageWithPreface) {
   JsonMessage expected_message = {
       {"role", "assistant"},
       {"content",
-       {{{"type", "text"}, {"text", " noses</caption> গ্রাহ링크</caption>"}}}}};
+       {{{"type", "text"},
+         {"text", " noses</caption> গ্রাহ<unused5297> omp"}}}}};
   const JsonMessage& json_message = std::get<JsonMessage>(message);
   EXPECT_EQ(json_message, expected_message);
 }

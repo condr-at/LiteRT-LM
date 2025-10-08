@@ -255,6 +255,7 @@ cc_library(
             "@litert//litert/cc:litert_compiled_model",
             "@litert//litert/cc:litert_environment",
             "@litert//litert/cc:litert_expected",
+            "@litert//litert/cc:litert_macros",
             "@litert//litert/cc:litert_model",
             "@litert//litert/cc:litert_options",
             "@litert//litert/cc:litert_tensor_buffer",
