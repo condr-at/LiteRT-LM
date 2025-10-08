@@ -102,19 +102,31 @@ absl::Status EngineSettings::MaybeUpdateAndValidate(
   // Convert the start/stop tokens from string to token ids.
   for (auto& stop_token : *metadata.mutable_stop_tokens()) {
     if (stop_token.has_token_str()) {
-      auto stop_token_ids = tokenizer.TextToTokenIds(stop_token.token_str());
-      if (stop_token_ids.ok()) {
-        stop_token.mutable_token_ids()->mutable_ids()->Add(
-            stop_token_ids->begin(), stop_token_ids->end());
+      auto stop_token_id = tokenizer.TokenToId(stop_token.token_str());
+      if (stop_token_id.ok()) {
+        stop_token.mutable_token_ids()->mutable_ids()->Add(*stop_token_id);
+      } else {
+        auto stop_token_ids = tokenizer.TextToTokenIds(stop_token.token_str());
+        if (stop_token_ids.ok()) {
+          stop_token.mutable_token_ids()->mutable_ids()->Add(
+              stop_token_ids->begin(), stop_token_ids->end());
+        }
       }
     }
   }
   if (metadata.start_token().has_token_str()) {
-    auto start_token_ids =
-        tokenizer.TextToTokenIds(metadata.start_token().token_str());
-    if (start_token_ids.ok()) {
+    auto start_token_id =
+        tokenizer.TokenToId(metadata.start_token().token_str());
+    if (start_token_id.ok()) {
       metadata.mutable_start_token()->mutable_token_ids()->mutable_ids()->Add(
-          start_token_ids->begin(), start_token_ids->end());
+          *start_token_id);
+    } else {
+      auto start_token_ids =
+          tokenizer.TextToTokenIds(metadata.start_token().token_str());
+      if (start_token_ids.ok()) {
+        metadata.mutable_start_token()->mutable_token_ids()->mutable_ids()->Add(
+            start_token_ids->begin(), start_token_ids->end());
+      }
     }
   }
 
