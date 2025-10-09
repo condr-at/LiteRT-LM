@@ -50,8 +50,8 @@ class EmbeddingLookupText : public EmbeddingLookup {
 
   // Creates a EmbeddingLookupText instance. The reference of |model| is kept
   // in the returned instance, so the caller must ensure that |model| outlives
-  // the returned instance.  If the model has more than one signature, the
-  // signature_key must be provided.
+  // the returned instance.  If the model has more than one signature, and
+  // signature_key is not provided, the first signature will be used by default.
   static absl::StatusOr<std::unique_ptr<EmbeddingLookupText>> Create(
       const litert::Model* absl_nonnull model,
       std::optional<std::string> signature_key = std::nullopt);
