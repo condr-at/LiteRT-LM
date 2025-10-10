@@ -163,6 +163,9 @@ cc_test(
 cc_library(
     name = "default_static_gpu_accelerator",
     deps = select({
+        "//conditions:default": [
+        ],
+    }) + select({
         "//conditions:default": [],
     }),
 )

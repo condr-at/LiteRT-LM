@@ -347,11 +347,13 @@ cc_library(
     }) + select({
         # If CAPI is linked dynamically, need to link the sampler dynamically as well.
         "@litert//litert:litert_link_capi_so": [],
+        "@platforms//os:android": [
+        ],
         "@platforms//os:ios": [],
-        "@platforms//os:macos": [],
-        "@platforms//os:windows": [],
         "//conditions:default": [
         ],
+    }) + select({
+        "//conditions:default": [],
     }),
 )
 
