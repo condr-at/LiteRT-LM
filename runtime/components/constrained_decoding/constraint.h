@@ -30,7 +30,10 @@ namespace litert::lm {
 class Constraint {
  public:
   // The state of the constraint.
-  class State {};
+  class State {
+   public:
+    virtual ~State() = default;
+  };
 
   virtual ~Constraint() = default;
 
