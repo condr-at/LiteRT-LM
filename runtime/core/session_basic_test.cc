@@ -25,8 +25,11 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/str_join.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/synchronization/notification.h"  // from @com_google_absl
 #include "absl/time/clock.h"  // from @com_google_absl
@@ -91,14 +94,86 @@ absl::StatusOr<std::unique_ptr<FakeLlmExecutor>> CreateFakeLlmExecutor(
   return std::move(fake_executor);
 }
 
+class ExtendedTokenizer : public Tokenizer {
+ public:
+  static absl::StatusOr<std::unique_ptr<ExtendedTokenizer>> CreateFromFile(
+      absl::string_view model_path) {
+    ASSIGN_OR_RETURN(auto tokenizer,
+                     SentencePieceTokenizer::CreateFromFile(model_path));
+    return absl::WrapUnique(new ExtendedTokenizer(std::move(tokenizer)));
+  }
+
+  void SetExtendedToken(int token_id, absl::string_view token_str) {
+    extended_tokens_to_id_[token_str] = token_id;
+    id_to_extended_tokens_[token_id] = token_str;
+  }
+
+  absl::StatusOr<std::vector<int>> TextToTokenIds(
+      absl::string_view text) override {
+    std::vector<int> token_ids;
+    bool is_extended_token_found = false;
+    do {
+      is_extended_token_found = false;
+      for (const auto& [extended_token_str, extended_token_id] :
+           extended_tokens_to_id_) {
+        auto extended_token_pos = text.find(extended_token_str);
+        if (extended_token_pos != std::string::npos) {
+          // The text before the extended token.
+          ASSIGN_OR_RETURN(
+              auto text_ids,
+              tokenizer_->TextToTokenIds(text.substr(0, extended_token_pos)));
+          token_ids.insert(token_ids.end(), text_ids.begin(), text_ids.end());
+          token_ids.push_back(extended_token_id);
+          text = text.substr(extended_token_pos + extended_token_str.size());
+          is_extended_token_found = true;
+        }
+      }
+    } while (is_extended_token_found);
+    if (!text.empty()) {
+      ASSIGN_OR_RETURN(auto text_ids, tokenizer_->TextToTokenIds(text));
+      token_ids.insert(token_ids.end(), text_ids.begin(), text_ids.end());
+    }
+    return token_ids;
+  }
+
+  absl::StatusOr<std::string> TokenIdsToText(
+      const std::vector<int>& token_ids) override {
+    std::vector<std::string> token_strs;
+    for (int token_id : token_ids) {
+      if (id_to_extended_tokens_.contains(token_id)) {
+        token_strs.push_back(id_to_extended_tokens_[token_id]);
+      } else {
+        token_strs.push_back(tokenizer_->TokenIdsToText({token_id}).value());
+      }
+    }
+    return absl::StrJoin(token_strs, "");
+  }
+
+  absl::StatusOr<int> TokenToId(absl::string_view token) override {
+    if (extended_tokens_to_id_.contains(token)) {
+      return extended_tokens_to_id_[token];
+    }
+    return tokenizer_->TokenToId(token);
+  }
+
+ private:
+  explicit ExtendedTokenizer(std::unique_ptr<SentencePieceTokenizer> tokenizer)
+      : tokenizer_(std::move(tokenizer)) {};
+
+  absl::flat_hash_map<int, std::string> id_to_extended_tokens_;
+  absl::flat_hash_map<std::string, int> extended_tokens_to_id_;
+  std::unique_ptr<SentencePieceTokenizer> tokenizer_;
+};
+
 class SessionBasicTest : public testing::Test {
  protected:
   void SetUp() override {
-    auto tokenizer = SentencePieceTokenizer::CreateFromFile(
+    auto tokenizer = ExtendedTokenizer::CreateFromFile(
         (std::filesystem::path(::testing::SrcDir()) /
          std::string(kTestdataDir) / "sentencepiece.model")
             .string());
     ASSERT_OK(tokenizer);
+    tokenizer.value()->SetExtendedToken(256000, "<start_of_audio>");
     tokenizer_ = std::move(*tokenizer);
     sampler_params_.set_type(proto::SamplerParameters::TYPE_UNSPECIFIED);
     // Creating the thread pool of a single thread to execute the works.
@@ -163,9 +238,10 @@ TEST_F(SessionBasicTest, RunPrefill) {
           // The prefill tokens are the expected tokens that will be passed in
           // at each time the Prefill function is called. The values are the
           // token ids of the input prompt "Hello World!".
-          // The decode tokens are the expected tokens that will be returned by
-          // the Decode function. The values are the token ids of the output
-          // response "How's it going?" followed by the stop token id (2294).
+          // The decode tokens are the expected tokens that will be returned
+          // by the Decode function. The values are the token ids of the
+          // output response "How's it going?" followed by the stop token id
+          // (2294).
           /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
           /*decode_tokens=*/{
               {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
@@ -881,8 +957,8 @@ TEST_F(SessionBasicTest, ApplyPromptTemplatesWithSingleImageInput) {
 
   // Single image input. Templates are applied to the first and
   // last chunks. In this case, the image input is both the first and last
-  // chunks, and the text chunks (templates) will be added before and after the
-  // image.
+  // chunks, and the text chunks (templates) will be added before and after
+  // the image.
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionBasic::Create(executor.get(), tokenizer_.get(),
@@ -1219,8 +1295,8 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsAudioSuccess) {
   ASSERT_OK_AND_ASSIGN(
       auto executor,
       CreateFakeLlmExecutor(
-          // "Hello World!"
-          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "Hello World!<start_of_audio>"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294, 256000}},
           // "How's it going?"
           /*decode_tokens=*/
           {{224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}},
@@ -1237,8 +1313,9 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsAudioSuccess) {
                         std::nullopt, worker_thread_pool_.get()));
 
   std::vector<InputData> preprocessed_contents;
-  ASSERT_OK_AND_ASSIGN(auto ids_buffer, tokenizer_->TokenIdsToTensorBuffer(
-                                            {90, 547, 58, 735, 210, 466}));
+  ASSERT_OK_AND_ASSIGN(
+      auto ids_buffer,
+      tokenizer_->TokenIdsToTensorBuffer({90, 547, 58, 735, 210, 466, 256000}));
   preprocessed_contents.emplace_back(InputText(std::move(ids_buffer)));
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer mel_spectrogram_data,
@@ -1288,7 +1365,7 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsTextAndAudioSuccess) {
   ASSERT_OK_AND_ASSIGN(
       auto executor,
       CreateFakeLlmExecutor(
-          // "User:Hello World!<audio_tokens>[END]Model:"
+          // "User:Hello World!<start_of_audio>[END]Model:"
           /*prefill_tokens=*/{{2,    423,  8,   179, 29,  207,  19,
                                547,  58,   735, 210, 466, 2294, 256000,
                                -2,   -2,   -2,  -2,  -2,  -4,   433,
@@ -1309,7 +1386,7 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsTextAndAudioSuccess) {
                         std::nullopt, worker_thread_pool_.get()));
 
   std::vector<InputData> inputs;
-  inputs.emplace_back(InputText("Hello World!"));
+  inputs.emplace_back(InputText("Hello World!<start_of_audio>"));
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer mel_spectrogram_data,
       CopyToTensorBuffer<float>(
@@ -1346,7 +1423,7 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsTextAudioTextSuccess) {
       auto executor,
       CreateFakeLlmExecutor(
           // clang-format off
-          // "User:Hello World!<audio_tokens>What does the audio say?[END]Model:" // NOLINT
+          // "User:Hello World!<start_of_audio>What does the audio say?[END]Model:" // NOLINT
           // clang-format on
           /*prefill_tokens=*/
           {{2,    423,  8,    179,    29,  207, 19,   547,  58, 735,
@@ -1371,7 +1448,7 @@ TEST_F(SessionBasicTest, ProcessAndCombineContentsTextAudioTextSuccess) {
                         std::nullopt, worker_thread_pool_.get()));
 
   std::vector<InputData> inputs;
-  inputs.emplace_back(InputText("Hello World!"));
+  inputs.emplace_back(InputText("Hello World!<start_of_audio>"));
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer mel_spectrogram_data,
       CopyToTensorBuffer<float>(

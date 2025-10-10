@@ -59,17 +59,6 @@
 namespace litert::lm {
 namespace {
 
-constexpr int kStartOfImageTokenId = 255999;
-constexpr int kStartOfAudioTokenId = 256000;
-
-bool IsNeedStartOfImageToken(Tokenizer& tokenizer) {
-  auto token_ids = tokenizer.TextToTokenIds("<start_of_image>");
-  if (!token_ids.ok()) {
-    return false;
-  }
-  return token_ids->size() == 1 && token_ids.value()[0] == kStartOfImageTokenId;
-}
-
 template <typename T>
 absl::StatusOr<T> CombineExecutorDataImpl(std::vector<T>& executor_data) {
   if (executor_data.empty()) {
@@ -263,13 +252,13 @@ absl::StatusOr<std::vector<InputData>> SessionBasic::ApplyPromptTemplates(
 
     if (raw_text.empty()) {
       // Non-text chunk. Add templates as separate InputText objects.
-      if (is_first_chunk) {
+      if (is_first_chunk && !turn_prefix.empty()) {
         templated_contents.push_back(InputText(std::move(turn_prefix)));
       }
       // TODO - b/445254659: Remove all actual copies.
       ASSIGN_OR_RETURN(auto content_copy, CreateInputDataCopy(content));
       templated_contents.emplace_back(std::move(content_copy));
-      if (is_last_chunk) {
+      if (is_last_chunk && !turn_suffix.empty()) {
         templated_contents.push_back(InputText(std::move(turn_suffix)));
       }
     } else {
@@ -324,15 +313,8 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
       const auto& dimensions = TensorBufferDims(*embeddings_ptr);
       // The last two dimensions are [..., image_token_num, model_dimension].
       const int image_token_num = dimensions.at(dimensions.size() - 2);
-      // TODO - b/444701465: Remove the hardcoded token id for start of image
-      // token.
-      if (IsNeedStartOfImageToken(tokenizer_)) {
-        // Hardcoded token id for start of image token.
-        combined_token_ids.push_back(kStartOfImageTokenId);
-      }
-      for (int i = 0; i < image_token_num; ++i) {
-        combined_token_ids.push_back(ExecutorVisionData::kSpecialToken);
-      }
+      combined_token_ids.insert(combined_token_ids.end(), image_token_num,
+                                ExecutorVisionData::kSpecialToken);
       all_image_data.push_back(std::move(single_image_data));
     } else if (const auto* input_audio =
                    std::get_if<InputAudio>(&preprocessed_content)) {
@@ -342,13 +324,8 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
                        audio_executor_->Encode(*spectrogram_tensor));
       const int num_audio_tokens = single_audio_data.GetValidTokens();
       all_audio_data.push_back(std::move(single_audio_data));
-      // Hardcoded token id for start of audio token.
-      // TODO - b/444701465: Remove the hardcoded token id for start of audio
-      // token.
-      combined_token_ids.push_back(kStartOfAudioTokenId);
-      for (int i = 0; i < num_audio_tokens; ++i) {
-        combined_token_ids.push_back(ExecutorAudioData::kSpecialToken);
-      }
+      combined_token_ids.insert(combined_token_ids.end(), num_audio_tokens,
+                                ExecutorAudioData::kSpecialToken);
       combined_token_ids.push_back(ExecutorAudioData::kEndToken);
     }
   }

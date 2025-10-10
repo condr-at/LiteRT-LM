@@ -101,11 +101,10 @@ void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* engine,
   const char* start = prompt_view.data();
   std::string part;
   while (RE2::FindAndConsume(&prompt_view, re_delimiter, &part)) {
-    absl::string_view text_part(start, prompt_view.data() - part.size());
+    absl::string_view text_part(start, prompt_view.data());
     if (!text_part.empty()) {
       inputs.push_back(InputText(std::string(text_part)));
     }
-    start = prompt_view.data();
     if (part == "<start_of_image>") {
       inputs.emplace_back(InputImage(*image_input_it));
       ++image_input_it;
@@ -113,6 +112,7 @@ void RunSingleTurn(const LiteRtLmSettings& settings, litert::lm::Engine* engine,
       inputs.emplace_back(InputAudio(*audio_input_it));
       ++audio_input_it;
     }
+    start = prompt_view.data();
   }
   if (!prompt_view.empty()) {
     inputs.push_back(InputText(std::string(prompt_view)));
