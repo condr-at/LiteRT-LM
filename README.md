@@ -166,11 +166,13 @@ Building on Windows requires several prerequisites to be installed first.
 
 #### Prerequisites
 
-1.  **Visual Studio 2022** - Install from Microsoft Store to get the MSVC
-    toolchain.
+1.  **Visual Studio 2022** - Download from
+https://visualstudio.microsoft.com/downloads/ and install. Make sure it install
+the MSVC toolchain for all users, usually under this directory C:\Program Files.
 2.  **Git for Windows** - Install from https://git-scm.com/download/win
     (includes Git Bash needed for flatbuffer generation scripts).
-3.  **Python 3.11** - Install from Microsoft Store for Python dependencies.
+3.  **Python 3.13** - Download from https://www.python.org/downloads/ and
+install for all users.
 4.  **Bazel** - Install using Windows Package Manager (winget): `powershell
     winget install --id=Bazel.Bazelisk -e`.
 5.  Download the `.litertlm` model from the
