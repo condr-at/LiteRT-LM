@@ -19,6 +19,7 @@
 #include <filesystem>  // NOLINT: Required for path manipulation.
 #include <fstream>
 #include <ios>
+#include <istream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -150,6 +151,43 @@ TEST(LiteRTLMSectionTest, TestProtoSectionStream) {
     EXPECT_EQ(metadata.stop_tokens(i).token_str(),
               params_read_back.stop_tokens(i).token_str());
   }
+}
+
+TEST(LiteRTLMSectionTest, TestStringBackedSectionStream) {
+  using litert::lm::schema::StringBackedSectionStream;
+
+  // Use a string with embedded nulls to ensure it handles binary data
+  // correctly.
+  const std::string original_data("Test\0Binary\0Data", 16);
+
+  // Use the SectionStream interface.
+  StringBackedSectionStream stream(original_data);
+
+  // Prepare the stream for reading.
+  absl::Status result = stream.Prepare();
+  EXPECT_TRUE(result.ok());
+
+  // Get the stream's properties.
+  const size_t stream_size = stream.BufferSize();
+  std::istream& data_stream = stream.GetStream();
+
+  // The reported buffer size should match the original data's size.
+  EXPECT_EQ(stream_size, original_data.size());
+
+  // Read the entire contents of the stream back into a new string.
+  std::stringstream buffer;
+  buffer << data_stream.rdbuf();
+  const std::string data_read_back = buffer.str();
+
+  // Compare the data that was read from the stream to the original data.
+  // They must be identical in both size and content.
+  EXPECT_EQ(data_read_back.size(), original_data.size());
+  EXPECT_EQ(data_read_back, original_data);
+
+  // Finally, test that the stream can be finalized correctly.
+  result = stream.Finalize();
+  EXPECT_TRUE(result.ok());
+  EXPECT_FALSE(stream.IsReady());
 }
 
 }  // namespace

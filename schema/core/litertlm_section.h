@@ -344,6 +344,63 @@ class ZlibBackendedSectionStream : public SectionStreamBase {
   bool is_ready_ = false;
 };
 
+// String-backed section stream class. This class is useful when a section of
+// data is represented as a pure string in memory. Instead of writing this
+// object to a file and then reading it back, this class allows to serialize
+// the string directly into a stream, which can then be used by the
+// writer.
+class StringBackedSectionStream : public SectionStreamBase {
+ public:
+  // Constructor takes a std::string by value to allow for efficient moving.
+  explicit StringBackedSectionStream(std::string data)
+      : data_(std::move(data)), buffer_size_(0), is_ready_(false) {}
+
+  ~StringBackedSectionStream() override = default;
+
+  // Prepare: Copies the stored string into the internal stringstream.
+  absl::Status Prepare() override {
+    if (is_ready_) {
+      return absl::OkStatus();
+    }
+
+    // Set the internal stream's content to our stored string data.
+    stream_.str(data_);
+    buffer_size_ = data_.size();
+
+    // The data has been copied into the stream's internal buffer,
+    // so we can release the memory from our copy.
+    data_.clear();
+    data_.shrink_to_fit();
+
+    is_ready_ = true;
+    return absl::OkStatus();
+  }
+
+  // GetStream: Returns a reference to the internal stringstream.
+  std::istream& GetStream() override { return stream_; }
+
+  bool IsReady() const override { return is_ready_; }
+
+  size_t BufferSize() const override { return buffer_size_; }
+
+  absl::Status Finalize() override {
+    // Clear the stringstream's buffer and reset its state.
+    stream_.str(std::string());
+    stream_.clear();
+    buffer_size_ = 0;
+    is_ready_ = false;
+    return absl::OkStatus();
+  }
+
+ private:
+  // Temporarily holds the data until Prepare() is called.
+  std::string data_;
+  // The stream that will be provided to the consumer.
+  std::stringstream stream_;
+  size_t buffer_size_;
+  bool is_ready_;
+};
+
 }  // end namespace schema
 }  // end namespace lm
 }  // end namespace litert
