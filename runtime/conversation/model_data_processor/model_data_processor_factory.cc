@@ -18,6 +18,7 @@
 #include <optional>
 #include <variant>
 
+#include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/conversation/io_types.h"
@@ -37,12 +38,16 @@ absl::StatusOr<std::unique_ptr<ModelDataProcessor>> CreateModelDataProcessor(
   switch (model_type.model_type_case()) {
     case proto::LlmModelType::kGemma3N:
     case proto::LlmModelType::kGemma3:
+      ABSL_LOG(INFO) << "Creating Gemma3DataProcessor for model type: "
+                     << model_type.model_type_case();
       return Gemma3DataProcessor::Create(
           std::holds_alternative<Gemma3DataProcessorConfig>(config)
               ? std::get<Gemma3DataProcessorConfig>(config)
               : Gemma3DataProcessorConfig(),
           preface);
     case proto::LlmModelType::kGenericModel: {
+      ABSL_LOG(INFO) << "Creating GenericDataProcessor for model type: "
+                     << model_type.model_type_case();
       if (std::holds_alternative<GenericDataProcessorConfig>(config)) {
         return GenericDataProcessor::Create(
             std::holds_alternative<GenericDataProcessorConfig>(config)
