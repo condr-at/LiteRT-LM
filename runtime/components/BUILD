@@ -566,3 +566,42 @@ cc_test(
         "//runtime/util:test_utils",
     ],
 )
+
+cc_library(
+    name = "lora_manager",
+    srcs = ["lora_manager.cc"],
+    hdrs = ["lora_manager.h"],
+    deps = [
+        ":lora",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@litert//litert/cc:litert_compiled_model",
+        "@litert//litert/cc:litert_model",
+        "@litert//litert/cc:litert_tensor_buffer",
+        "//runtime/executor:executor_settings_base",
+        "//runtime/util:litert_status_util",
+        "//runtime/util:lora_data",
+    ],
+)
+
+cc_test(
+    name = "lora_manager_test",
+    srcs = ["lora_manager_test.cc"],
+    data = ["//runtime/testdata"],
+    deps = [
+        ":lora_manager",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "@litert//litert/c:litert_common",
+        "@litert//litert/cc:litert_compiled_model",
+        "@litert//litert/cc:litert_environment",
+        "@litert//litert/cc:litert_model",
+        "@litert//litert/cc:litert_options",
+        "@litert//litert/cc:litert_tensor_buffer",
+        "@litert//litert/test:matchers",
+        "//runtime/executor:executor_settings_base",
+        "//runtime/util:test_utils",
+    ],
+)
