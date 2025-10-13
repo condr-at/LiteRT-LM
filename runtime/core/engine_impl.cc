@@ -131,6 +131,10 @@ class EngineImpl : public Engine {
     return worker_thread_pool_->WaitUntilDone(timeout);
   }
 
+  const EngineSettings& GetEngineSettings() const override {
+    return engine_settings_;
+  }
+
  private:
   // Stored engine settings.
   EngineSettings engine_settings_;

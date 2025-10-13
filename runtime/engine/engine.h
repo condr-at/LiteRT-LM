@@ -184,6 +184,9 @@ class Engine {
     return absl::UnimplementedError("Not implemented.");
   }
 
+  // Returns the EngineSettings currently used by the engine.
+  virtual const EngineSettings& GetEngineSettings() const = 0;
+
   // Default timeout duration for the engine/session processes.
   static constexpr absl::Duration kDefaultTimeout = absl::Minutes(10);
 };
