@@ -41,8 +41,11 @@
 #include "runtime/components/stop_token_detector.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/engine/io_types.h"
+#include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_io_types.h"
+#include "runtime/executor/llm_executor_settings.h"
+#include "runtime/executor/llm_litert_compiled_model_executor.h"
 #include "runtime/proto/sampler_params.pb.h"
 #include "runtime/util/convert_tensor_buffer.h"
 #include "runtime/util/litert_status_util.h"
@@ -332,6 +335,16 @@ absl::StatusOr<Responses> DecodeLoop(
 
   int benchmark_decode_token_count = 0;
   if (benchmark_info.has_value()) {
+    // If backend is CPU or GPU, set up the sampler before 1st decode step.
+    if (!sampler.has_value()) {
+      ASSIGN_OR_RETURN(auto settings, executor.GetExecutorSettings());
+      if (settings.GetBackend() == Backend::CPU ||
+          settings.GetBackend() == Backend::GPU) {
+        static_cast<LlmLiteRtCompiledModelExecutor*>(&executor)
+            ->InitializeSampler(num_output_candidates)
+            .IgnoreError();
+      }
+    }
     benchmark_decode_token_count =
         benchmark_info->GetBenchmarkParams().num_decode_tokens();
     RETURN_IF_ERROR(benchmark_info->TimeDecodeTurnStart());

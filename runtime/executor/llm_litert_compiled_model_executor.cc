@@ -672,28 +672,33 @@ LlmLiteRtCompiledModelExecutor::DecodeLogits(const ExecutorInputs& inputs) {
   return output_logits;
 }
 
+absl::Status LlmLiteRtCompiledModelExecutor::InitializeSampler(int batch_size) {
+  if (sampler_ != nullptr) {
+    return absl::OkStatus();
+  }
+
+  ASSIGN_OR_RETURN(auto vocab_size, GetVocabSize());
+  ASSIGN_OR_RETURN(auto sampler_backend, GetSamplerBackend(executor_settings_));
+  proto::SamplerParameters sampler_params;
+  sampler_params.set_type(proto::SamplerParameters::TOP_P);
+  sampler_params.set_k(1);
+  sampler_params.set_p(0.0f);
+  sampler_params.set_temperature(1.0f);
+  sampler_params.set_seed(0);
+  ASSIGN_OR_RETURN(
+      sampler_,
+      CreateSampler(sampler_backend, batch_size, std::move(sampler_params),
+                    env_.Get(), vocab_size, logits_data_type_));
+  return absl::OkStatus();
+}
+
 absl::Status LlmLiteRtCompiledModelExecutor::SampleLogits(
     const TensorBuffer& logits, TensorBuffer& ids_tensor) {
-  ASSIGN_OR_RETURN(auto vocab_size, GetVocabSize());
-
   if (sampler_ == nullptr) {
-    ASSIGN_OR_RETURN(auto sampler_backend,
-                     GetSamplerBackend(executor_settings_));
     LITERT_ASSIGN_OR_RETURN(auto decoded_logits_tensor_type,
                             logits.TensorType());
-    proto::SamplerParameters sampler_params;
-    sampler_params.set_type(proto::SamplerParameters::TOP_P);
-    sampler_params.set_k(1);
-    sampler_params.set_p(0.0f);
-    sampler_params.set_temperature(1.0f);
-    sampler_params.set_seed(0);
-    ASSIGN_OR_RETURN(
-        sampler_,
-        CreateSampler(
-            sampler_backend,
-            /*batch_size=*/decoded_logits_tensor_type.Layout().Dimensions()[0],
-            std::move(sampler_params), env_.Get(), vocab_size,
-            logits_data_type_));
+    RETURN_IF_ERROR(InitializeSampler(
+        /*batch_size=*/decoded_logits_tensor_type.Layout().Dimensions()[0]));
   }
 
   RETURN_IF_ERROR(sampler_->SampleToIdAndScoreBuffer(

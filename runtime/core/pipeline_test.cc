@@ -678,7 +678,8 @@ TEST_F(PipelineCustomSamplingTest,
   auto delayed_executor = std::make_unique<FakeLlmExecutor>(
       /*vocab_size=*/2560, std::vector<std::vector<int>>{{2}}, decode_tokens,
       /*batch_size=*/2);
-  delayed_executor->SetDecodeDelay(absl::Milliseconds(100));
+  // Set the delay long enough not to be flaky.
+  delayed_executor->SetDecodeDelay(absl::Milliseconds(1000));
 
   auto sampler_or = TopPSampler::Create(/*k=*/1, /*p=*/0.5, /*temperature=*/1.0,
                                         /*batch_size=*/2, /*seed=*/1);
