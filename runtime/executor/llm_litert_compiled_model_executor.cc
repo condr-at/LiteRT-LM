@@ -776,7 +776,7 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
       // Use NoExternalTensorsMode to get better performance.
       bool external_tensor_mode =
           executor_settings.GetBackendConfig<GpuConfig>()->external_tensor_mode;
-      gpu_compilation_options.EnableNoExternalTensorsMode(!external_tensor_mode);
+      gpu_compilation_options.EnableExternalTensorsMode(external_tensor_mode);
       if (!external_tensor_mode) {
         // This option prevents KVCache handling from being affected by
         // BHWC conversion in NoExternalTensorsMode.
