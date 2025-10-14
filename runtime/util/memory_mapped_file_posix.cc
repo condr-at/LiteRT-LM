@@ -121,7 +121,12 @@ absl::StatusOr<std::unique_ptr<MemoryMappedFile>> MemoryMappedFile::Create(
 #endif
   RET_CHECK_NE(data, MAP_FAILED) << "Failed to map, error: " << strerror(errno);
   RET_CHECK_NE(data, nullptr) << "Failed to map.";
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+  // Mark it not needed to avoid unnecessary page loading on MacOS.
+  RET_CHECK_EQ(madvise(data, length, MADV_DONTNEED), 0) << "madvise failed.";
+#else
   RET_CHECK_EQ(madvise(data, length, MADV_WILLNEED), 0) << "madvise failed.";
+#endif
 
   return std::make_unique<MemoryMappedFilePosix>(length, data);
 }
