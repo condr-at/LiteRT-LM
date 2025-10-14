@@ -106,10 +106,6 @@ ABSL_FLAG(int, num_logits_to_print_after_decode, 0,
           "logits, and at the end of logits to print after each decode step. "
           "If 0, disables printing logits.");
 ABSL_FLAG(std::string, score_target_text, "", "Target text to score.");
-ABSL_FLAG(std::optional<std::vector<std::string>>, image_files, std::nullopt,
-          "The path to the image files that to be used for vision modality.");
-ABSL_FLAG(std::optional<std::vector<std::string>>, audio_files, std::nullopt,
-          "The path to the audio files that to be used for audio modality.");
 ABSL_FLAG(bool, gpu_madvise_original_shared_tensors, true,
           "If true, the GPU backend will madvise the original shared tensors "
           "after use.");
@@ -166,8 +162,6 @@ absl::Status MainHelper(int argc, char** argv) {
            "[--max_num_tokens=<max_num_tokens>] "
            "[--prefill_batch_sizes=<size1>[,<size2>,...]]"
            "[--vision_backend=<cpu|gpu>] [--audio_backend=<cpu|gpu>] "
-           "[--image_files=<image_path1>,<image_path2>,...] "
-           "[--audio_files=<audio_path1>,<audio_path2>,...] "
            "[--sampler_backend=<cpu|gpu>] [--benchmark] "
            "[--benchmark_prefill_tokens=<num_prefill_tokens>] "
            "[--benchmark_decode_tokens=<num_decode_tokens>] "
@@ -181,6 +175,11 @@ absl::Status MainHelper(int argc, char** argv) {
            "[--num_logits_to_print_after_decode=<num_logits_to_print>]"
            "[--score_target_text=<target_text>]"
            "[--gpu_madvise_original_shared_tensors=<true|false>]";
+    ABSL_LOG(INFO)
+        << "To provide data for multimodality, use [image:/path/to/image.jpg] "
+           "or [audio:/path/to/audio.wav] in the input prompt. e.g. \"Describe "
+           "the image: [image:/path/to/image.jpg]\", or \"Transcribe the audio "
+           "[audio:/path/to/audio.wav]\"";
     return absl::InvalidArgumentError("No arguments provided.");
   }
 
@@ -196,8 +195,6 @@ absl::Status MainHelper(int argc, char** argv) {
   ASSIGN_OR_RETURN(
       settings.prefill_batch_sizes,
       ParsePrefillBatchSizes(absl::GetFlag(FLAGS_prefill_batch_sizes)));
-  settings.image_files = absl::GetFlag(FLAGS_image_files);
-  settings.audio_files = absl::GetFlag(FLAGS_audio_files);
   settings.benchmark = absl::GetFlag(FLAGS_benchmark);
   settings.benchmark_prefill_tokens =
       absl::GetFlag(FLAGS_benchmark_prefill_tokens);

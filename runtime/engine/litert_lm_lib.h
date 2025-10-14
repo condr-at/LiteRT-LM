@@ -34,8 +34,6 @@ struct LiteRtLmSettings {
   std::string input_prompt = "What is the tallest building in the world?";
   int max_num_tokens = 0;
   std::set<int> prefill_batch_sizes;
-  std::optional<std::vector<std::string>> image_files = std::nullopt;
-  std::optional<std::vector<std::string>> audio_files = std::nullopt;
   bool benchmark = false;
   int benchmark_prefill_tokens = 0;
   int benchmark_decode_tokens = 0;
