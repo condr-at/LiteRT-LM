@@ -16,6 +16,7 @@
 
 #include <cstdlib>
 #include <filesystem>  // NOLINT: Required for path manipulation.
+#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -94,6 +95,43 @@ TEST(LlmLiteRTCompiledModelExecutorTest, CreateExecutorTest_WithCache) {
   auto executor_settings =
       LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
   executor_settings->SetCacheDir(cache_path.string());
+  executor_settings->SetMaxNumTokens(kMaxNumTokens);
+  ::litert::lm::CpuConfig config;
+  config.number_of_threads = kNumThreads;
+  executor_settings->SetBackendConfig(config);
+  auto executor = LlmLiteRtCompiledModelExecutor::Create(*executor_settings,
+                                                         *model_resources);
+  ASSERT_OK(executor);
+  ASSERT_NE(*executor, nullptr);
+}
+
+TEST(LlmLiteRTCompiledModelExecutorTest,
+     CreateExecutorTest_WithFileDescriptorCache) {
+  auto cache_path = std::filesystem::path(::testing::TempDir()) /
+                    absl::StrCat("cache-", std::rand(), ".cache");
+  std::filesystem::remove_all(cache_path);
+  {
+    // Create an empty file - ScopedFile expects the file to exist.
+    std::ofstream cache_file(cache_path.string());
+  }
+  absl::Cleanup remove_cache = [cache_path] {
+    std::filesystem::remove_all(cache_path);
+  };
+  ASSERT_OK_AND_ASSIGN(auto scoped_cache_file,
+                       ScopedFile::OpenWritable(cache_path.string()));
+  auto shared_scoped_cache_file =
+      std::make_shared<ScopedFile>(std::move(scoped_cache_file));
+
+  auto model_path =
+      std::filesystem::path(::testing::SrcDir()) /
+      "litert_lm/runtime/testdata/test_lm.task";
+  ASSERT_OK_AND_ASSIGN(auto model_resources,
+                       CreateExecutorModelResources(model_path.string()));
+  auto model_assets = ModelAssets::Create(model_path.string());
+  ASSERT_OK(model_assets);
+  auto executor_settings =
+      LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
+  executor_settings->SetScopedCacheFile(shared_scoped_cache_file);
   executor_settings->SetMaxNumTokens(kMaxNumTokens);
   ::litert::lm::CpuConfig config;
   config.number_of_threads = kNumThreads;
