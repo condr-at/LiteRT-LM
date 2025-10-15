@@ -181,6 +181,9 @@ class ProcessedTokens {
     return tokens_;
   }
 
+  // Invalidates the pending input token, if any.
+  void InvalidatePendingInputToken() { pending_input_token_ = nullptr; }
+
  private:
   std::vector<int> tokens_;
 

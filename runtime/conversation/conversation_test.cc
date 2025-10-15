@@ -94,6 +94,8 @@ TEST(ConversationTest, SendMessage) {
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  auto session_config = SessionConfig::CreateDefault();
+  session_config.GetMutablePromptTemplates().mutable_user()->set_prefix("");
   ASSERT_OK_AND_ASSIGN(auto session,
                        engine->CreateSession(SessionConfig::CreateDefault()));
 
@@ -108,7 +110,8 @@ TEST(ConversationTest, SendMessage) {
   JsonMessage expected_message = {
       {"role", "assistant"},
       {"content",
-       {{{"type", "text"}, {"text", "TarefaByte دارایेत्र investigaciónప్రదేశ"}}}}};
+       {{{"type", "text"},
+         {"text", "TarefaByte دارایेत्र investigaciónప్రదేశসাইন"}}}}};
   const JsonMessage& json_message = std::get<JsonMessage>(message);
   EXPECT_EQ(json_message, expected_message);
   EXPECT_THAT(conversation->GetHistory(),
@@ -123,8 +126,9 @@ TEST(ConversationTest, SendMessageStream) {
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
-  ASSERT_OK_AND_ASSIGN(auto session,
-                       engine->CreateSession(SessionConfig::CreateDefault()));
+  auto session_config = SessionConfig::CreateDefault();
+  session_config.GetMutablePromptTemplates().mutable_user()->set_prefix("");
+  ASSERT_OK_AND_ASSIGN(auto session, engine->CreateSession(session_config));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(std::move(session)));
 
@@ -134,7 +138,8 @@ TEST(ConversationTest, SendMessageStream) {
   JsonMessage expected_message = {
       {"role", "assistant"},
       {"content",
-       {{{"type", "text"}, {"text", "TarefaByte دارایेत्र investigaciónప్రదేశ"}}}}};
+       {{{"type", "text"},
+         {"text", "TarefaByte دارایेत्र investigaciónప్రదేశসাইন"}}}}};
 
   EXPECT_OK(conversation->SendMessageStream(
       user_message, std::make_unique<TestMessageCallbacks>(expected_message)));
@@ -152,8 +157,9 @@ TEST(ConversationTest, SendMessageWithPreface) {
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(15);
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
-  ASSERT_OK_AND_ASSIGN(auto session,
-                       engine->CreateSession(SessionConfig::CreateDefault()));
+  auto session_config = SessionConfig::CreateDefault();
+  session_config.GetMutablePromptTemplates().mutable_user()->set_prefix("");
+  ASSERT_OK_AND_ASSIGN(auto session, engine->CreateSession(session_config));
   Preface preface =
       JsonPreface{.messages = {{{"role", "system"},
                                 {"content", "You are a helpful assistant."}}}};
@@ -168,7 +174,7 @@ TEST(ConversationTest, SendMessageWithPreface) {
       {"role", "assistant"},
       {"content",
        {{{"type", "text"},
-         {"text", " noses</caption> গ্রাহ<unused5297> omp"}}}}};
+         {"text", " noses</caption> গ্রাহ<unused5297> ompWr"}}}}};
   const JsonMessage& json_message = std::get<JsonMessage>(message);
   EXPECT_EQ(json_message, expected_message);
 }
@@ -251,8 +257,9 @@ TEST_P(ConversationCancellationTest, CancelProcessWithBenchmarkInfo) {
     engine_settings.GetMutableBenchmarkParams() = benchmark_params;
   }
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
-  ASSERT_OK_AND_ASSIGN(auto session,
-                       engine->CreateSession(SessionConfig::CreateDefault()));
+  auto session_config = SessionConfig::CreateDefault();
+  session_config.GetMutablePromptTemplates().mutable_user()->set_prefix("");
+  ASSERT_OK_AND_ASSIGN(auto session, engine->CreateSession(session_config));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(std::move(session)));
 

@@ -16,7 +16,6 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_EXECUTOR_LLM_LITERT_COMPILED_MODEL_EXECUTOR_H_
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +38,7 @@
 #include "runtime/executor/litert_compiled_model_executor_utils.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_io_types.h"
+#include "runtime/executor/llm_executor_processed_tokens.h"
 #include "runtime/executor/llm_executor_settings.h"
 
 namespace litert::lm {
@@ -85,6 +85,9 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
   absl::StatusOr<::litert::TensorBuffer> DecodeLogits(
       const ExecutorInputs& inputs) override;
 
+  absl::StatusOr<::litert::TensorBuffer> DecodeLogits(
+      const ExecutorInputs& inputs, const ExecutorDecodeParams& decode_params);
+
   absl::string_view ExecutorBackendName() const override {
     return "LiteRT Compiled Model";
   }
@@ -99,7 +102,7 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
   // users prefill 100 tokens, then they expect the current step to be 100). It
   // is different from the internal current step.
   absl::StatusOr<int> GetCurrentStep() const override {
-    return current_step_ + (next_input_token_id_.has_value() ? 0 : 1);
+    return processed_tokens_.TokenCount();
   }
 
   // Resets all of the internal states.
@@ -159,14 +162,32 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
   absl::Status PrefillInternal(absl::string_view prefill_signature,
                                absl::Span<const int> ids);
 
-  // Decode internal implementation, without result downloading.
-  // Caller of this function is responsible for capturing the output.
-  absl::Status DecodeInternal(ExecutorInputs inputs);
+  // Decode internal implementation. Uses the specified 'token' as the input
+  // token and uses the specified 'step' as the current time step.  The
+  // logits from the decode step are stored in the 'logits' output buffer of
+  // the transformer model when this function returns absl::OkStatus().
+  absl::Status DecodeInternal(int step, std::shared_ptr<TokenData> token,
+                              TensorBuffer& output_logits);
 
   // Create Prefill input buffers for a given signature.
   absl::Status CreatePrefillInputBuffers(absl::string_view prefill_signature);
 
-  absl::StatusOr<int> GetIdToDecode(const ExecutorInputs& inputs);
+  // Fills the input buffer from the unprocessed token.
+  absl::Status FillInputBufferWithToken(
+      std::shared_ptr<TokenData> unprocessed_token,
+      ::litert::TensorBuffer& input_buffer,
+      bool is_per_layer_embedding = false);
+
+  // Gets the token to decode. If there is id provided in the inputs, it will be
+  // returned as the token to decode. Otherwise, the next unprocessed token will
+  // be returned.
+  absl::StatusOr<ProcessedTokens::StepAndToken> GetTokenToDecode(
+      const ExecutorInputs& inputs);
+
+  // Mark the pending token as processed if there is one, or adds the token as a
+  // processed token.
+  absl::Status ConsumePendingOrAddProcessedToken(
+      std::shared_ptr<TokenData> token);
 
   LlmExecutorSettings executor_settings_;
   ::litert::Environment env_;
@@ -215,13 +236,9 @@ class LlmLiteRtCompiledModelExecutor : public LlmExecutor {
   // Internal timestep.
   int current_step_ = 0;
 
-  // TODO: b/404625243 - To be implemented.
-  // The processed tokens.
-  std::vector<int> processed_tokens_;
-
-  // The token served as the first input token to the model for next Prefill or
-  // Decode.
-  std::optional<int> next_input_token_id_ = std::nullopt;
+  // Keeps track of processed tokens during the LLM execution. This also keeps
+  // track of the pending input token, if any.
+  ProcessedTokens processed_tokens_;
 
   // A tensor buffer to store the logits decoded before sampling the final
   // tokens. It's to avoid creating a new tensor buffer for each Decode() call.
