@@ -20,6 +20,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"  // from @com_google_absl
@@ -55,6 +56,7 @@
 #include "runtime/util/convert_tensor_buffer.h"
 #include "runtime/util/file_util.h"
 #include "runtime/util/litert_status_util.h"
+#include "runtime/util/scoped_file.h"
 #include "runtime/util/status_macros.h"  // IWYU pragma: keep
 #include "tflite/delegates/xnnpack/xnnpack_delegate.h"  // from @litert
 
@@ -845,17 +847,20 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
       const uint32_t num_threads =
           executor_settings.GetBackendConfig<CpuConfig>()->number_of_threads;
       cpu_compilation_options->SetNumThreads(num_threads);
-      if (weight_cache_path != ":nocache") {
-        ASSIGN_OR_RETURN(auto model_path,
-                         executor_settings.GetModelAssets().GetPath());
-        if (weight_cache_path.empty()) {
-          weight_cache_path = absl::StrCat(model_path, ".xnnpack_cache");
+      auto weight_cache_file =
+          executor_settings.GetWeightCacheFile(".xnnpack_cache");
+      if (weight_cache_file.ok()) {
+        if (std::holds_alternative<std::string>(*weight_cache_file)) {
+          weight_cache_path = std::get<std::string>(*weight_cache_file);
+          cpu_compilation_options->SetXNNPackWeightCachePath(
+              weight_cache_path.c_str());
         } else {
-          ASSIGN_OR_RETURN(weight_cache_path,
-                           JoinPath(weight_cache_path, Basename(model_path)));
+          auto scoped_cache_file =
+              std::get<std::shared_ptr<ScopedFile>>(*weight_cache_file);
+          ASSIGN_OR_RETURN(auto duplicated, scoped_cache_file->Duplicate());
+          ASSIGN_OR_RETURN(int fd, duplicated.Release());
+          cpu_compilation_options->SetXNNPackWeightCacheFileDescriptor(fd);
         }
-        cpu_compilation_options->SetXNNPackWeightCachePath(
-            weight_cache_path.c_str());
       }
       LITERT_ASSIGN_OR_RETURN(const uint32_t default_xnnpack_flags,
                               cpu_compilation_options->GetXNNPackFlags());

@@ -226,6 +226,7 @@ cc_library(
         ":llm_executor_io_types",
         ":llm_executor_processed_tokens",
         ":llm_executor_settings",
+        ":llm_litert_compiled_model_cache_utils",
         ":magic_number_configs_helper",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -245,6 +246,7 @@ cc_library(
         "//runtime/util:convert_tensor_buffer",
         "//runtime/util:file_util",
         "//runtime/util:litert_status_util",
+        "//runtime/util:scoped_file",
         "@litert//tflite/delegates/xnnpack:xnnpack_delegate",
     ] + select({
         "@litert//litert:litert_link_capi_so": [
