@@ -346,7 +346,6 @@ TEST_F(PipelineTest, DecodeStopTokenIsPartialBytePairEncodingTokens) {
 
   // No need to call the tokenizer again as the stop token is encoded as a
   // partial byte pair encoding token.
-  ON_CALL(*tokenizer, TokenIdsToText(std::vector<int>{224, 24, 8}));
 
   std::optional<BenchmarkInfo> benchmark_info;
   StopTokenDetector stop_token_detector(1);
