@@ -250,7 +250,8 @@ functionality, parameters (including their types and descriptions from
 The types for parameters annotated with `@ToolParam` can be `String`, `Int`,
 `Boolean`, `Float`, `Double`, or a `List` of these types (e.g., `List<String>`).
 Use nullable types (e.g., `String?`) to indicate nullable parameters. Set a
-default value to indicate that the parameters is optional.
+default value to indicate that the parameters is optional, and mention the
+default value in the description in `@ToolParam`.
 
 ##### Return Type
 

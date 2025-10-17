@@ -82,13 +82,13 @@ internal class Tooling(val instance: Any, val kFunction: kotlin.reflect.KFunctio
    * Executes the tool function with the given parameters.
    *
    * @param params A JSONObject containing the parameter names and their values.
-   * @return The result of the tool function execution as a Any?.
+   * @return The result of the tool function execution as a Any?.\
    * @throws IllegalArgumentException if any required parameters are missing.
    */
   fun execute(params: JSONObject): Any? {
     val args =
       kFunction.parameters
-        .map { param ->
+        .associateWith { param ->
           when {
             param.index == 0 -> instance // First parameter is the instance
             param.name != null && params.has(param.name) -> {
@@ -99,8 +99,9 @@ internal class Tooling(val instance: Any, val kFunction: kotlin.reflect.KFunctio
             else -> throw IllegalArgumentException("Missing parameter: ${param.name}")
           }
         }
-        .toTypedArray()
-    return kFunction.call(*args)
+        .filterValues { it != null }
+
+    return kFunction.callBy(args)
   }
 
   /**
