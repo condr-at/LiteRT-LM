@@ -28,6 +28,8 @@
 #include "runtime/conversation/model_data_processor/generic_data_processor.h"
 #include "runtime/conversation/model_data_processor/generic_data_processor_config.h"
 #include "runtime/conversation/model_data_processor/model_data_processor.h"
+#include "runtime/conversation/model_data_processor/qwen3_data_processor.h"
+#include "runtime/conversation/model_data_processor/qwen3_data_processor_config.h"
 #include "runtime/proto/llm_model_type.pb.h"
 
 namespace litert::lm {
@@ -45,6 +47,13 @@ absl::StatusOr<std::unique_ptr<ModelDataProcessor>> CreateModelDataProcessor(
               ? std::get<Gemma3DataProcessorConfig>(config)
               : Gemma3DataProcessorConfig(),
           preface);
+    case proto::LlmModelType::kQwen3:
+      ABSL_LOG(INFO) << "Creating Qwen3DataProcessor for model type: "
+                     << model_type.model_type_case();
+      return Qwen3DataProcessor::Create(
+          std::holds_alternative<Qwen3DataProcessorConfig>(config)
+              ? std::get<Qwen3DataProcessorConfig>(config)
+              : Qwen3DataProcessorConfig());
     case proto::LlmModelType::kGenericModel: {
       ABSL_LOG(INFO) << "Creating GenericDataProcessor for model type: "
                      << model_type.model_type_case();
@@ -69,6 +78,8 @@ DataProcessorConfig GetDefaultDataProcessorConfig(
     case proto::LlmModelType::kGemma3N:
     case proto::LlmModelType::kGemma3:
       return Gemma3DataProcessorConfig();
+    case proto::LlmModelType::kQwen3:
+      return Qwen3DataProcessorConfig();
     case proto::LlmModelType::kGenericModel:
       return GenericDataProcessorConfig();
     default:
