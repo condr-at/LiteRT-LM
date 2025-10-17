@@ -121,6 +121,8 @@ build --incompatible_enforce_config_setting_visibility
 # Disable Hermetic CC toolchains
 build --@rules_ml_toolchain//common:enable_hermetic_cc=False
 build --repo_env USE_HERMETIC_CC_TOOLCHAIN=0
+# Hermetic python version
+build --repo_env=HERMETIC_PYTHON_VERSION=3.13
 
 # Default options should come above this line.
 
@@ -329,9 +331,6 @@ build:macos --cxxopt=-std=c++20
 build:macos --host_cxxopt=-std=c++20
 build:windows --cxxopt=/std:c++20
 build:windows --host_cxxopt=/std:c++20
-
-# TensorFlow configuration for Windows build
-build:windows --repo_env=HERMETIC_PYTHON_VERSION=3.13
 
 # On Windows, set /std:c11 and /experimental:c11atomics for pthreadpool.
 build:windows --conlyopt=/std:c11
