@@ -252,7 +252,7 @@ absl::StatusOr<SortedPrefillSignatureMap> GetPrefillRunnerSetFromModel(
       if (!subgraph) {
         return absl::InternalError(subgraph.Error().Message());
       }
-      auto input_positions_tensor = subgraph->Input(input_positions_name);
+      auto input_positions_tensor = signature.InputTensor(input_positions_name);
       if (!input_positions_tensor) {
         return absl::InternalError(input_positions_tensor.Error().Message());
       }

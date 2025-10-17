@@ -52,16 +52,16 @@ constexpr absl::string_view kInputPosSubstr = "pos";
 constexpr absl::string_view kOutputLogitsSubstr = "logits";
 constexpr int64_t kDefaultTargetNumberBase = 256;
 
-    Expected<int64_t> GetLastDimensionOfInput(const Subgraph& subgraph,
-    absl::string_view input_name) {
-  LITERT_ASSIGN_OR_RETURN(auto tensor, subgraph.Input(input_name));
+Expected<int64_t> GetLastDimensionOfInput(const Signature& signature,
+                                          absl::string_view input_name) {
+  LITERT_ASSIGN_OR_RETURN(auto tensor, signature.InputTensor(input_name));
   LITERT_ASSIGN_OR_RETURN(auto type, tensor.RankedTensorType());
   return type.Layout().Dimensions()[type.Layout().Rank() - 1];
 }
 
-Expected<int64_t> GetFirstDimensionOfOutput(const Subgraph& subgraph,
+Expected<int64_t> GetFirstDimensionOfOutput(const Signature& signature,
                                             absl::string_view output_name) {
-  LITERT_ASSIGN_OR_RETURN(auto tensor, subgraph.Output(output_name));
+  LITERT_ASSIGN_OR_RETURN(auto tensor, signature.OutputTensor(output_name));
   LITERT_ASSIGN_OR_RETURN(auto type, tensor.RankedTensorType());
   return type.Layout().Dimensions()[0];
 }
@@ -83,10 +83,11 @@ bool IsMagicNumber(int64_t number) {
   return true;
 }
 
-    Expected<void> SetMagicNumberIfPrime(const Subgraph& subgraph,
-    absl::string_view tensor_name, bool input, int64_t& magic_number) {
-  auto expected_dim = input ? GetLastDimensionOfInput(subgraph, tensor_name)
-                            : GetFirstDimensionOfOutput(subgraph, tensor_name);
+Expected<void> SetMagicNumberIfPrime(const Signature& signature,
+                                     absl::string_view tensor_name, bool input,
+                                     int64_t& magic_number) {
+  auto expected_dim = input ? GetLastDimensionOfInput(signature, tensor_name)
+                            : GetFirstDimensionOfOutput(signature, tensor_name);
   LITERT_ASSIGN_OR_RETURN(auto dim, expected_dim);
   if (IsMagicNumber(dim)) {
     if (magic_number == 0) {
@@ -105,18 +106,17 @@ Expected<MagicNumbers> GetMagicNumbersFromModel(const Model& litert_model) {
   MagicNumbers magic_numbers;
   for (int i = 0; i < num_signatures; ++i) {
     LITERT_ASSIGN_OR_RETURN(auto signature, litert_model.GetSignature(i));
-    LITERT_ASSIGN_OR_RETURN(auto subgraph,
-                                litert_model.Subgraph(signature.Key()));
     if (signature.Key().starts_with(kPrefillSignaturePrefix)) {
       for (const auto& input_name : signature.InputNames()) {
         if (absl::StrContains(input_name, kMaskSubstr)) {
           LITERT_RETURN_IF_ERROR(SetMagicNumberIfPrime(
-              subgraph, input_name, true,
+              signature, input_name, /*input=*/true,
               magic_numbers.context_length));
         } else if (absl::StrContains(input_name, kInputPosSubstr)) {
           int64_t prefill_length = 0;
           LITERT_RETURN_IF_ERROR(
-          SetMagicNumberIfPrime(subgraph, input_name, true, prefill_length));
+              SetMagicNumberIfPrime(signature, input_name, /*input=*/true,
+                                    prefill_length));
           if (prefill_length > 0) {
             magic_numbers.prefill_lengths.push_back(prefill_length);
           }
@@ -126,21 +126,18 @@ Expected<MagicNumbers> GetMagicNumbersFromModel(const Model& litert_model) {
       for (const auto& input_name : signature.InputNames()) {
         if (absl::StrContains(input_name, kMaskSubstr)) {
           LITERT_RETURN_IF_ERROR(SetMagicNumberIfPrime(
-              subgraph, input_name, true,
+              signature, input_name, /*input=*/true,
               magic_numbers.context_length));
-          LITERT_RETURN_IF_ERROR(SetMagicNumberIfPrime(
-              subgraph
-              ,
-              input_name, /*input=*/true, magic_numbers.context_length));
+          LITERT_RETURN_IF_ERROR(
+              SetMagicNumberIfPrime(signature, input_name, /*input=*/true,
+                                    magic_numbers.context_length));
         }
       }
       for (const auto& output_name : signature.OutputNames()) {
         if (absl::StrContains(output_name, kOutputLogitsSubstr)) {
-          LITERT_RETURN_IF_ERROR(SetMagicNumberIfPrime(
-              subgraph
-              ,
-              output_name, /*input=*/false,
-              magic_numbers.num_output_candidates));
+          LITERT_RETURN_IF_ERROR(
+              SetMagicNumberIfPrime(signature, output_name, /*input=*/false,
+                                    magic_numbers.num_output_candidates));
         }
       }
     }
@@ -164,8 +161,6 @@ GetVerificationPairs(const Model& litert_model,
       continue;
     }
 
-        LITERT_ASSIGN_OR_RETURN(auto subgraph,
-                                litert_model.Subgraph(signature.Key()));
     for (int j = 0; j < num_signatures; ++j) {
       LITERT_ASSIGN_OR_RETURN(auto test_signature,
                               litert_model.GetSignature(j));
@@ -174,19 +169,15 @@ GetVerificationPairs(const Model& litert_model,
         continue;
       }
 
-      LITERT_ASSIGN_OR_RETURN(auto test_subgraph,
-                                litert_model.Subgraph(test_signature.Key()));
-
       bool is_same_shape = true;
       for (const auto& input_name : signature.InputNames()) {
         if (absl::StrContains(input_name, kMaskSubstr) ||
             absl::StrContains(input_name, kInputPosSubstr)) {
           LITERT_ASSIGN_OR_RETURN(
-              auto dim,
-          GetLastDimensionOfInput(subgraph, input_name));
+              auto dim, GetLastDimensionOfInput(signature, input_name));
           LITERT_ASSIGN_OR_RETURN(
               auto test_dim,
-          GetLastDimensionOfInput(test_subgraph, input_name));
+              GetLastDimensionOfInput(test_signature, input_name));
           // Check if dim is same as test_dim, or as a magic number when
           // test_dim is target number corresponding to the magic number.
           // Otherwise, the shapes are not same.
@@ -213,10 +204,10 @@ GetVerificationPairs(const Model& litert_model,
         for (const auto& output_name : signature.OutputNames()) {
           if (absl::StrContains(output_name, kOutputLogitsSubstr)) {
             LITERT_ASSIGN_OR_RETURN(
-                auto dim, GetFirstDimensionOfOutput(subgraph, output_name));
+                auto dim, GetFirstDimensionOfOutput(signature, output_name));
             LITERT_ASSIGN_OR_RETURN(
                 auto test_dim,
-                GetFirstDimensionOfOutput(test_subgraph, output_name));
+                GetFirstDimensionOfOutput(test_signature, output_name));
             // Check if dim is same as test_dim, or as a magic number when
             // test_dim is target number corresponding to the magic number.
             // Otherwise, the shapes are not same.
