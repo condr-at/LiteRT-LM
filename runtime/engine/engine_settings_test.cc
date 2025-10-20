@@ -299,6 +299,8 @@ TEST(EngineSettingsTest, MaybeUpdateAndValidate) {
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
 
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
@@ -332,6 +334,8 @@ TEST(EngineSettingsTest, MaybeUpdateAndValidateNPU) {
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
 
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
@@ -423,6 +427,8 @@ TEST(SessionConfigTest, MaybeUpdateAndValidate) {
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
 
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
@@ -448,6 +454,8 @@ TEST(SessionConfigTest, MaybeUpdateAndValidatePickGpuAsSamplerBackend) {
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
 
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
@@ -467,6 +475,8 @@ TEST(SessionConfigTest, MaybeUpdateAndValidateMaxNumTokens) {
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
 
   llm_metadata.set_max_num_tokens(1280);
@@ -610,6 +620,8 @@ TEST(SessionConfigTest, MaybeUpdateAndValidateJinjaPromptTemplate) {
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
 
@@ -651,6 +663,8 @@ TEST(SessionConfigTest, MaybeUpdateAndValidateNotOverwrite) {
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
   llm_metadata.set_jinja_prompt_template("template_from_metadata");
   llm_metadata.mutable_llm_model_type()->mutable_gemma3n();
@@ -696,6 +710,8 @@ TEST(SessionConfigTest,
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
 
@@ -717,6 +733,8 @@ TEST(SessionConfigTest,
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
 
@@ -741,6 +759,8 @@ TEST(SessionConfigTest,
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));
 
@@ -763,6 +783,8 @@ TEST(SessionConfigTest,
   MockTokenizer tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
   EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
   proto::LlmMetadata llm_metadata = CreateLlmMetadata();
   llm_metadata.clear_prompt_templates();
   EXPECT_OK(settings->MaybeUpdateAndValidate(tokenizer, &llm_metadata));

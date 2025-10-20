@@ -35,6 +35,44 @@ constexpr std::array<int, 1> kStartTurnTokenIdsToCheck = {
     105,  // Gemma family.
 };
 
+bool IsGemma3nModel(const std::string& start_turn_text,
+                    const std::vector<int>& audio_token_ids) {
+  return audio_token_ids.size() == 1 && audio_token_ids[0] == 256000 &&
+         start_turn_text == "<start_of_turn>";
+}
+
+bool IsGemma3Model(const std::string& start_turn_text,
+                   const std::vector<int>& audio_token_ids) {
+  return (audio_token_ids.size() != 1 || (audio_token_ids[0] != 256000)) &&
+         start_turn_text == "<start_of_turn>";
+}
+
+void PopulateDefaultGemma3N(proto::Gemma3N& gemma3n) {
+  gemma3n.mutable_start_of_image_token()->set_token_str("<start_of_image>");
+  gemma3n.mutable_end_of_image_token()->set_token_str("<end_of_image>");
+  gemma3n.set_image_tensor_height(768);
+  gemma3n.set_image_tensor_width(768);
+  gemma3n.mutable_start_of_audio_token()->set_token_str("<start_of_audio>");
+  gemma3n.mutable_end_of_audio_token()->set_token_str("<end_of_audio>");
+}
+
+absl::StatusOr<proto::LlmModelType> CreateModelType(
+    const std::string& start_turn_text, Tokenizer& tokenizer) {
+  proto::LlmModelType model_type;
+  ASSIGN_OR_RETURN(auto audio_token_ids,
+                   tokenizer.TextToTokenIds("<start_of_audio>"));
+  if (IsGemma3nModel(start_turn_text, audio_token_ids)) {
+    PopulateDefaultGemma3N(*model_type.mutable_gemma3n());
+    return model_type;
+  } else if (IsGemma3Model(start_turn_text, audio_token_ids)) {
+    model_type.mutable_gemma3();
+    return model_type;
+  } else {
+    model_type.mutable_generic_model();
+  }
+  return model_type;
+}
+
 }  // namespace
 
 absl::StatusOr<proto::LlmModelType> InferLlmModelType(
@@ -44,32 +82,10 @@ absl::StatusOr<proto::LlmModelType> InferLlmModelType(
   for (int token_id : kStartTurnTokenIdsToCheck) {
     ASSIGN_OR_RETURN(auto start_turn_text,
                      tokenizer.TokenIdsToText({token_id}));
-    // Gemma family.
-    if (start_turn_text == "<start_of_turn>") {
-      ASSIGN_OR_RETURN(auto audio_token_ids,
-                       tokenizer.TextToTokenIds("<start_of_audio>"));
-      if (audio_token_ids.size() == 1 && audio_token_ids[0] == 256000) {
-        model_type.mutable_gemma3n()
-            ->mutable_start_of_image_token()
-            ->set_token_str("<start_of_image>");
-        model_type.mutable_gemma3n()
-            ->mutable_end_of_image_token()
-            ->set_token_str("<end_of_image>");
-        model_type.mutable_gemma3n()->set_image_tensor_height(768);
-        model_type.mutable_gemma3n()->set_image_tensor_width(768);
-        model_type.mutable_gemma3n()
-            ->mutable_start_of_audio_token()
-            ->set_token_str("<start_of_audio>");
-        model_type.mutable_gemma3n()
-            ->mutable_end_of_audio_token()
-            ->set_token_str("<end_of_audio>");
-        break;
-      } else {
-        // LiteRT-LM only supports Gemma3 1B model which doesn't have audio
-        // tokens in the tokenizer.
-        model_type.mutable_gemma3();
-        break;
-      }
+    ASSIGN_OR_RETURN(model_type, CreateModelType(start_turn_text, tokenizer));
+    // If the model type is not generic, we can stop checking.
+    if (model_type.model_type_case() != proto::LlmModelType::kGenericModel) {
+      break;
     }
   }
   return model_type;

@@ -87,6 +87,8 @@ TEST(ModelTypeUtilsTest, InferLlmModelTypeGemma3) {
 TEST(ModelTypeUtilsTest, InferLlmModelTypeGenericModel) {
   NiceMock<MockTokenizer> tokenizer;
   EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("Hello"));
+  EXPECT_CALL(tokenizer, TextToTokenIds("<start_of_audio>"))
+      .WillRepeatedly(Return(std::vector<int>{256000}));
   ASSERT_OK_AND_ASSIGN(auto model_type,
                        InferLlmModelType(proto::LlmMetadata(), tokenizer));
   EXPECT_THAT(model_type.has_generic_model(), true);
