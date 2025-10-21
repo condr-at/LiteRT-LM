@@ -223,7 +223,7 @@ absl::StatusOr<Message> Conversation::SendMessage(
   auto json_message = std::get<nlohmann::ordered_json>(message);
   ASSIGN_OR_RETURN(const std::string& single_turn_text,
                    GetSingleTurnText(message));
-  absl::MutexLock lock(&history_mutex_);  // NOLINT
+  absl::MutexLock lock(history_mutex_);  // NOLINT
   if (json_message.is_array()) {
     for (const auto& message : json_message) {
       history_.push_back(message);
@@ -257,7 +257,7 @@ absl::Status Conversation::SendMessageAsync(
   ASSIGN_OR_RETURN(const std::string& single_turn_text,
                    GetSingleTurnText(message));
   {
-    absl::MutexLock lock(&history_mutex_);  // NOLINT
+    absl::MutexLock lock(history_mutex_);  // NOLINT
     if (json_message.is_array()) {
       for (const auto& message : json_message) {
         history_.push_back(message);
