@@ -30,9 +30,9 @@ more flexibility. LiteRT-LM can help with all three.
     chipsets to run the Gemma3 1B model with incredible efficiency.
 
     **Note:** LiteRT-LM NPU acceleration is only available through an Early
-    Access Program. Please check out
-    [this page](https://ai.google.dev/edge/litert/next/npu) for more information
-    about how to sign it up.
+    Access Program. Please check out [this
+    page](https://ai.google.dev/edge/litert/next/npu) for more information about
+    how to sign it up.
 *   ***June 10, 2025*** **: The Debut of LiteRT-LM: A New Framework for
     On-Device LLMs** We're proud to release an early preview (`v0.6.1`) of the
     LiteRT-LM codebase! This foundational release enables you to run the latest
@@ -81,8 +81,8 @@ with performance lock on Android devices).
 This guide provides the necessary steps to build and execute a Large Language
 Model (LLM) on your device. Note that the LiteRT-LM runtime is designed to work
 with models in the `.litertlm` format. You can find and download compatible
-models in the
-[Supported Models and Performance](#supported-models-and-performance) section.
+models in the [Supported Models and
+Performance](#supported-models-and-performance) section.
 
 **Want to try it out first?** Before proceeding with the full setup, you can use
 the pre-built binary below to run the LiteRT-LM immediately:
@@ -106,7 +106,8 @@ Before you begin, please ensure you have the following installed:
 
 #### Get the Source Code
 
-Current stable branch tag: [![Latest Release](https://img.shields.io/github/v/release/google-ai-edge/LiteRT-LM)](https://github.com/google-ai-edge/LiteRT-LM/releases/latest)
+Current stable branch tag: [![Latest
+Release](https://img.shields.io/github/v/release/google-ai-edge/LiteRT-LM)](https://github.com/google-ai-edge/LiteRT-LM/releases/latest)
 
 First, clone the repository to your local machine. We strongly recommend
 checking out the latest stable release tag to ensure you are working with a
@@ -125,7 +126,8 @@ cd LiteRT-LM
 git fetch --tags
 ```
 
-**Checkout the latest stable release ([![Latest Release](https://img.shields.io/github/v/release/google-ai-edge/LiteRT-LM)](https://github.com/google-ai-edge/LiteRT-LM/releases/latest)):**
+**Checkout the latest stable release ([![Latest
+Release](https://img.shields.io/github/v/release/google-ai-edge/LiteRT-LM)](https://github.com/google-ai-edge/LiteRT-LM/releases/latest)):**
 
 To start working, create a new branch from the stable tag. This is the
 recommended approach for development.
@@ -175,13 +177,13 @@ the MSVC toolchain for all users, usually under this directory C:\Program Files.
 install for all users.
 4.  **Bazel** - Install using Windows Package Manager (winget): `powershell
     winget install --id=Bazel.Bazelisk -e`.
-5. **Java** - Install from https://www.oracle.com/java/technologies/downloads/
+5.  **Java** - Install from https://www.oracle.com/java/technologies/downloads/
     and set JAVA_HOME to point at the jdk directory.
-6. **Enable long path** Make sure the LongPathsEnabled is true in the Registry.
+6.  **Enable long path** Make sure the LongPathsEnabled is true in the Registry.
     If needed, use `bazelisk --output_base=C:\bzl` to shorten the output path
     further. Otherwise, compilation errors related to file permission could
     happen.
-7. Download the `.litertlm` model from the
+7.  Download the `.litertlm` model from the
     [Supported Models and Performance](#supported-models-and-performance)
     section.
 
@@ -462,12 +464,21 @@ around two primary classes: `Engine` and `Session`.
 
 -   The **`Engine`** is the main entry point. It's responsible for loading the
     model and its associated resources (like the tokenizer) from storage and
-    preparing them for execution. It acts as a factory for creating `Session`
-    objects.
--   The **`Session`** represents a single, stateful conversation or interaction
-    with the LLM. It holds the context (like conversation history) and provides
-    the methods to actually generate text. Each `Session` is an independent
-    instance, allowing for multiple interactions.
+    preparing them for execution. It acts as a factory for creating
+    `Conversation` or `Session` objects.
+-   The **`Conversation`**: This class represents a single, stateful
+    conversation with the LLM and is the recommended entry point for most users.
+    It internally manages a `Session` and handles complex data processing tasks.
+    These tasks include maintaining the initial context, managing tool
+    definitions, preprocessing multimodal data, and applying Jinja prompt
+    templates with role-based message formatting. Each `Conversation` instance
+    is independent, allowing for multiple concurrent interactions.
+-   The **`Session`**: This class also represents a single, stateful interaction
+    with the LLM, holding the context and providing methods for text generation.
+    `Session` is intended for advanced users who need fine-grained control over
+    the prefill and decode phases, such as implementing chunked prefill or
+    custom multimodal preprocessing. Like `Conversation`, each `Session`
+    instance is independent.
 
 ### Basic Workflow for Text-in-Text-out Inference
 
@@ -475,19 +486,20 @@ The typical lifecycle for using the runtime is:
 
 1.  **Create an `Engine`**: Initialize a single `Engine` with the model path and
     configuration. This is a heavyweight object that holds the model weights.
-2.  **Create a `Session`**: Use the `Engine` to create one or more lightweight
-    `Session` objects.
-3.  **Generate Content**: Use a `Session` object to run inference, either
-    through a simple one-shot API or through more granular prefill/decode steps.
+2.  **Create a `Conversation`**: Use the `Engine` to create one or more
+    lightweight `Conversation` objects.
+3.  **Send Message**: Utilize the `Conversation` object's methods to send
+    messages to the LLM and receive responses, effectively enabling a chat-like
+    interaction.
 
-Below is the simplest way to generate text and is recommended for most use
-cases. It mirrors
-[Gemini text generation APIs](https://ai.google.dev/gemini-api/docs).
+Below is the simplest way to send message and get model response. It is
+recommended for most use cases. It mirrors [Gemini Chat
+APIs](https://ai.google.dev/gemini-api/docs/text-generation#multi-turn-conversations).
 
--   `GenerateContent`: A blocking call that takes user input and returns the
+-   `SendMessage`: A blocking call that takes user input and returns the
     complete model response.
--   `GenerateContentStream`: A non-blocking call that streams the model's
-    response back token-by-token through an observer.
+-   `SendMessageAsync`: A non-blocking call that streams the model's response
+    back token-by-token through callbacks.
 
 Example code snippet:
 
@@ -507,18 +519,23 @@ auto engine_settings = EngineSettings::CreateDefault(
 absl::StatusOr<std::unique_ptr<Engine>> engine = Engine::CreateEngine(engine_settings);
 CHECK_OK(engine);
 
-// 3. Create a Session for a new conversation.
-auto session_config = SessionConfig::CreateDefault();
-absl::StatusOr<std::unique_ptr<Engine::Session>> session = (*engine)->CreateSession(session_config);
-CHECK_OK(session);
+// 3. Create a Conversation
+auto conversation_config = ConversationConfig::CreateDefault(**engine);
+CHECK_OK(conversation_config)
+absl::StatusOr<std::unique_ptr<Conversation>> conversation = Conversation::Create(**engine, *conversation_config);
+CHECK_OK(conversation);
 
-// 4. Generate content using the high-level API.
-absl::StatusOr<Responses> responses = (*session)->GenerateContent(
-    {InputText("What is the tallest building in the world?")});
-CHECK_OK(responses);
+// 4. Send message to the LLM.
+absl::StatusOr<Message> model_message = (*conversation)->SendMessage(
+    JsonMessage{
+        {"role", "user"},
+        {"content", "What is the tallest building in the world?"}
+    });
+CHECK_OK(model_message);
 
-// 5. Print the response.
-std::cout << *responses << std::endl;
+// 5. Print the model message.
+std::cout << *model_message << std::endl;
+
 ```
 
 ### Inference with GPU Backend
@@ -543,11 +560,107 @@ example, if an app binary and .so files are packaged in an APK by Android SDK,
 .so files are unpacked by Android Package Manager where the app binary can find
 them, i.e. under app's `/lib` directory.
 
+### Inference with Multimodal data
+
+To use multimodality, the engine must be created with vision and audio backend
+depending on the multimodality to be used.
+
+```cpp
+// Create engine with proper multimodality backend, depending on which backend
+// the model support. Note for Gemma3N models, vision_backend must be GPU and
+// audio_backend must be CPU.
+auto engine_settings = EngineSettings::CreateDefault(
+    model_assets,
+    /*backend=*/litert::lm::Backend::CPU,
+    /*vision_backend*/litert::lm::Backend::GPU,
+    /*audio_backend*/litert::lm::Backend::CPU,
+);
+
+// The same steps to create Engine and Conversation as above...
+
+// Send message to the LLM with image data.
+absl::StatusOr<Message> model_message = (*conversation)->SendMessage(
+    JsonMessage{
+        {"role", "user"},
+        {"content", { // Now content must be an array.
+          {{"type", "text"}, {"text", "Describe the following image: "}},
+          {{"type", "image"}, {"path", "/file/path/to/image.jpg"}}
+        }},
+    });
+CHECK_OK(model_message);
+
+// Print the model message.
+std::cout << *model_message << std::endl;
+
+// Send message to the LLM with audio data.
+model_message = (*conversation)->SendMessage(
+    JsonMessage{
+        {"role", "user"},
+        {"content", { // Now content must be an array.
+          {{"type", "text"}, {"text", "Transcribe the audio: "}},
+          {{"type", "audio"}, {"path", "/file/path/to/audio.wav"}}
+        }},
+    });
+CHECK_OK(model_message);
+
+// Print the model message.
+std::cout << *model_message << std::endl;
+
+// The content can include multiple image or audio data.
+model_message = (*conversation)->SendMessage(
+    JsonMessage{
+        {"role", "user"},
+        {"content", { // Now content must be an array.
+          {{"type", "text"}, {"text", "First briefly describe the two images "}},
+          {{"type", "image"}, {"path", "/file/path/to/image1.jpg"}},
+          {{"type", "text"}, {"text", "and "}},
+          {{"type", "image"}, {"path", "/file/path/to/image2.jpg"}},
+          {{"type", "text"}, {"text", " then transcribe the content in the audio"}},
+          {{"type", "audio"}, {"path", "/file/path/to/audio.wav"}}
+        }},
+    });
+CHECK_OK(model_message);
+
+// Print the model message.
+std::cout << *model_message << std::endl;
+
+```
+
+For multimodal data input, `content` is a list of `part`. Where `part` is a
+Json, and currently expect following structs:
+
+```json
+{
+  "type": "text",
+  "text": "this is a text"
+}
+
+{
+  "type": "image",
+  "path": "/path/to/image.jpg"
+}
+
+{
+  "type": "image",
+  "blob": "base64 encoded image bytes as string",
+}
+
+{
+  "type": "audio",
+  "path": "/path/to/audio.wav"
+}
+
+{
+  "type": "audio",
+  "blob": "base64 encoded audio bytes as string",
+}
+```
+
 ### Advanced Control Over Prefill/Decode
 
-This API provides fine-grained control over the two phases of transformer
-inference: prefill and decode. This can be useful for advanced scenarios or
-performance optimization.
+**`Session`** API provides fine-grained control over the two phases of
+transformer inference: prefill and decode. This can be useful for advanced
+scenarios or performance optimization.
 
 -   **Prefill**: The `RunPrefill` or `RunPrefillAsync` methods process the input
     prompt and populate the model's internal state (KV cache).
@@ -572,7 +685,7 @@ auto engine_settings = EngineSettings::CreateDefault(
 absl::StatusOr<std::unique_ptr<Engine>> engine = Engine::CreateEngine(engine_settings);
 CHECK_OK(engine);
 
-// 3. Create a Session for a new conversation.
+// 3. Create a Session for a new context.
 auto session_config = SessionConfig::CreateDefault();
 absl::StatusOr<std::unique_ptr<Engine::Session>> session = (*engine)->CreateSession(session_config);
 CHECK_OK(session);
@@ -606,7 +719,7 @@ multiple LiteRT models with pre and post processing components (e.g. tokenizer,
 vision encoder, text decoder).
 
 [MediaPipe GenAI Tasks](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference)
-are out-of-the-box native APIs (Kotlin, Swift, JS) to run langauge models by
+are out-of-the-box native APIs (Kotlin, Swift, JS) to run language models by
 just setting a few parameters such as temperature and topK.
 
 ### .litertlm vs .task
@@ -617,8 +730,8 @@ Task files are a zip of multiple LiteRT files, components, and metadata.
 metadata and enable better compression.
 
 During our LiteRT-LM preview, we will release a small number of `.litertlm`
-files. MediaPipe APIs will continue to use `.task` files. Once we have the
-first full release of LiteRT-LM, we will migrate MediaPipe APIs to use the new
+files. MediaPipe APIs will continue to use `.task` files. Once we have the first
+full release of LiteRT-LM, we will migrate MediaPipe APIs to use the new
 `.litertlm` files and release a wider collection of `.litertlm` files on the
 [LiteRT Hugging Face Community](https://huggingface.co/litert-community)
 
