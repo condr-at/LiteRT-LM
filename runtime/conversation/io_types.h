@@ -18,7 +18,6 @@
 #include <ostream>
 #include <variant>
 
-#include "absl/status/status.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 
 namespace litert::lm {
@@ -47,22 +46,6 @@ struct JsonPreface {
 // conversation to begin with. It provides the initial background for the
 // conversation.
 using Preface = std::variant<JsonPreface>;
-
-// The high-level, public interface for clients to implement.
-// It handles streaming message events.
-class MessageCallbacks {
- public:
-  virtual ~MessageCallbacks() = default;
-
-  // Called when a new chunk of the message is available.
-  virtual void OnMessage(const Message& message) = 0;
-
-  // Called when the entire message generation is complete and successful.
-  virtual void OnComplete() = 0;
-
-  // Called if any error occurs during the process.
-  virtual void OnError(const absl::Status& status) = 0;
-};
 
 }  // namespace litert::lm
 

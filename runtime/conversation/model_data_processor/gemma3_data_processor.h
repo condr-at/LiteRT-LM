@@ -44,7 +44,9 @@ class Gemma3DataProcessor
       std::optional<Preface> preface = std::nullopt);
 
   // Returns the config of the Gemma3DataProcessor.
-  const Gemma3DataProcessorConfig& GetConfig() override { return config_; }
+  const Gemma3DataProcessorConfig& GetConfig() const override {
+    return config_;
+  }
 
   // Converts a message into the template input for that message.
   absl::StatusOr<nlohmann::ordered_json> MessageToTemplateInput(
@@ -52,13 +54,13 @@ class Gemma3DataProcessor
 
   // Formats tool declarations.
   absl::StatusOr<nlohmann::ordered_json> FormatTools(
-      const nlohmann::ordered_json& tools) override;
+      const nlohmann::ordered_json& tools) const override;
 
   // Returns the start of tool call blocks.
-  absl::string_view CodeFenceStart() override;
+  absl::string_view CodeFenceStart() const override;
 
   // Returns the end of tool call blocks.
-  absl::string_view CodeFenceEnd() override;
+  absl::string_view CodeFenceEnd() const override;
 
  private:
   explicit Gemma3DataProcessor(
@@ -74,11 +76,11 @@ class Gemma3DataProcessor
   absl::StatusOr<std::vector<InputData>> ToInputDataVectorImpl(
       const std::string& rendered_template_prompt,
       const nlohmann::ordered_json& messages,
-      const Gemma3DataProcessorArguments& args) override;
+      const Gemma3DataProcessorArguments& args) const override;
 
   absl::StatusOr<Message> ToMessageImpl(
       const Responses& responses,
-      const Gemma3DataProcessorArguments& args) override;
+      const Gemma3DataProcessorArguments& args) const override;
 
   Gemma3DataProcessorConfig config_;
   std::optional<Preface> preface_;

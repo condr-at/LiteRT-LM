@@ -22,8 +22,10 @@
 #include <variant>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "nlohmann/json_fwd.hpp"  // from @nlohmann_json
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
@@ -42,7 +44,6 @@ using litert::lm::Conversation;
 using litert::lm::ConversationConfig;
 using litert::lm::Engine;
 using litert::lm::EngineSettings;
-using litert::lm::InferenceCallbacks;
 using litert::lm::InputAudio;
 using litert::lm::InputData;
 using litert::lm::InputImage;
@@ -152,237 +153,34 @@ std::vector<InputData> GetNativeInputData(JNIEnv* env,
   return contents;
 }
 
-class JniInferenceCallbacks : public InferenceCallbacks {
- public:
-  JniInferenceCallbacks(JNIEnv* env, JavaVM* jvm, jobject callbacks) {
-    callbacks_ = env->NewGlobalRef(callbacks);
-    jclass callbacks_class = env->GetObjectClass(callbacks_);
-    on_response_mid_ =
-        env->GetMethodID(callbacks_class, "onNext", "(Ljava/lang/String;)V");
-    on_done_mid_ = env->GetMethodID(callbacks_class, "onDone", "()V");
-    on_error_mid_ =
-        env->GetMethodID(callbacks_class, "onError", "(ILjava/lang/String;)V");
-    env->DeleteLocalRef(callbacks_class);
-    jvm_ = jvm;
-  }
-
-  ~JniInferenceCallbacks() override {
-    bool attached = false;
-    JNIEnv* env = GetJniEnvAndAttach(&attached);
-    if (env) {
-      if (callbacks_) env->DeleteGlobalRef(callbacks_);
-
-      // Detach if attached
-      if (attached && jvm_->DetachCurrentThread() != JNI_OK) {
-        ABSL_LOG(ERROR)
-            << "Failed to detach from JVM in ~JniInferenceCallbacks.";
-      }
-    } else {
-      ABSL_LOG(ERROR)
-          << "Failed to get JNIEnv in ~JniInferenceCallbacks, global refs "
-             "might be leaked.";
-    }
-  }
-
-  void OnNext(const Responses& responses) override {
-    bool attached = false;
-    JNIEnv* env = GetJniEnvAndAttach(&attached);
-    if (!env) return;
-
-    auto response_text = responses.GetResponseTextAt(0);
-    if (!response_text.ok()) {
-      OnError(response_text.status());
-    } else {
-      jstring response_jstr =
-          env->NewStringUTF(std::string(*response_text).c_str());
-      env->CallVoidMethod(callbacks_, on_response_mid_, response_jstr);
-      env->DeleteLocalRef(response_jstr);
-    }
-
-    if (attached && jvm_->DetachCurrentThread() != JNI_OK) {
-      ABSL_LOG(ERROR)
-          << "Failed to detach from JVM in JniInferenceCallbacks::OnNext.";
-    }
-  }
-
-  void OnDone() override {
-    ABSL_LOG(INFO) << "Receive callback OnDone.";
-
-    bool attached = false;
-    JNIEnv* env = GetJniEnvAndAttach(&attached);
-    if (env) {
-      env->CallVoidMethod(callbacks_, on_done_mid_);
-      if (attached && jvm_->DetachCurrentThread() != JNI_OK) {
-        ABSL_LOG(ERROR)
-            << "Failed to detach from JVM in JniInferenceCallbacks::OnDone.";
-      }
-    }
-  }
-
-  void OnError(const absl::Status& status) override {
-    ABSL_LOG(WARNING) << "Receive callback OnError: " << status;
-
-    bool attached = false;
-    JNIEnv* env = GetJniEnvAndAttach(&attached);
-    if (env) {
-      jstring message = env->NewStringUTF(status.message().data());
-      env->CallVoidMethod(callbacks_, on_error_mid_, (jint)status.code(),
-                          message);
-      env->DeleteLocalRef(message);
-
-      if (attached && jvm_->DetachCurrentThread() != JNI_OK) {
-        ABSL_LOG(ERROR)
-            << "Failed to detach from JVM in JniInferenceCallbacks::OnError.";
-      }
-    }
-  }
-
- private:
-  JNIEnv* GetJniEnvAndAttach(bool* attached) {
-    JNIEnv* env = nullptr;
-    *attached = false;
-    int get_env_stat = jvm_->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (get_env_stat == JNI_EDETACHED) {
+// Helper to get JNIEnv and attach to the current thread if necessary.
+// Returns nullptr if an error occurs.
+JNIEnv* GetJniEnvAndAttach(JavaVM* jvm, bool* attached) {
+  JNIEnv* env = nullptr;
+  *attached = false;
+  // Requesting JNI_VERSION_1_6, but the returned JNIEnv* will support
+  // the highest version the current JVM provides. This is safe because
+  // newer JNI versions are backward-compatible.
+  int get_env_stat = jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
+  if (get_env_stat == JNI_EDETACHED) {
 #if defined(__ANDROID__)
-      if (jvm_->AttachCurrentThread(&env, nullptr) == 0) {
+    if (jvm->AttachCurrentThread(&env, nullptr) == 0) {
 #else
-      if (jvm_->AttachCurrentThread((void**)&env, nullptr) == 0) {
+    if (jvm->AttachCurrentThread((void**)&env, nullptr) == 0) {
 #endif
-        *attached = true;
-        return env;
-      } else {
-        ABSL_LOG(ERROR) << "Failed to attach to JVM.";
-        return nullptr;
-      }
-    } else if (get_env_stat == JNI_OK) {
+      *attached = true;
       return env;
     } else {
-      ABSL_LOG(ERROR) << "Failed to get JNIEnv: GetEnv returned "
-                      << get_env_stat;
+      ABSL_LOG(ERROR) << "Failed to attach to JVM.";
       return nullptr;
     }
+  } else if (get_env_stat == JNI_OK) {
+    return env;
+  } else {
+    ABSL_LOG(ERROR) << "Failed to get JNIEnv: GetEnv returned " << get_env_stat;
+    return nullptr;
   }
-
-  JavaVM* jvm_;
-  jobject callbacks_;
-  jmethodID on_response_mid_;
-  jmethodID on_done_mid_;
-  jmethodID on_error_mid_;
-};
-
-class JniMessageCallbacks : public litert::lm::MessageCallbacks {
- public:
-  JniMessageCallbacks(JNIEnv* env, JavaVM* jvm, jobject callbacks) {
-    callbacks_ = env->NewGlobalRef(callbacks);
-    jclass callbacks_class = env->GetObjectClass(callbacks_);
-    on_message_mid_ =
-        env->GetMethodID(callbacks_class, "onMessage", "(Ljava/lang/String;)V");
-    on_complete_mid_ = env->GetMethodID(callbacks_class, "onDone", "()V");
-    on_error_mid_ =
-        env->GetMethodID(callbacks_class, "onError", "(ILjava/lang/String;)V");
-    env->DeleteLocalRef(callbacks_class);
-    jvm_ = jvm;
-  }
-
-  ~JniMessageCallbacks() override {
-    bool attached = false;
-    JNIEnv* env = GetJniEnvAndAttach(&attached);
-    if (env) {
-      if (callbacks_) env->DeleteGlobalRef(callbacks_);
-
-      // Detach if attached
-      if (attached && jvm_->DetachCurrentThread() != JNI_OK) {
-        ABSL_LOG(ERROR) << "Failed to detach from JVM in ~JniMessageCallbacks.";
-      }
-    } else {
-      ABSL_LOG(ERROR)
-          << "Failed to get JNIEnv in ~JniMessageCallbacks, global refs "
-             "might be leaked.";
-    }
-  }
-
-  void OnMessage(const Message& message) override {
-    bool attached = false;
-    JNIEnv* env = GetJniEnvAndAttach(&attached);
-    if (!env) return;
-
-    if (!std::holds_alternative<litert::lm::JsonMessage>(message)) {
-      OnError(absl::InvalidArgumentError("Json message is required for now."));
-    } else {
-      auto json_message = std::get<litert::lm::JsonMessage>(message);
-      std::string message_str = json_message.dump();
-      jstring message_jstr = env->NewStringUTF(message_str.c_str());
-      env->CallVoidMethod(callbacks_, on_message_mid_, message_jstr);
-      env->DeleteLocalRef(message_jstr);
-    }
-
-    if (attached && jvm_->DetachCurrentThread() != JNI_OK) {
-      ABSL_LOG(ERROR)
-          << "Failed to detach from JVM in JniMessageCallbacks::OnMessage.";
-    }
-  }
-
-  void OnComplete() override {
-    bool attached = false;
-    JNIEnv* env = GetJniEnvAndAttach(&attached);
-    if (env) {
-      env->CallVoidMethod(callbacks_, on_complete_mid_);
-      if (attached && jvm_->DetachCurrentThread() != JNI_OK) {
-        ABSL_LOG(ERROR)
-            << "Failed to detach from JVM in JniMessageCallbacks::OnComplete.";
-      }
-    }
-  }
-
-  void OnError(const absl::Status& status) override {
-    ABSL_LOG(WARNING) << "Receive callback OnError: " << status;
-
-    bool attached = false;
-    JNIEnv* env = GetJniEnvAndAttach(&attached);
-    if (env) {
-      jstring message = env->NewStringUTF(status.message().data());
-      env->CallVoidMethod(callbacks_, on_error_mid_, (jint)status.code(),
-                          message);
-      env->DeleteLocalRef(message);
-      if (attached && jvm_->DetachCurrentThread() != JNI_OK) {
-        ABSL_LOG(ERROR)
-            << "Failed to detach from JVM in JniMessageCallbacks::OnError.";
-      }
-    }
-  }
-
- private:
-  JNIEnv* GetJniEnvAndAttach(bool* attached) {
-    JNIEnv* env = nullptr;
-    *attached = false;
-    int get_env_stat = jvm_->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (get_env_stat == JNI_EDETACHED) {
-#if defined(__ANDROID__)
-      if (jvm_->AttachCurrentThread(&env, nullptr) == 0) {
-#else
-      if (jvm_->AttachCurrentThread((void**)&env, nullptr) == 0) {
-#endif
-        *attached = true;
-        return env;
-      } else {
-        ABSL_LOG(ERROR) << "Failed to attach to JVM.";
-        return nullptr;
-      }
-    } else if (get_env_stat == JNI_OK) {
-      return env;
-    } else {
-      ABSL_LOG(ERROR) << "Failed to get JNIEnv: GetEnv returned "
-                      << get_env_stat;
-      return nullptr;
-    }
-  }
-
-  JavaVM* jvm_;
-  jobject callbacks_;
-  jmethodID on_message_mid_;
-  jmethodID on_complete_mid_;
-  jmethodID on_error_mid_;
-};
+}
 
 // Helper function to create SamplerParameters from Java SamplerConfig object.
 SamplerParameters CreateSamplerParamsFromJni(JNIEnv* env,
@@ -587,20 +385,13 @@ JNIEXPORT jstring JNICALL JNI_METHOD(nativeRunDecode)(JNIEnv* env, jclass thiz,
     return nullptr;
   }
 
-  if (responses->GetNumOutputCandidates() != 1) {
+  if (responses->GetTexts().size() != 1) {
     ThrowLiteRtLmJniException(
         env, "Number of output candidates should be 1, but got " +
-                 std::to_string(responses->GetNumOutputCandidates()));
+                 std::to_string(responses->GetTexts().size()));
   }
 
-  auto response_text = responses->GetResponseTextAt(0);
-  if (!response_text.ok()) {
-    ThrowLiteRtLmJniException(env, "Failed to get response text: " +
-                                       response_text.status().ToString());
-    return nullptr;
-  }
-
-  return env->NewStringUTF(std::string(*response_text).c_str());
+  return env->NewStringUTF(std::string(responses->GetTexts()[0]).c_str());
 }
 
 JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
@@ -623,23 +414,16 @@ JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
     return nullptr;
   }
 
-  if (responses->GetNumOutputCandidates() == 0) {
+  if (responses->GetTexts().empty()) {
     return env->NewStringUTF("");
   }
 
-  auto response_text = responses->GetResponseTextAt(0);
-  if (!response_text.ok()) {
-    ThrowLiteRtLmJniException(env, "Failed to get response text: " +
-                                       response_text.status().ToString());
-    return nullptr;
-  }
-
-  return env->NewStringUTF(std::string(*response_text).c_str());
+  return env->NewStringUTF(std::string(responses->GetTexts()[0]).c_str());
 }
 
 JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
     JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
-    jobject callbacks) {
+    jobject callback) {
   JavaVM* jvm = nullptr;
   if (env->GetJavaVM(&jvm) != JNI_OK) {
     ThrowLiteRtLmJniException(env, "Failed to get JavaVM");
@@ -654,10 +438,63 @@ JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
     return;
   }
 
-  auto jni_callbacks =
-      std::make_unique<JniInferenceCallbacks>(env, jvm, callbacks);
+  jobject callback_global = env->NewGlobalRef(callback);
+  jclass callback_class = env->GetObjectClass(callback_global);
+  jmethodID on_response_mid =
+      env->GetMethodID(callback_class, "onNext", "(Ljava/lang/String;)V");
+  jmethodID on_done_mid = env->GetMethodID(callback_class, "onDone", "()V");
+  jmethodID on_error_mid =
+      env->GetMethodID(callback_class, "onError", "(ILjava/lang/String;)V");
+  env->DeleteLocalRef(callback_class);
+
+  // This lambda is to clean up the global reference.
+  absl::AnyInvocable<void()> cleanup_callback_ref = [jvm, callback_global]() {
+    bool attached = false;
+    JNIEnv* env = GetJniEnvAndAttach(jvm, &attached);
+    if (env) {
+      env->DeleteGlobalRef(callback_global);
+      // Detachment will be handled in the main callback_fn.
+    }
+  };
+
+  absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback_fn =
+      [jvm, callback_global, on_response_mid, on_done_mid, on_error_mid,
+       cleanup_callback_ref = std::move(cleanup_callback_ref)](
+          absl::StatusOr<Responses> responses) mutable {
+        bool attached = false;
+        JNIEnv* env = GetJniEnvAndAttach(jvm, &attached);
+        if (!env) return;
+
+        if (responses.ok()) {
+          if (responses->GetTexts().empty()) {
+            ABSL_LOG(INFO) << "Receive callback OnDone.";
+            env->CallVoidMethod(callback_global, on_done_mid);
+            cleanup_callback_ref();
+          } else {
+            jstring response_jstr = env->NewStringUTF(
+                std::string(responses->GetTexts()[0]).c_str());
+            env->CallVoidMethod(callback_global, on_response_mid,
+                                response_jstr);
+            env->DeleteLocalRef(response_jstr);
+          }
+        } else {
+          ABSL_LOG(WARNING)
+              << "Receive callback OnError: " << responses.status();
+          jstring message =
+              env->NewStringUTF(responses.status().message().data());
+          env->CallVoidMethod(callback_global, on_error_mid,
+                              (jint)responses.status().code(), message);
+          env->DeleteLocalRef(message);
+          cleanup_callback_ref();
+        }
+
+        if (attached && jvm->DetachCurrentThread() != JNI_OK) {
+          ABSL_LOG(ERROR) << "Failed to detach from JVM in callback_fn.";
+        }
+      };
+
   auto status =
-      session->GenerateContentStream(contents, std::move(jni_callbacks));
+      session->GenerateContentStream(contents, std::move(callback_fn));
 
   if (!status.ok()) {
     ThrowLiteRtLmJniException(
@@ -775,7 +612,7 @@ JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteConversation)(
 
 JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
     JNIEnv* env, jclass thiz, jlong conversation_pointer,
-    jstring messageJSONString, jobject callbacks) {
+    jstring messageJSONString, jobject callback) {
   JavaVM* jvm = nullptr;
   if (env->GetJavaVM(&jvm) != JNI_OK) {
     ThrowLiteRtLmJniException(env, "Failed to get JavaVM");
@@ -790,10 +627,74 @@ JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
       nlohmann::ordered_json::parse(json_chars);
   env->ReleaseStringUTFChars(messageJSONString, json_chars);
 
-  auto jni_callbacks =
-      std::make_unique<JniMessageCallbacks>(env, jvm, callbacks);
+  jobject callback_global = env->NewGlobalRef(callback);
+  jclass callback_class = env->GetObjectClass(callback_global);
+  jmethodID on_message_mid =
+      env->GetMethodID(callback_class, "onMessage", "(Ljava/lang/String;)V");
+  jmethodID on_complete_mid = env->GetMethodID(callback_class, "onDone", "()V");
+  jmethodID on_error_mid =
+      env->GetMethodID(callback_class, "onError", "(ILjava/lang/String;)V");
+  env->DeleteLocalRef(callback_class);
+
+  absl::AnyInvocable<void(absl::StatusOr<Message>)> callback_fn =
+      [jvm, callback_global, on_message_mid, on_complete_mid,
+       on_error_mid](absl::StatusOr<Message> message) {
+        bool attached = false;
+        JNIEnv* env = GetJniEnvAndAttach(jvm, &attached);
+        if (!env) return;
+
+        // This lambda is to clean up the global reference.
+        auto on_done_fn = [jvm, callback_global]() {
+          bool attached = false;
+          JNIEnv* env = GetJniEnvAndAttach(jvm, &attached);
+          if (env) {
+            env->DeleteGlobalRef(callback_global);
+            if (attached && jvm->DetachCurrentThread() != JNI_OK) {
+              ABSL_LOG(ERROR) << "Failed to detach from JVM in on_done_fn.";
+            }
+          }
+        };
+
+        if (message.ok()) {
+          if (!std::holds_alternative<litert::lm::JsonMessage>(*message)) {
+            ABSL_LOG(WARNING) << "Receive callback OnError: Not a JsonMessage";
+            jstring err_message =
+                env->NewStringUTF("Response is not a JsonMessage");
+            env->CallVoidMethod(callback_global, on_error_mid,
+                                (jint)absl::StatusCode::kInternal, err_message);
+            env->DeleteLocalRef(err_message);
+            on_done_fn();
+          } else {
+            auto json_message = std::get<litert::lm::JsonMessage>(*message);
+            if (json_message.is_null()) {
+              // Null message indicates completion.
+              env->CallVoidMethod(callback_global, on_complete_mid);
+              on_done_fn();
+            } else {
+              std::string message_str = json_message.dump();
+              jstring message_jstr = env->NewStringUTF(message_str.c_str());
+              env->CallVoidMethod(callback_global, on_message_mid,
+                                  message_jstr);
+              env->DeleteLocalRef(message_jstr);
+            }
+          }
+        } else {
+          ABSL_LOG(WARNING) << "Receive callback OnError: " << message.status();
+          jstring err_message =
+              env->NewStringUTF(message.status().message().data());
+          env->CallVoidMethod(callback_global, on_error_mid,
+                              (jint)message.status().code(), err_message);
+          env->DeleteLocalRef(err_message);
+          on_done_fn();
+        }
+
+        if (attached && jvm->DetachCurrentThread() != JNI_OK) {
+          ABSL_LOG(ERROR) << "Failed to detach from JVM in callback_fn.";
+        }
+      };
+
   auto status =
-      conversation->SendMessageAsync(json_message, std::move(jni_callbacks));
+      conversation->SendMessageAsync(json_message, std::move(callback_fn));
 
   if (!status.ok()) {
     ThrowLiteRtLmJniException(

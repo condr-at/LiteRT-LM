@@ -106,22 +106,22 @@ public final class LiteRtLmJni {
   /**
    * Generates content from the given input data in a streaming fashion.
    *
-   * <p>The [observer] will only receive callbacks if this method returns normally.
+   * <p>The [callback] will only receive callback if this method returns normally.
    *
    * @param sessionPointer A pointer to the native session instance.
    * @param inputData An array of {@link InputData} to be processed by the model.
-   * @param observer The observer to receive the streaming responses.
+   * @param callback The callback to receive the streaming responses.
    */
   @SuppressWarnings("AvoidObjectArrays") // Array is simpler for JNI
   public static native void nativeGenerateContentStream(
-      long sessionPointer, InputData[] inputData, JniInferenceCallbacks callback);
+      long sessionPointer, InputData[] inputData, JniInferenceCallback callback);
 
   /**
-   * Callbacks for the nativeGenerateContentStream.
+   * Callback for the nativeGenerateContentStream.
    *
    * <p>Keep the data type simple (string) to avoid constructing complex JVM object in native layer.
    */
-  interface JniInferenceCallbacks {
+  interface JniInferenceCallback {
     /**
      * Called when a new response is generated.
      *
@@ -183,14 +183,14 @@ public final class LiteRtLmJni {
   /**
    * Send message from the given input data asynchronously.
    *
-   * <p>The [callbacks] will only receive callbacks if this method returns normally.
+   * <p>The [callback] will only receive callback if this method returns normally.
    *
    * @param conversationPointer A pointer to the native conversation instance.
    * @param messageJsonString The message to be processed by the native conversation instance.
-   * @param callbacks The callbacks to receive the streaming responses.
+   * @param callback The callback to receive the streaming responses.
    */
   public static native void nativeSendMessageAsync(
-      long conversationPointer, String messageJsonString, JniMessageCallbacks callbacks);
+      long conversationPointer, String messageJsonString, JniMessageCallback callback);
 
   /**
    * Send message from the given input data synchronously.
@@ -218,11 +218,11 @@ public final class LiteRtLmJni {
   public static native BenchmarkInfo nativeConversationGetBenchmarkInfo(long conversationPointer);
 
   /**
-   * Callbacks for the nativeSendMessageAsync.
+   * Callback for the nativeSendMessageAsync.
    *
    * <p>Keep the data type simple (string) to avoid constructing complex JVM object in native layer.
    */
-  interface JniMessageCallbacks {
+  interface JniMessageCallback {
     /**
      * Called when a message is received.
      *

@@ -23,6 +23,8 @@
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
@@ -68,10 +70,10 @@ class SessionBasic : public Engine::Session {
       const std::vector<InputData>& contents) override;
   absl::Status GenerateContentStream(
       const std::vector<InputData>& contents,
-      std::unique_ptr<InferenceCallbacks> callbacks) override;
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) override;
   absl::Status GenerateContentStream(
       const std::vector<InputData>& contents,
-      std::unique_ptr<InferenceCallbacks> callbacks,
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
       const DecodeConfig& decode_config) override;
 
   // Scores the target text after the prefill process is done. This function
@@ -90,7 +92,7 @@ class SessionBasic : public Engine::Session {
 
   absl::Status RunPrefillAsync(
       const std::vector<InputData>& contents,
-      std::unique_ptr<InferenceCallbacks> callbacks) override;
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) override;
 
   absl::StatusOr<Responses> RunDecode() override;
 
@@ -98,10 +100,11 @@ class SessionBasic : public Engine::Session {
       const DecodeConfig& decode_config) override;
 
   absl::Status RunDecodeAsync(
-      std::unique_ptr<InferenceCallbacks> callbacks) override;
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) override;
 
-  absl::Status RunDecodeAsync(std::unique_ptr<InferenceCallbacks> callbacks,
-                              const DecodeConfig& decode_config) override;
+  absl::Status RunDecodeAsync(
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+      const DecodeConfig& decode_config) override;
 
   absl::StatusOr<BenchmarkInfo> GetBenchmarkInfo() override;
 
@@ -213,7 +216,7 @@ class SessionBasic : public Engine::Session {
   // wrap it with lambda function for scheduling.
   absl::StatusOr<Responses> DecodeInternal(const DecodeConfig& decode_config);
   absl::Status DecodeInternalStreaming(
-      std::unique_ptr<InferenceCallbacks> callbacks,
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
       const DecodeConfig& decode_config);
 
   // The util function to convert the string to processed input text.

@@ -40,16 +40,16 @@ absl::StatusOr<std::vector<InputData>>
 GenericDataProcessor::ToInputDataVectorImpl(
     const std::string& rendered_template_prompt,
     const nlohmann::ordered_json& messages,
-    const GenericDataProcessorArguments& args) {
+    const GenericDataProcessorArguments& args) const {
   std::vector<InputData> input_data;
   input_data.emplace_back(InputText(rendered_template_prompt));
   return input_data;
 }
 
 absl::StatusOr<Message> GenericDataProcessor::ToMessageImpl(
-    const Responses& responses, const GenericDataProcessorArguments& args) {
-  ASSIGN_OR_RETURN(absl::string_view response_text,
-                   responses.GetResponseTextAt(0));
+    const Responses& responses,
+    const GenericDataProcessorArguments& args) const {
+  absl::string_view response_text = responses.GetTexts()[0];
   nlohmann::ordered_json content;
   content = nlohmann::ordered_json::array(
       {{{"type", "text"}, {"text", std::string(response_text)}}});

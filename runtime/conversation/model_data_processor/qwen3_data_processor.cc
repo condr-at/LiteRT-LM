@@ -58,16 +58,15 @@ absl::StatusOr<std::vector<InputData>>
 Qwen3DataProcessor::ToInputDataVectorImpl(
     const std::string& rendered_template_prompt,
     const nlohmann::ordered_json& messages,
-    const Qwen3DataProcessorArguments& args) {
+    const Qwen3DataProcessorArguments& args) const {
   std::vector<InputData> input_data;
   input_data.emplace_back(InputText(rendered_template_prompt));
   return input_data;
 }
 
 absl::StatusOr<Message> Qwen3DataProcessor::ToMessageImpl(
-    const Responses& responses, const Qwen3DataProcessorArguments& args) {
-  ASSIGN_OR_RETURN(absl::string_view response_text,
-                   responses.GetResponseTextAt(0));
+    const Responses& responses, const Qwen3DataProcessorArguments& args) const {
+  absl::string_view response_text = responses.GetTexts()[0];
   nlohmann::ordered_json message = {{"role", "assistant"}};
   if (preface_.has_value() && std::holds_alternative<JsonPreface>(*preface_) &&
       !std::get<JsonPreface>(*preface_).tools.empty()) {
@@ -90,11 +89,11 @@ absl::StatusOr<Message> Qwen3DataProcessor::ToMessageImpl(
   return message;
 }
 
-absl::string_view Qwen3DataProcessor::CodeFenceStart() {
+absl::string_view Qwen3DataProcessor::CodeFenceStart() const {
   return config_.code_fence_start;
 }
 
-absl::string_view Qwen3DataProcessor::CodeFenceEnd() {
+absl::string_view Qwen3DataProcessor::CodeFenceEnd() const {
   return config_.code_fence_end;
 }
 

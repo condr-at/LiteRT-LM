@@ -34,6 +34,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_check.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
@@ -66,7 +67,6 @@ using ::litert::lm::InputText;
 using ::litert::lm::JsonMessage;
 using ::litert::lm::LlmExecutorSettings;
 using ::litert::lm::Message;
-using ::litert::lm::MessageCallbacks;
 using ::litert::lm::ModelAssets;
 using ::nlohmann::json;
 
@@ -112,24 +112,23 @@ absl::Status PrintJsonMessage(const JsonMessage& message,
   return absl::OkStatus();
 }
 
-class PrintMessageCallbacks : public MessageCallbacks {
- public:
-  explicit PrintMessageCallbacks(std::stringstream& captured_output)
-      : captured_output_(captured_output) {}
-
-  void OnMessage(const litert::lm::Message& message) override {
-    if (std::holds_alternative<JsonMessage>(message)) {
-      ABSL_CHECK_OK(PrintJsonMessage(std::get<JsonMessage>(message),
-                                     captured_output_,
+absl::AnyInvocable<void(absl::StatusOr<Message>)> CreatePrintMessageCallback(
+    std::stringstream& captured_output) {
+  return [&captured_output](absl::StatusOr<Message> message) {
+    if (!message.ok()) {
+      std::cout << message.status().message() << std::endl;
+      return;
+    }
+    if (auto json_message = std::get_if<JsonMessage>(&(*message))) {
+      if (json_message->is_null()) {
+        std::cout << std::endl << std::flush;
+        return;
+      }
+      ABSL_CHECK_OK(PrintJsonMessage(*json_message, captured_output,
                                      /*streaming=*/true));
     }
-  }
-  void OnComplete() override { std::cout << std::endl << std::flush; }
-  void OnError(const absl::Status& status) override {}
-
- private:
-  std::stringstream& captured_output_;
-};
+  };
+}
 
 void CheckExpectedOutput(const std::string& captured_output,
                          const LiteRtLmSettings& settings) {
@@ -211,7 +210,7 @@ absl::Status RunSingleTurnConversation(const std::string& input_prompt,
   if (settings.async) {
     RETURN_IF_ERROR(conversation->SendMessageAsync(
         json::object({{"role", "user"}, {"content", content_list}}),
-        std::make_unique<PrintMessageCallbacks>(captured_output)));
+        CreatePrintMessageCallback(captured_output)));
     RETURN_IF_ERROR(engine->WaitUntilDone(kWaitUntilDoneTimeout));
   } else {
     ASSIGN_OR_RETURN(auto model_message,
@@ -250,7 +249,7 @@ absl::Status RunMultiTurnConversation(const LiteRtLmSettings& settings,
     if (settings.async) {
       RETURN_IF_ERROR(conversation->SendMessageAsync(
           json::object({{"role", "user"}, {"content", content_list}}),
-          std::make_unique<PrintMessageCallbacks>(captured_output)));
+          CreatePrintMessageCallback(captured_output)));
       RETURN_IF_ERROR(engine->WaitUntilDone(kWaitUntilDoneTimeout));
     } else {
       ASSIGN_OR_RETURN(auto model_message,
@@ -273,7 +272,11 @@ void RunScoreText(litert::lm::Engine* llm, litert::lm::Engine::Session* session,
   ABSL_CHECK_OK(session->RunPrefill(inputs));
   auto response = session->RunTextScoring(target_text_vector);
   ABSL_CHECK_OK(response);
-  ABSL_LOG(INFO) << "Score: " << -1 * (*response->GetScoreAt(0)) << std::endl;
+  if (response->GetScores().empty()) {
+    ABSL_LOG(WARNING) << "No score found.";
+  } else {
+    ABSL_LOG(INFO) << "Score: " << -1 * (response->GetScores()[0]) << std::endl;
+  }
 }
 
 }  // namespace

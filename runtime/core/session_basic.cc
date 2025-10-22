@@ -24,6 +24,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
@@ -491,7 +492,7 @@ absl::Status SessionBasic::RunPrefill(const std::vector<InputData>& contents) {
 
 absl::Status SessionBasic::RunPrefillAsync(
     const std::vector<InputData>& contents,
-    std::unique_ptr<InferenceCallbacks> callbacks) {
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
   if (contents.empty()) {
     return absl::InvalidArgumentError("Input is empty.");
   }
@@ -511,14 +512,14 @@ absl::Status SessionBasic::RunPrefillAsync(
   }
   RETURN_IF_ERROR(worker_thread_pool_.Schedule(
       [this, preprocessed_contents = std::move(preprocessed_contents),
-       callbacks = std::move(callbacks)]() {
+       callback = std::move(callback)]() mutable {
         absl::Status status = this->PrefillInternal(
             preprocessed_contents, /*wait_for_completion=*/false);
         ABSL_LOG(INFO) << "RunPrefillAsync status: " << status;
-        if (status.ok()) {
-          callbacks->OnDone();
+        if (!status.ok()) {
+          callback(status);
         } else {
-          callbacks->OnError(status);
+          callback(Responses());
         }
       }));
   return absl::OkStatus();
@@ -549,13 +550,13 @@ absl::StatusOr<Responses> SessionBasic::DecodeInternal(
 }
 
 absl::Status SessionBasic::DecodeInternalStreaming(
-    std::unique_ptr<InferenceCallbacks> callbacks,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
     const DecodeConfig& decode_config) {
   if (sampler_ == nullptr) {
     RETURN_IF_ERROR(DecodeStreaming(
         executor_, tokenizer_, stop_token_detector_,
         session_config_.GetNumOutputCandidates(), decode_config.GetConstraint(),
-        benchmark_info_, std::move(callbacks), &cancelled_));
+        benchmark_info_, std::move(callback), &cancelled_));
   } else {
     std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
                                  last_prefill_token_id_);
@@ -565,7 +566,7 @@ absl::Status SessionBasic::DecodeInternalStreaming(
         executor_, tokenizer_, stop_token_detector_,
         session_config_.GetNumOutputCandidates(), *sampler_,
         *decoded_ids_buffer, decode_config.GetConstraint(), benchmark_info_,
-        std::move(callbacks), &cancelled_));
+        std::move(callback), &cancelled_));
   }
   return absl::OkStatus();
 }
@@ -591,12 +592,12 @@ absl::StatusOr<Responses> SessionBasic::RunDecode(
 }
 
 absl::Status SessionBasic::RunDecodeAsync(
-    std::unique_ptr<InferenceCallbacks> callbacks) {
-  return RunDecodeAsync(std::move(callbacks), DecodeConfig::CreateDefault());
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
+  return RunDecodeAsync(std::move(callback), DecodeConfig::CreateDefault());
 }
 
 absl::Status SessionBasic::RunDecodeAsync(
-    std::unique_ptr<InferenceCallbacks> callbacks,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
     const DecodeConfig& decode_config) {
   ABSL_LOG(INFO) << "RunDecodeAsync";
   if (cancelled_.load()) {
@@ -604,8 +605,8 @@ absl::Status SessionBasic::RunDecodeAsync(
     cancelled_ = false;
   }
   return worker_thread_pool_.Schedule(
-      [this, callbacks = std::move(callbacks), decode_config]() mutable {
-        this->DecodeInternalStreaming(std::move(callbacks), decode_config)
+      [this, callback = std::move(callback), decode_config]() mutable {
+        this->DecodeInternalStreaming(std::move(callback), decode_config)
             .IgnoreError();
       });
 }
@@ -650,67 +651,35 @@ absl::StatusOr<Responses> SessionBasic::RunTextScoring(
 
 absl::Status SessionBasic::GenerateContentStream(
     const std::vector<InputData>& contents,
-    std::unique_ptr<InferenceCallbacks> callbacks) {
-  return GenerateContentStream(contents, std::move(callbacks),
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
+  return GenerateContentStream(contents, std::move(callback),
                                DecodeConfig::CreateDefault());
 }
 
 absl::Status SessionBasic::GenerateContentStream(
     const std::vector<InputData>& contents,
-    std::unique_ptr<InferenceCallbacks> callbacks,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
     const DecodeConfig& decode_config) {
   if (cancelled_.load()) {
     // Reset the cancelled flag before processing the next turn.
     cancelled_ = false;
   }
-  // An callbacks to handle the result of the async prefill operation.
-  // It triggers the decode step if prefill is successful, or propagates the
-  // error.
-  class PrefillCallbacks : public InferenceCallbacks {
-   public:
-    PrefillCallbacks(SessionBasic* session,
-                     std::unique_ptr<InferenceCallbacks> next_callbacks,
-                     std::atomic<bool>* cancelled,
-                     const DecodeConfig& decode_config)
-        : session_(session),
-          next_callbacks_(std::move(next_callbacks)),
-          cancelled_(cancelled),
-          decode_config_(decode_config) {}
 
-    void OnNext(const Responses& responses) override {
-      ABSL_LOG(WARNING) << "OnNext should not be called during prefill!";
-    }
-
-    void OnError(const absl::Status& status) override {
-      next_callbacks_->OnError(status);
-    }
-
-    void OnDone() override {
-      if (cancelled_ != nullptr && cancelled_->load()) {
-        if (*cancelled_) {
-          next_callbacks_->OnError(
-              absl::CancelledError("CancelProcess is called during prefill. "
-                                   "Skip the following decode call."));
-          return;
+  RETURN_IF_ERROR(RunPrefillAsync(
+      contents,
+      [this, callback = std::move(callback), decode_config = decode_config](
+          absl::StatusOr<Responses> responses) mutable {
+        if (!responses.ok()) {
+          callback(responses.status());
+        } else {
+          if (cancelled_.load()) {
+            callback(
+                absl::CancelledError("Session is cancelled during prefill."));
+            return;
+          }
+          auto status = RunDecodeAsync(std::move(callback), decode_config);
         }
-      }
-      absl::Status status =
-          session_->RunDecodeAsync(std::move(next_callbacks_), decode_config_);
-      if (!status.ok()) {
-        ABSL_LOG(ERROR) << "Failed to start decode async: " << status;
-      }
-    }
-
-   private:
-    SessionBasic* session_;
-    mutable std::unique_ptr<InferenceCallbacks> next_callbacks_;
-    std::atomic<bool>* cancelled_;  // Not owned.
-    DecodeConfig decode_config_;
-  };
-
-  auto prefill_callbacks = std::make_unique<PrefillCallbacks>(
-      this, std::move(callbacks), &cancelled_, decode_config);
-  RETURN_IF_ERROR(RunPrefillAsync(contents, std::move(prefill_callbacks)));
+      }));
   return absl::OkStatus();
 }
 

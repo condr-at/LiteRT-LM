@@ -169,34 +169,21 @@ inline absl::StatusOr<InputData> CreateInputDataCopy(const InputData& data) {
 // A container to host the model responses.
 class Responses {
  public:
-  explicit Responses(int num_output_candidates);
+  explicit Responses() = default;
 
-  // Returns the number of output candidates.
-  int GetNumOutputCandidates() const { return num_output_candidates_; }
+  // Returns the const texts vector.
+  const std::vector<std::string>& GetTexts() const { return response_texts_; }
 
-  // Returns the response text at the given index. Returns error if the index is
-  // out of range.
-  absl::StatusOr<absl::string_view> GetResponseTextAt(int index) const;
+  // Returns the const scores vector.
+  const std::vector<float>& GetScores() const { return scores_; }
 
-  // Returns the score at the given index. Returns error if the index is out of
-  // range or if scores are not included.
-  // Note that the "score" is calculated as the sum of the log probabilities of
-  // the whole decoded sequence normalized by the total number of tokens.
-  absl::StatusOr<float> GetScoreAt(int index) const;
+  // Returns the mutable texts vector.
+  std::vector<std::string>& GetMutableTexts() { return response_texts_; };
 
-  // Returns the mutable response texts vector.
-  std::vector<std::string>& GetMutableResponseTexts();
-
-  // Returns the mutable scores vector. If it is the first time calling this
-  // function, the scores vector will be allocated to the size of
-  // num_output_candidates_ and initialized to the default value of -Inf
-  // (= log(0.0f)).
-  std::vector<float>& GetMutableScores();
+  // Returns the mutable scores vector.
+  std::vector<float>& GetMutableScores() { return scores_; };
 
  private:
-  // The number of output candidates.
-  int num_output_candidates_;
-
   // The output vector of response tokens (as strings).
   std::vector<std::string> response_texts_;
 
@@ -283,66 +270,6 @@ class BenchmarkInfo {
   std::vector<BenchmarkTurnData> decode_turns_;
 };
 std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info);
-
-// An interface with default implementations for the inference callbacks. The
-// example implementations are print out the first response text and the final
-// (or error) status to the stderr.
-//
-// When using this interface with asynchronous decoding, you may need to
-// capture state within your callback implementation to get the results after
-// the asynchronous operation completes. For example, you might pass references
-// to variables in the constructor of your callback implementation to store
-// the final response or status.
-//
-// Example Usage Pattern:
-//
-// class MyCallbacks : public InferenceCallbacks {
-//  public:
-//   MyCallbacks(bool& done, std::string& final_response)
-//       : done_(done), final_response_(final_response) {}
-//
-//   void OnNext(const Responses& responses) override {
-//     // Potentially update a partial response
-//   }
-//
-//   void OnDone(const Responses& responses) override {
-//     if (responses.GetNumOutputCandidates() > 0) {
-//       final_response_ = responses.GetResponseTextAt(0).value_or("");
-//     }
-//     done_ = true;
-//   }
-//
-//   void OnError(const absl::Status& status) override {
-//     // Handle error
-//     done_ = true;
-//   }
-//
-//  private:
-//   bool& done_;
-//   std::string& final_response_;
-// };
-//
-// // In the calling code:
-// bool done_decode = false;
-// std::string final_response;
-// session->RunDecodeAsync(std::make_unique<MyCallbacks>(done_decode,
-// final_response));
-// // ... wait for done_decode to be true ...
-// // final_response now contains the result.
-//
-class InferenceCallbacks {
- public:
-  virtual ~InferenceCallbacks() = default;
-
-  // Called when a new response is generated.
-  virtual void OnNext(const Responses& responses);
-
-  // Called when the inference is done and finished successfully.
-  virtual void OnDone();
-
-  // Called when an error is encountered during the inference.
-  virtual void OnError(const absl::Status& status);
-};
 
 // Configurations used for a single decode request.
 class DecodeConfig {

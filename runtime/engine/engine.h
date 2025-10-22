@@ -18,6 +18,7 @@
 #include <memory>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -80,22 +81,27 @@ class Engine {
         const std::vector<InputData>& contents) = 0;
 
     // This is a not blocking call and the function will return right away. The
-    // result will be streamed through the callbacks.
+    // result will be streamed through the callback.
     //
-    // The callbacks will only receive callbacks if the function returns an OK
-    // status. If the function returns an error status, the callbacks will not
-    // receive any callbacks.
     // - contents: The input data for generation.
-    // - callbacks: Callbacks to receive streamed results.
+    // - callback: Callback to receive streamed results.
+    //   Note:
+    //     - If the generation is done successfully, the callback will be
+    //       called with empty responses to signal the completion.
+    //     - If there is an error during the streaming process, the callback
+    //       will be called with the error status and no further results will be
+    //       sent.
+    //     - If the generation is cancelled, the callback will be called
+    //       with a Cancellation error.
     virtual absl::Status GenerateContentStream(
         const std::vector<InputData>& contents,
-        std::unique_ptr<InferenceCallbacks> callbacks) = 0;
+        absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) = 0;
 
     // Same as above, but with a custom decode config.
     // - decode_config: configuration for the model decode process.
     virtual absl::Status GenerateContentStream(
         const std::vector<InputData>& contents,
-        std::unique_ptr<InferenceCallbacks> callbacks,
+        absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
         const DecodeConfig& decode_config) = 0;
 
     // Scores the target text after the prefill process is done. This function
@@ -119,10 +125,10 @@ class Engine {
     virtual absl::Status RunPrefill(const std::vector<InputData>& contents) = 0;
 
     // This is a not blocking call and the function will return right away. The
-    // processing status will be signaled through the callbacks.
+    // processing status will be signaled through the callback.
     virtual absl::Status RunPrefillAsync(
         const std::vector<InputData>& contents,
-        std::unique_ptr<InferenceCallbacks> callbacks) {
+        absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
       return absl::UnimplementedError("Not implemented.");
     }
 
@@ -140,17 +146,17 @@ class Engine {
     // Startes the decoding process for the model to predict the response based
     // on the input prompt/query added after using RunPrefill* functions.
     // This is a not blocking call and the function will return right away. The
-    // result will be streamed through the callbacks.
-    // - callbacks: Callbacks to receive streamed results.
+    // result will be streamed through the callback.
+    // - callback: Callback to receive streamed results.
     virtual absl::Status RunDecodeAsync(
-        std::unique_ptr<InferenceCallbacks> callbacks) {
+        absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
       return absl::UnimplementedError("Not implemented.");
     }
 
     // Same as above, but with a custom decode config.
     // - decode_config: configuration for the model decode process.
     virtual absl::Status RunDecodeAsync(
-        std::unique_ptr<InferenceCallbacks> callbacks,
+        absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
         const DecodeConfig& decode_config) {
       return absl::UnimplementedError("Not implemented.");
     }

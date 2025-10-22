@@ -67,17 +67,17 @@ absl::StatusOr<Responses> Decode(LlmExecutor& executor, Tokenizer& tokenizer,
                                  std::atomic<bool>* cancelled = nullptr);
 
 // Runs the pipeline to decode the input prompt. The function is similar to
-// Decode, but it outputs the result using the callbacks to achieve streaming
+// Decode, but it outputs the result using the callback to achieve streaming
 // behavior.
-// - callbacks: The inference callbacks to receive the intermediate results.
+// - callback: The inference callback to receive the intermediate results.
 // - cancelled: A pointer to an atomic boolean. If the boolean is set to true,
 //   the decoding process will be cancelled.
-absl::Status DecodeStreaming(LlmExecutor& executor, Tokenizer& tokenizer,
-                             const StopTokenDetector& stop_token_detector,
-                             int num_output_candidates, Constraint* constraint,
-                             std::optional<BenchmarkInfo>& benchmark_info,
-                             std::unique_ptr<InferenceCallbacks> callbacks,
-                             std::atomic<bool>* cancelled = nullptr);
+absl::Status DecodeStreaming(
+    LlmExecutor& executor, Tokenizer& tokenizer,
+    const StopTokenDetector& stop_token_detector, int num_output_candidates,
+    Constraint* constraint, std::optional<BenchmarkInfo>& benchmark_info,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+    std::atomic<bool>* cancelled = nullptr);
 
 // Runs the pipeline to decode the input prompt.
 // - executor: The executor that call the core LLM model.
@@ -99,9 +99,9 @@ absl::StatusOr<Responses> DecodeCustomSampling(
     std::atomic<bool>* cancelled = nullptr);
 
 // Runs the pipeline to decode the input prompt. The function is similar to
-// DecodeCustomSampling, but it outputs the result using the callbacks to
+// DecodeCustomSampling, but it outputs the result using the callback to
 // achieve streaming behavior.
-// - callbacks: The inference callbacks to receive the intermediate results.
+// - callback: The inference callback to receive the intermediate results.
 // - cancelled: A pointer to an atomic boolean. If the boolean is set to true,
 //   the decoding process will be cancelled.
 absl::Status DecodeCustomSamplingStreaming(
@@ -109,7 +109,7 @@ absl::Status DecodeCustomSamplingStreaming(
     const StopTokenDetector& stop_token_detector, int num_output_candidates,
     Sampler& sampler, litert::TensorBuffer& decoded_ids, Constraint* constraint,
     std::optional<BenchmarkInfo>& benchmark_info,
-    std::unique_ptr<InferenceCallbacks> callbacks,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
     std::atomic<bool>* cancelled = nullptr);
 
 // Runs the pipeline to score the input prompt.

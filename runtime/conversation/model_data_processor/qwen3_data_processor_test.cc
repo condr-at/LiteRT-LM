@@ -70,8 +70,9 @@ TEST(Qwen3DataProcessorTest, ToInputDataVector) {
 TEST(Qwen3DataProcessorTest, ToMessageDefault) {
   ASSERT_OK_AND_ASSIGN(auto processor,
                        Qwen3DataProcessor::Create(Qwen3DataProcessorConfig{}));
-  Responses responses(1);
-  responses.GetMutableResponseTexts()[0] = "test response";
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
+  responses.GetMutableTexts()[0] = "test response";
   ASSERT_OK_AND_ASSIGN(const Message message,
                        processor->ToMessage(responses, std::monostate{}));
 
@@ -84,7 +85,7 @@ TEST(Qwen3DataProcessorTest, ToMessageDefault) {
             {"content", {{{"type", "text"}, {"text", "test response"}}}}}));
 }
 
-TEST(Qwen3DataProcessorTest, ToMessageWithTools) {
+TEST(Qwen3DataProcessorTest, ToMessageModelRole) {
   JsonPreface preface;
   preface.tools = nlohmann::ordered_json::array();
   preface.tools.push_back(
@@ -92,8 +93,10 @@ TEST(Qwen3DataProcessorTest, ToMessageWithTools) {
   ASSERT_OK_AND_ASSIGN(
       auto processor,
       Qwen3DataProcessor::Create(Qwen3DataProcessorConfig{}, preface));
-  Responses responses(1);
-  responses.GetMutableResponseTexts()[0] =
+
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
+  responses.GetMutableTexts()[0] =
       "this is text and tool call "
       "<tool_call>{\"name\":\"func1\",\"arguments\":{\"arg1\":1}}</tool_call>";
   ASSERT_OK_AND_ASSIGN(const Message message,

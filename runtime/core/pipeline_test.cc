@@ -25,6 +25,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
@@ -61,41 +62,32 @@ class BytePairEncodingTokenizer : public Tokenizer {
   MOCK_METHOD(TokenizerType, GetTokenizerType, (), (const, override));
 };
 
-// Test callbacks to collect the streaming results, also ensure that no more
-// events is received after OnError or OnDone.
-class TestCallbacks : public InferenceCallbacks {
- public:
-  explicit TestCallbacks(std::vector<std::string>& responses,
-                         absl::Status& status, bool& done,
-                         bool delay_on_next = false)
-      : responses_(responses), status_(status), done_(done) {}
-  void OnNext(const Responses& responses) override {
-    EXPECT_FALSE(done_);
-    for (int i = 0; i < responses.GetNumOutputCandidates(); ++i) {
-      responses_[i] += *(responses.GetResponseTextAt(i));
+absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateTestCallback(
+    std::vector<std::string>& responses_ref, absl::Status& status_ref,
+    bool& done_ref, bool delay_on_next = false) {
+  return [&responses_ref, &status_ref, &done_ref,
+          delay_on_next](absl::StatusOr<Responses> responses) mutable {
+    // If the responses is not ok, the error status is returned.
+    if (!responses.ok()) {
+      status_ref = std::move(responses.status());
+      done_ref = true;
+      return;
     }
-    if (delay_on_next_) {
+    // If the responses is empty, the generation is completed.
+    if (responses.value().GetTexts().empty()) {
+      EXPECT_FALSE(done_ref);
+      done_ref = true;
+      return;
+    }
+    // Accumulate the responses.
+    for (int i = 0; i < responses.value().GetTexts().size(); ++i) {
+      responses_ref[i] += responses.value().GetTexts()[i];
+    }
+    if (delay_on_next) {
       absl::SleepFor(absl::Milliseconds(50));
     }
-  }
-
-  void OnError(const absl::Status& status) override {
-    EXPECT_FALSE(done_);
-    status_ = status;
-    done_ = true;
-  }
-
-  void OnDone() override {
-    EXPECT_FALSE(done_);
-    done_ = true;
-  }
-
- private:
-  std::vector<std::string>& responses_;
-  absl::Status& status_;
-  bool& done_;
-  bool delay_on_next_ = false;
-};
+  };
+}
 
 class PipelineTest : public testing::Test {
  protected:
@@ -179,9 +171,8 @@ TEST_F(PipelineTest, Decode) {
   EXPECT_OK(responses);
   // The response is " How's it going?" since "!" is the stop token which is
   // not included in the response.
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going?");
-  EXPECT_THAT(responses->GetResponseTextAt(1),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_EQ(responses->GetTexts()[0], " How's it going?");
 }
 
 TEST_F(PipelineTest, DecodeWithTwoStopTokens) {
@@ -195,7 +186,8 @@ TEST_F(PipelineTest, DecodeWithTwoStopTokens) {
   EXPECT_OK(responses);
   // The response is " How's it going" since "?!" is the stop token which is
   // not included in the response.
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going");
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_EQ(responses->GetTexts()[0], " How's it going");
 }
 
 TEST_F(PipelineTest, DecodeReachMaxNumTokens) {
@@ -210,7 +202,8 @@ TEST_F(PipelineTest, DecodeReachMaxNumTokens) {
              /*constraint=*/nullptr, benchmark_info);
   EXPECT_OK(responses);
   // The response is truncated at the max number of tokens.
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's");
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_EQ(responses->GetTexts()[0], " How's");
 }
 
 TEST_F(PipelineTest, DecodeWithMultipleOutputCandidates) {
@@ -233,11 +226,10 @@ TEST_F(PipelineTest, DecodeWithMultipleOutputCandidates) {
       Decode(*executor_, *tokenizer_, stop_token_detector, kNumOutputCandidates,
              /*constraint=*/nullptr, benchmark_info);
   EXPECT_OK(responses);
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going?");
-  EXPECT_EQ(*(responses->GetResponseTextAt(1)), " Hello World");
-  EXPECT_EQ(*(responses->GetResponseTextAt(2)), " How's it going?");
-  EXPECT_THAT(responses->GetResponseTextAt(3),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(responses->GetTexts().size(), 3);
+  EXPECT_EQ(responses->GetTexts()[0], " How's it going?");
+  EXPECT_EQ(responses->GetTexts()[1], " Hello World");
+  EXPECT_EQ(responses->GetTexts()[2], " How's it going?");
 }
 
 TEST_F(PipelineTest, DecodeWithConstrainedDecoding) {
@@ -263,8 +255,8 @@ TEST_F(PipelineTest, DecodeWithConstrainedDecoding) {
       Decode(*executor, *tokenizer_, stop_token_detector, kNumOutputCandidates,
              constraint.get(), benchmark_info);
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it");
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_EQ(responses->GetTexts()[0], " How's it");
 }
 
 TEST_F(PipelineTest, DecodeStreaming) {
@@ -277,10 +269,10 @@ TEST_F(PipelineTest, DecodeStreaming) {
   std::vector<std::string> responses(kNumOutputCandidates);
   absl::Status status;
   bool done = false;
-  EXPECT_OK(DecodeStreaming(
-      *executor_, *tokenizer_, stop_token_detector, kNumOutputCandidates,
-      /*constraint=*/nullptr, benchmark_info,
-      std::make_unique<TestCallbacks>(responses, status, done)));
+  EXPECT_OK(DecodeStreaming(*executor_, *tokenizer_, stop_token_detector,
+                            kNumOutputCandidates, /*constraint=*/nullptr,
+                            benchmark_info,
+                            CreateTestCallback(responses, status, done)));
   // The response is " How's it going?" since "!" is the stop token which is
   // not included in the response.
   EXPECT_EQ(responses[0], " How's it going?");
@@ -300,10 +292,10 @@ TEST_F(PipelineTest, DecodeStreamingReachMaxNumTokens) {
   std::vector<std::string> responses(kNumOutputCandidates);
   absl::Status status;
   bool done = false;
-  EXPECT_OK(DecodeStreaming(
-      *executor_, *tokenizer_, stop_token_detector, kNumOutputCandidates,
-      /*constraint=*/nullptr, benchmark_info,
-      std::make_unique<TestCallbacks>(responses, status, done)));
+  EXPECT_OK(DecodeStreaming(*executor_, *tokenizer_, stop_token_detector,
+                            kNumOutputCandidates, /*constraint=*/nullptr,
+                            benchmark_info,
+                            CreateTestCallback(responses, status, done)));
   // The response is truncated at the max number of tokens.
   EXPECT_EQ(responses[0], " How's");
 }
@@ -331,10 +323,10 @@ TEST_F(PipelineTest, DecodeStreamingWithConstrainedDecoding) {
   std::vector<std::string> responses(kNumOutputCandidates);
   absl::Status status;
   bool done = false;
-  EXPECT_OK(DecodeStreaming(
-      *executor, *tokenizer_, stop_token_detector, kNumOutputCandidates,
-      constraint.get(), benchmark_info,
-      std::make_unique<TestCallbacks>(responses, status, done)));
+  EXPECT_OK(DecodeStreaming(*executor, *tokenizer_, stop_token_detector,
+                            kNumOutputCandidates, constraint.get(),
+                            benchmark_info,
+                            CreateTestCallback(responses, status, done)));
   EXPECT_EQ(responses[0], " How's it");
 }
 
@@ -374,7 +366,8 @@ TEST_F(PipelineTest, DecodeBytePairEncodingTokens) {
   EXPECT_OK(responses);
   // The response is " How's it going?" since "!" is the stop token which is
   // not included in the response.
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going?");
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_EQ(responses->GetTexts()[0], " How's it going?");
 }
 
 TEST_F(PipelineTest, DecodeStopTokenIsPartialBytePairEncodingTokens) {
@@ -400,7 +393,8 @@ TEST_F(PipelineTest, DecodeStopTokenIsPartialBytePairEncodingTokens) {
   EXPECT_OK(responses);
   // Empty response as the stop token is encoded as a partial byte pair encoding
   // token.
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), "");
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_EQ(responses->GetTexts()[0], "");
 }
 
 class PipelineCustomSamplingTest : public testing::Test {
@@ -510,15 +504,16 @@ TEST_F(PipelineCustomSamplingTest, DecodeCustomSampling) {
                            /*num_output_candidates=*/2, *sampler, *decoded_ids,
                            /*constraint=*/nullptr, benchmark_info);
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 2);
+  EXPECT_EQ(responses->GetTexts().size(), 2);
   // First candidate: " How's it going?!".
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going?!");
+  EXPECT_EQ(responses->GetTexts()[0], " How's it going?!");
   // Second candidate: " Hello World!".
-  EXPECT_EQ(*(responses->GetResponseTextAt(1)), " Hello World!");
+  EXPECT_EQ(responses->GetTexts()[1], " Hello World!");
 
   // The scores are all equal to 0.0f (log(1.0f)).
-  EXPECT_EQ(*(responses->GetScoreAt(0)), 0.0f);
-  EXPECT_EQ(*(responses->GetScoreAt(1)), 0.0f);
+  EXPECT_EQ(responses->GetScores().size(), 2);
+  EXPECT_EQ(responses->GetScores()[0], 0.0f);
+  EXPECT_EQ(responses->GetScores()[1], 0.0f);
 }
 
 TEST_F(PipelineCustomSamplingTest,
@@ -564,9 +559,11 @@ TEST_F(PipelineCustomSamplingTest,
                            /*num_output_candidates=*/2, *sampler, *decoded_ids,
                            /*constraint=*/constraint.get(), benchmark_info);
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 2);
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it");
-  EXPECT_EQ(*(responses->GetResponseTextAt(1)), " How's it");
+  EXPECT_EQ(responses->GetTexts().size(), 2);
+  // First candidate: " How's it".
+  EXPECT_EQ(responses->GetTexts()[0], " How's it");
+  // Second candidate: " How's it".
+  EXPECT_EQ(responses->GetTexts()[1], " How's it");
 }
 
 TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingSingleBatch) {
@@ -585,12 +582,12 @@ TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingSingleBatch) {
       1.0f, *decoded_ids);
   ASSERT_OK(responses);
   // Expect a single output candidate.
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
+  EXPECT_EQ(responses->GetScores().size(), 1);
   // The fake executor returns the decode tokens deterministically.
   // This corresponds to the probability of the target text "Hello World!"
   // being generated by the model. The probability is 1.0f because the decode
   // tokens are the same as the target text.
-  EXPECT_EQ(*(responses->GetScoreAt(0)), 0.0f);
+  EXPECT_EQ(responses->GetScores()[0], 0.0f);
 }
 
 TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingMultiBatch) {
@@ -614,13 +611,13 @@ TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingMultiBatch) {
       *decoded_ids);
   ASSERT_OK(responses);
   // Expect a single output candidate.
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 2);
+  EXPECT_EQ(responses->GetScores().size(), 2);
   // The fake executor returns the decode tokens deterministically.
   // This corresponds to the probability of the target text "Hello World!"
   // being generated by the model. The probability is 1.0f because the decode
   // tokens are the same as the target text.
-  EXPECT_EQ(*(responses->GetScoreAt(0)), 0.0f);
-  EXPECT_EQ(*(responses->GetScoreAt(1)), 0.0f);
+  EXPECT_EQ(responses->GetScores()[0], 0.0f);
+  EXPECT_EQ(responses->GetScores()[1], 0.0f);
 }
 
 TEST_F(PipelineCustomSamplingTest, DecodeCustomSamplingReachMaxNumTokens) {
@@ -651,11 +648,11 @@ TEST_F(PipelineCustomSamplingTest, DecodeCustomSamplingReachMaxNumTokens) {
                            /*num_output_candidates=*/2, *sampler, *decoded_ids,
                            /*constraint=*/nullptr, benchmark_info);
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 2);
+  EXPECT_EQ(responses->GetTexts().size(), 2);
   // First candidate truncated at max number of tokens: " How's".
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's");
+  EXPECT_EQ(responses->GetTexts()[0], " How's");
   // Second candidate truncated at max number of tokens: " Hello".
-  EXPECT_EQ(*(responses->GetResponseTextAt(1)), " Hello");
+  EXPECT_EQ(responses->GetTexts()[1], " Hello");
 }
 
 TEST_F(PipelineCustomSamplingTest, DecodeCustomSamplingStreaming) {
@@ -698,7 +695,7 @@ TEST_F(PipelineCustomSamplingTest, DecodeCustomSamplingStreaming) {
       executor, *tokenizer_, stop_token_detector,
       /*num_output_candidates=*/2, *sampler, *decoded_ids,
       /*constraint=*/nullptr, benchmark_info,
-      std::make_unique<TestCallbacks>(responses, status, done)));
+      CreateTestCallback(responses, status, done)));
   // First candidate: " How's it going" - ("?!") are stop tokens that is not
   // included in the output.
   EXPECT_EQ(responses[0], " How's it going");
@@ -740,7 +737,7 @@ TEST_F(PipelineCustomSamplingTest,
       executor, *tokenizer_, stop_token_detector,
       /*num_output_candidates=*/2, *sampler, *decoded_ids,
       /*constraint=*/nullptr, benchmark_info,
-      std::make_unique<TestCallbacks>(responses, status, done)));
+      CreateTestCallback(responses, status, done)));
   // First candidate truncated at max number of tokens: " How's".
   EXPECT_EQ(responses[0], " How's");
   // Second candidate truncated at max number of tokens: " Hello".
@@ -787,19 +784,20 @@ TEST_F(PipelineCustomSamplingTest, DecodeComplexStopTokenDetector) {
                            /*num_output_candidates=*/2, *sampler, *decoded_ids,
                            /*constraint=*/nullptr, benchmark_info);
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 2);
+  // Expect two output candidates.
+  EXPECT_EQ(responses->GetTexts().size(), 2);
   // First candidate: " How's it going?!".
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going?!");
+  EXPECT_EQ(responses->GetTexts()[0], " How's it going?!");
   // Second candidate: "" since the stop token sequence is matched at
   // the beginning of the second batch.
-  EXPECT_EQ(*(responses->GetResponseTextAt(1)), "");
+  EXPECT_EQ(responses->GetTexts()[1], "");
 
   // The scores are equal to 0.0f (log(1.0f)).
-  EXPECT_EQ(*(responses->GetScoreAt(0)), 0.0f);
+  EXPECT_EQ(responses->GetScores().size(), 2);
+  EXPECT_EQ(responses->GetScores()[0], 0.0f);
   // The second candidate doesn't have any tokens decoded so the score is set to
   // -inf.
-  EXPECT_EQ(*(responses->GetScoreAt(1)),
-            -std::numeric_limits<float>::infinity());
+  EXPECT_EQ(responses->GetScores()[1], -std::numeric_limits<float>::infinity());
 }
 
 TEST_F(PipelineCustomSamplingTest,
@@ -839,7 +837,7 @@ TEST_F(PipelineCustomSamplingTest,
 
   ThreadPool pool("test_pool", 1);
   absl::Status status;
-  absl::Status callbacks_status;
+  absl::Status callback_status;
   std::vector<std::string> responses(2);
   bool done = false;
   ASSERT_OK(pool.Schedule([&]() {
@@ -847,8 +845,8 @@ TEST_F(PipelineCustomSamplingTest,
         delayed_executor, *tokenizer_, stop_token_detector,
         /*num_output_candidates=*/2, *sampler, *decoded_ids,
         /*constraint=*/nullptr, benchmark_info,
-        std::make_unique<TestCallbacks>(responses, callbacks_status, done,
-                                        /*delay_on_next=*/true),
+        CreateTestCallback(responses, callback_status, done,
+                           /*delay_on_next=*/true),
         &cancelled);
   }));
 
@@ -860,7 +858,7 @@ TEST_F(PipelineCustomSamplingTest,
 
   EXPECT_OK(pool.WaitUntilDone(absl::Seconds(5)));
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kCancelled));
-  EXPECT_THAT(callbacks_status,
+  EXPECT_THAT(callback_status,
               testing::status::StatusIs(absl::StatusCode::kCancelled));
 }
 
@@ -874,7 +872,7 @@ TEST_F(PipelineCustomSamplingTest,
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
   // Populate with the last pre-filled token.
   decoded_ids->Write<int>({2, 2});
-  absl::Status callbacks_status;
+  absl::Status callback_status;
   std::vector<std::string> responses(2);
   bool done = false;
   std::optional<BenchmarkInfo> benchmark_info;
@@ -903,7 +901,7 @@ TEST_F(PipelineCustomSamplingTest,
       executor, *tokenizer_, stop_token_detector,
       /*num_output_candidates=*/2, *sampler, *decoded_ids,
       /*constraint=*/constraint.get(), benchmark_info,
-      std::make_unique<TestCallbacks>(responses, callbacks_status, done)));
+      CreateTestCallback(responses, callback_status, done)));
   EXPECT_EQ(responses[0], " Hello World");
   EXPECT_EQ(responses[1], " Hello World");
 }
@@ -969,13 +967,14 @@ TEST_F(PipelineCustomSamplingTest, DecodeStopTokenAndBPEDetector) {
                            /*constraint=*/nullptr, benchmark_info);
 
   EXPECT_OK(responses);
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), "BPE");
-  EXPECT_EQ(*(responses->GetResponseTextAt(1)), "a");
+  EXPECT_EQ(responses->GetTexts().size(), 2);
+  EXPECT_EQ(responses->GetTexts()[0], "BPE");
+  EXPECT_EQ(responses->GetTexts()[1], "a");
 }
 
-using PipelineCallbacksTest = PipelineTest;
+using PipelineCallbackTest = PipelineTest;
 
-TEST_F(PipelineCallbacksTest, DecodeStreaming_SuccessfulCompletion) {
+TEST_F(PipelineCallbackTest, DecodeStreaming_SuccessfulCompletion) {
   std::optional<BenchmarkInfo> benchmark_info;
   constexpr int kNumOutputCandidates = 1;
   StopTokenDetector stop_token_detector(kNumOutputCandidates);
@@ -983,16 +982,16 @@ TEST_F(PipelineCallbacksTest, DecodeStreaming_SuccessfulCompletion) {
   absl::Status status;
   std::vector<std::string> responses(kNumOutputCandidates);
   bool done = false;
-  EXPECT_OK(DecodeStreaming(
-      *executor_, *tokenizer_, stop_token_detector, kNumOutputCandidates,
-      /*constraint=*/nullptr, benchmark_info,
-      std::make_unique<TestCallbacks>(responses, status, done)));
+  EXPECT_OK(DecodeStreaming(*executor_, *tokenizer_, stop_token_detector,
+                            kNumOutputCandidates, /*constraint=*/nullptr,
+                            benchmark_info,
+                            CreateTestCallback(responses, status, done)));
   EXPECT_EQ(responses[0], " How's it going?");
   EXPECT_TRUE(done);
   EXPECT_OK(status);
 }
 
-TEST_F(PipelineCallbacksTest, DecodeStreaming_ErrorCompletion) {
+TEST_F(PipelineCallbackTest, DecodeStreaming_ErrorCompletion) {
   // Set the max number of tokens to 3 to trigger an error.
   executor_->GetMutableExecutorSettings().value()->SetMaxNumTokens(3);
   std::optional<BenchmarkInfo> benchmark_info;
@@ -1002,17 +1001,17 @@ TEST_F(PipelineCallbacksTest, DecodeStreaming_ErrorCompletion) {
   absl::Status status;
   std::vector<std::string> responses(kNumOutputCandidates);
   bool done = false;
-  EXPECT_OK(DecodeStreaming(
-      *executor_, *tokenizer_, stop_token_detector, kNumOutputCandidates,
-      /*constraint=*/nullptr, benchmark_info,
-      std::make_unique<TestCallbacks>(responses, status, done)));
+  EXPECT_OK(DecodeStreaming(*executor_, *tokenizer_, stop_token_detector,
+                            kNumOutputCandidates, /*constraint=*/nullptr,
+                            benchmark_info,
+                            CreateTestCallback(responses, status, done)));
   EXPECT_EQ(responses[0], " How's");
   EXPECT_TRUE(done);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal,
                                "Maximum kv-cache size reached."));
 }
 
-TEST_F(PipelineCallbacksTest,
+TEST_F(PipelineCallbackTest,
        DecodeStreaming_SuccessfulCompletion_WithMultipleCandidates) {
   constexpr int kNumOutputCandidates = 3;
   // Rebuild the executor with multiple output candidates with the same prefill
@@ -1032,10 +1031,10 @@ TEST_F(PipelineCallbacksTest,
   absl::Status status;
   std::vector<std::string> responses(kNumOutputCandidates);
   bool done = false;
-  EXPECT_OK(DecodeStreaming(
-      *executor_, *tokenizer_, stop_token_detector, kNumOutputCandidates,
-      /*constraint=*/nullptr, benchmark_info,
-      std::make_unique<TestCallbacks>(responses, status, done)));
+  EXPECT_OK(DecodeStreaming(*executor_, *tokenizer_, stop_token_detector,
+                            kNumOutputCandidates,
+                            /*constraint=*/nullptr, benchmark_info,
+                            CreateTestCallback(responses, status, done)));
   EXPECT_EQ(responses[0], " How's it going?");
   EXPECT_EQ(responses[1], " Hello World");
   EXPECT_EQ(responses[2], " How's it going?");

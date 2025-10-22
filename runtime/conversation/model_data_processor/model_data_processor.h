@@ -42,12 +42,12 @@ class ModelDataProcessor {
   virtual absl::StatusOr<std::vector<InputData>> ToInputDataVector(
       const std::string& rendered_template_prompt,
       const nlohmann::ordered_json& messages,
-      const DataProcessorArguments& args) = 0;
+      const DataProcessorArguments& args) const = 0;
 
   // Converts a list of responses from the LLM Session to a Message, which is
   // the output to the user.
   virtual absl::StatusOr<Message> ToMessage(
-      const Responses& responses, const DataProcessorArguments& args) = 0;
+      const Responses& responses, const DataProcessorArguments& args) const = 0;
 
   // Converts a message into the Jinja template input for that message.
   //
@@ -64,7 +64,7 @@ class ModelDataProcessor {
   // Formats the provided tools to be inserted into the system/developer
   // instruction of the prompt.
   virtual absl::StatusOr<nlohmann::ordered_json> FormatTools(
-      const nlohmann::ordered_json& tools) = 0;
+      const nlohmann::ordered_json& tools) const = 0;
 
   // Creates a constraint from the given tools. The constraint is used for
   // constrained decoding. It is created from the tools defined in the preface,
@@ -75,10 +75,10 @@ class ModelDataProcessor {
   };
 
   // Returns the start of tool call blocks.
-  virtual absl::string_view CodeFenceStart() = 0;
+  virtual absl::string_view CodeFenceStart() const = 0;
 
   // Returns the end of tool call blocks.
-  virtual absl::string_view CodeFenceEnd() = 0;
+  virtual absl::string_view CodeFenceEnd() const = 0;
 };
 
 // TypeSafeModelDataProcessor is a ModelDataProcessor that expects a specific
@@ -95,7 +95,7 @@ class TypeSafeModelDataProcessor : public ModelDataProcessor {
   absl::StatusOr<std::vector<InputData>> ToInputDataVector(
       const std::string& rendered_template_prompt,
       const nlohmann::ordered_json& messages,
-      const DataProcessorArguments& args) final {
+      const DataProcessorArguments& args) const final {
     if (std::holds_alternative<ExpectedArgsT>(args)) {
       return this->ToInputDataVectorImpl(rendered_template_prompt, messages,
                                          std::get<ExpectedArgsT>(args));
@@ -109,8 +109,9 @@ class TypeSafeModelDataProcessor : public ModelDataProcessor {
 
   // Converts a list of responses from the LLM Session to a Message, with
   // arguments type validated.
-  absl::StatusOr<Message> ToMessage(const Responses& responses,
-                                    const DataProcessorArguments& args) final {
+  absl::StatusOr<Message> ToMessage(
+      const Responses& responses,
+      const DataProcessorArguments& args) const final {
     if (std::holds_alternative<ExpectedArgsT>(args)) {
       return this->ToMessageImpl(responses, std::get<ExpectedArgsT>(args));
     } else if (std::holds_alternative<std::monostate>(args)) {
@@ -121,16 +122,16 @@ class TypeSafeModelDataProcessor : public ModelDataProcessor {
   }
 
   // Returns the config of the model data processor.
-  virtual const ExpectedConfigT& GetConfig() = 0;
+  virtual const ExpectedConfigT& GetConfig() const = 0;
 
  private:
   virtual absl::StatusOr<std::vector<InputData>> ToInputDataVectorImpl(
       const std::string& rendered_template_prompt,
       const nlohmann::ordered_json& messages,
-      const ExpectedArgsT& typed_args) = 0;
+      const ExpectedArgsT& typed_args) const = 0;
 
   virtual absl::StatusOr<Message> ToMessageImpl(
-      const Responses& responses, const ExpectedArgsT& typed_args) = 0;
+      const Responses& responses, const ExpectedArgsT& typed_args) const = 0;
 };
 
 }  // namespace litert::lm

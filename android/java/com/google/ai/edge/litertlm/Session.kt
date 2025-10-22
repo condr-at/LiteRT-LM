@@ -96,30 +96,30 @@ class Session(private val handle: Long) : AutoCloseable {
    * This handles both the prefilling and decoding steps.
    *
    * @param inputData An array of [InputData] to be processed by the model.
-   * @param responseObserver The observer to receive the streaming responses.
+   * @param responseCallback The callback to receive the streaming responses.
    * @throws IllegalStateException if the session is not alive.
    */
-  fun generateContentStream(inputData: List<InputData>, responseObserver: ResponseObserver) {
+  fun generateContentStream(inputData: List<InputData>, responseCallback: ResponseCallback) {
     checkIsAlive()
-    val jniCallbacks = JniInferenceCallbacksImpl(responseObserver)
-    LiteRtLmJni.nativeGenerateContentStream(handle, inputData.toTypedArray(), jniCallbacks)
+    val jniCallback = JniInferenceCallbackImpl(responseCallback)
+    LiteRtLmJni.nativeGenerateContentStream(handle, inputData.toTypedArray(), jniCallback)
   }
 
-  private inner class JniInferenceCallbacksImpl(private val observer: ResponseObserver) :
-    LiteRtLmJni.JniInferenceCallbacks {
+  private inner class JniInferenceCallbackImpl(private val callback: ResponseCallback) :
+    LiteRtLmJni.JniInferenceCallback {
     override fun onNext(response: String) {
-      observer.onNext(response)
+      callback.onNext(response)
     }
 
     override fun onDone() {
-      observer.onDone()
+      callback.onDone()
     }
 
     override fun onError(statusCode: Int, message: String) {
       if (statusCode == 1) { // StatusCode::kCancelled
-        observer.onError(CancellationException(message))
+        callback.onError(CancellationException(message))
       } else {
-        observer.onError(LiteRtLmJniException("Status Code: $statusCode. Message: $message"))
+        callback.onError(LiteRtLmJniException("Status Code: $statusCode. Message: $message"))
       }
     }
   }
@@ -189,8 +189,8 @@ sealed class InputData {
   data class Image(val bytes: ByteArray) : InputData()
 }
 
-/** An observer for receiving streaming responses. */
-interface ResponseObserver {
+/** An callback for receiving streaming responses. */
+interface ResponseCallback {
   /**
    * Called when a new response is available.
    *
@@ -210,3 +210,6 @@ interface ResponseObserver {
    */
   fun onError(throwable: Throwable) {}
 }
+
+// TODO(hoko): Remove this alias once all references are updated.
+typealias ResponseObserver = ResponseCallback

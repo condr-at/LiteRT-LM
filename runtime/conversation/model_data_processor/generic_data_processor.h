@@ -42,7 +42,7 @@ class GenericDataProcessor
 
   // Return the same tools as the input for generic models.
   absl::StatusOr<nlohmann::ordered_json> FormatTools(
-      const nlohmann::ordered_json& tools) override {
+      const nlohmann::ordered_json& tools) const override {
     return tools;
   }
 
@@ -53,13 +53,15 @@ class GenericDataProcessor
   }
 
   // No-op for generic models.
-  absl::string_view CodeFenceStart() override { return ""; }
+  absl::string_view CodeFenceStart() const override { return ""; }
 
   // No-op for generic models.
-  absl::string_view CodeFenceEnd() override { return ""; }
+  absl::string_view CodeFenceEnd() const override { return ""; }
 
   // Returns the config of the model data processor.
-  const GenericDataProcessorConfig& GetConfig() override { return config_; }
+  const GenericDataProcessorConfig& GetConfig() const override {
+    return config_;
+  }
 
  private:
   explicit GenericDataProcessor(GenericDataProcessorConfig config)
@@ -68,11 +70,11 @@ class GenericDataProcessor
   absl::StatusOr<std::vector<InputData>> ToInputDataVectorImpl(
       const std::string& rendered_template_prompt,
       const nlohmann::ordered_json& messages,
-      const GenericDataProcessorArguments& args) override;
+      const GenericDataProcessorArguments& args) const override;
 
   absl::StatusOr<Message> ToMessageImpl(
       const Responses& responses,
-      const GenericDataProcessorArguments& args) override;
+      const GenericDataProcessorArguments& args) const override;
 
   GenericDataProcessorConfig config_;
 };

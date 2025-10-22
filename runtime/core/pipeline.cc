@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -328,9 +329,9 @@ absl::StatusOr<Responses> DecodeLoop(
     std::optional<BenchmarkInfo>& benchmark_info,
     std::optional<Sampler*> sampler, Constraint* constraint,
     std::optional<litert::TensorBuffer*> decoded_ids,
-    std::optional<std::unique_ptr<InferenceCallbacks>> callbacks,
+    std::optional<absl::AnyInvocable<void(absl::StatusOr<Responses>)>> callback,
     std::atomic<bool>* cancelled) {
-  const bool is_streaming = callbacks.has_value();
+  const bool is_streaming = callback.has_value();
   const bool is_custom_sampling = sampler.has_value();
 
   int benchmark_decode_token_count = 0;
@@ -350,7 +351,9 @@ absl::StatusOr<Responses> DecodeLoop(
     RETURN_IF_ERROR(benchmark_info->TimeDecodeTurnStart());
   }
 
-  Responses final_responses(num_output_candidates);
+  Responses final_responses;
+  final_responses.GetMutableTexts().resize(num_output_candidates, "");
+  final_responses.GetMutableScores().resize(num_output_candidates, 0.0f);
   std::vector<float> accumulated_scores(num_output_candidates, 0.0f);
   std::vector<int> num_decoded_tokens(num_output_candidates, 0);
 
@@ -367,17 +370,21 @@ absl::StatusOr<Responses> DecodeLoop(
             num_decode_steps * num_output_candidates));
       }
       if (is_streaming) {
-        callbacks.value()->OnError(absl::CancelledError("Process cancelled."));
+        callback.value()(absl::CancelledError("Process cancelled."));
       }
       return absl::CancelledError("Process cancelled.");
     }
     absl::StatusOr<bool> all_done = run_one_step.Run(decoded_ids);
     if (!all_done.ok()) {
-      if (is_streaming) callbacks.value()->OnError(all_done.status());
+      if (is_streaming) {
+        callback.value()(all_done.status());
+      }
       return all_done.status();
     }
     num_decode_steps++;
-    Responses step_responses(num_output_candidates);
+    Responses step_responses;
+    step_responses.GetMutableTexts().resize(num_output_candidates, "");
+    step_responses.GetMutableScores().resize(num_output_candidates, 0.0f);
     bool any_updates = false;
     for (int j = 0; j < num_output_candidates; ++j) {
       std::string output_text = run_one_step.GetResultText()[j];
@@ -393,12 +400,12 @@ absl::StatusOr<Responses> DecodeLoop(
       // should be replaced with a space.
       std::string result_text = absl::StrReplaceAll(output_text, {{"▁", " "}});
       if (is_streaming) {
-        step_responses.GetMutableResponseTexts()[j] = result_text;
+        step_responses.GetMutableTexts()[j] = result_text;
         if (is_custom_sampling) {
           step_responses.GetMutableScores()[j] = run_one_step.GetScores()[j];
         }
       } else {
-        final_responses.GetMutableResponseTexts()[j] += result_text;
+        final_responses.GetMutableTexts()[j] += result_text;
         if (is_custom_sampling) {
           accumulated_scores[j] += run_one_step.GetScores()[j];
           num_decoded_tokens[j]++;
@@ -407,7 +414,7 @@ absl::StatusOr<Responses> DecodeLoop(
     }
 
     if (is_streaming && any_updates && !*all_done) {
-      callbacks.value()->OnNext(step_responses);
+      callback.value()(std::move(step_responses));
     }
 
     if (ShouldStop(*all_done, benchmark_decode_token_count, num_decode_steps,
@@ -433,19 +440,18 @@ absl::StatusOr<Responses> DecodeLoop(
     auto status = Prefill(executor, inputs, /*wait_for_completion=*/true,
                           unused_benchmark_info);
     if (!status.ok()) {
-      if (is_streaming) callbacks.value()->OnError(status.status());
+      if (is_streaming) callback.value()(status.status());
       return status.status();
     }
   }
 
   if (is_streaming) {
     if (executor.GetCurrentStep().value() >= max_num_tokens) {
-      callbacks.value()->OnError(
-          absl::InternalError("Maximum kv-cache size reached."));
+      callback.value()(absl::InternalError("Maximum kv-cache size reached."));
     } else {
-      callbacks.value()->OnDone();
+      callback.value()(Responses());
     }
-    return Responses(0);  // Return empty response for streaming.
+    return Responses();  // Return empty response for streaming.
   }
 
   // Finalize scores for non-streaming custom sampling.
@@ -493,12 +499,12 @@ absl::StatusOr<Responses> ScoreCustomSampling(
                      "Exceeding the maximum number of tokens allowed: ",
                      max_num_tokens_of_target_texts, " >= ", max_num_tokens));
   }
-  Responses responses(num_output_candidates);
+  Responses responses;
   // `responses.GetMutableScores()` returns a vector of size
   // `num_output_candidates`. Reset the scores_ field to 0.0f.
   std::vector<float>& scores = responses.GetMutableScores();
   // Fill this vector scores of size num_output_candidates with 0.0f.
-  std::fill(scores.begin(), scores.end(), 0.0f);
+  scores.resize(num_output_candidates, 0.0f);
 
   // We support multiple targets by padding the targets with a null token which
   // does not exist in the vocabulary and thus does not contribute to the
@@ -575,23 +581,23 @@ absl::StatusOr<Responses> Decode(LlmExecutor& executor, Tokenizer& tokenizer,
   return DecodeLoop(
       executor, tokenizer, stop_token_detector, num_output_candidates,
       benchmark_info, /*sampler=*/std::nullopt, constraint,
-      /*decoded_ids=*/std::nullopt, /*callbacks=*/std::nullopt, cancelled);
+      /*decoded_ids=*/std::nullopt, /*callback=*/std::nullopt, cancelled);
 }
 
-absl::Status DecodeStreaming(LlmExecutor& executor, Tokenizer& tokenizer,
-                             const StopTokenDetector& stop_token_detector,
-                             int num_output_candidates, Constraint* constraint,
-                             std::optional<BenchmarkInfo>& benchmark_info,
-                             std::unique_ptr<InferenceCallbacks> callbacks,
-                             std::atomic<bool>* cancelled) {
-  if (callbacks == nullptr) {
+absl::Status DecodeStreaming(
+    LlmExecutor& executor, Tokenizer& tokenizer,
+    const StopTokenDetector& stop_token_detector, int num_output_candidates,
+    Constraint* constraint, std::optional<BenchmarkInfo>& benchmark_info,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+    std::atomic<bool>* cancelled) {
+  if (callback == nullptr) {
     return absl::InvalidArgumentError(
-        "Callbacks must not be null for streaming.");
+        "Callback must not be null for streaming.");
   }
   return DecodeLoop(executor, tokenizer, stop_token_detector,
                     num_output_candidates, benchmark_info,
                     /*sampler=*/std::nullopt, constraint,
-                    /*decoded_ids=*/std::nullopt, std::move(callbacks),
+                    /*decoded_ids=*/std::nullopt, std::move(callback),
                     cancelled)
       .status();
 }
@@ -604,7 +610,7 @@ absl::StatusOr<Responses> DecodeCustomSampling(
     std::atomic<bool>* cancelled) {
   return DecodeLoop(executor, tokenizer, stop_token_detector,
                     num_output_candidates, benchmark_info, &sampler, constraint,
-                    &decoded_ids, /*callbacks=*/std::nullopt, cancelled);
+                    &decoded_ids, /*callback=*/std::nullopt, cancelled);
 }
 
 absl::Status DecodeCustomSamplingStreaming(
@@ -612,15 +618,15 @@ absl::Status DecodeCustomSamplingStreaming(
     const StopTokenDetector& stop_token_detector, int num_output_candidates,
     Sampler& sampler, litert::TensorBuffer& decoded_ids, Constraint* constraint,
     std::optional<BenchmarkInfo>& benchmark_info,
-    std::unique_ptr<InferenceCallbacks> callbacks,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
     std::atomic<bool>* cancelled) {
-  if (callbacks == nullptr) {
+  if (callback == nullptr) {
     return absl::InvalidArgumentError(
-        "Callbacks must not be null for streaming.");
+        "Callback must not be null for streaming.");
   }
   return DecodeLoop(executor, tokenizer, stop_token_detector,
                     num_output_candidates, benchmark_info, &sampler, constraint,
-                    &decoded_ids, std::move(callbacks), cancelled)
+                    &decoded_ids, std::move(callback), cancelled)
       .status();
 }
 

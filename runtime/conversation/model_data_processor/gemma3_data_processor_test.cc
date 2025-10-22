@@ -211,8 +211,9 @@ TEST(Gemma3DataProcessorTest, ToInputDataVectorNonArrayContent) {
 
 TEST(Gemma3DataProcessorTest, ToMessage) {
   ASSERT_OK_AND_ASSIGN(auto processor, Gemma3DataProcessor::Create());
-  Responses responses(1);
-  responses.GetMutableResponseTexts()[0] = "test response";
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
+  responses.GetMutableTexts()[0] = "test response";
   ASSERT_OK_AND_ASSIGN(const Message message,
                        processor->ToMessage(responses, std::monostate{}));
 
@@ -241,8 +242,9 @@ TEST(Gemma3DataProcessorTest, ToMessageWithToolCall) {
 
   ASSERT_OK_AND_ASSIGN(auto processor,
                        Gemma3DataProcessor::Create(config, preface));
-  Responses responses(1);
-  responses.GetMutableResponseTexts()[0] = R"(This is some text.
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
+  responses.GetMutableTexts()[0] = R"(This is some text.
 ```tool_code
 tool_name(x=1)
 ```)";
@@ -291,10 +293,11 @@ TEST(Gemma3DataProcessorTest, ToMessageWithToolCallUsingToolCodeRegex) {
 
   ASSERT_OK_AND_ASSIGN(auto processor,
                        Gemma3DataProcessor::Create(config, preface));
-  Responses responses(1);
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
 
   // Test case 1: Tool call inside print statement.
-  responses.GetMutableResponseTexts()[0] = R"(This is some text.
+  responses.GetMutableTexts()[0] = R"(This is some text.
 ```tool_code
 print(tool_name(x=1))
 ```)";
@@ -324,7 +327,7 @@ print(tool_name(x=1))
             })json"));
 
   // Test case 2: Tool call with default_api prefix inside print statement.
-  responses.GetMutableResponseTexts()[0] = R"(Another response.
+  responses.GetMutableTexts()[0] = R"(Another response.
 ```tool_code
 print(default_api.tool_name(x=2, y="hello"))
 ```)";
@@ -355,7 +358,7 @@ print(default_api.tool_name(x=2, y="hello"))
             })json"));
 
   // Test case 3: Multiple tool calls.
-  responses.GetMutableResponseTexts()[0] = R"(Multiple tools.
+  responses.GetMutableTexts()[0] = R"(Multiple tools.
 ```tool_code
 print(tool_name(x=3, y="world", z=True))
 print(default_api.another_tool())

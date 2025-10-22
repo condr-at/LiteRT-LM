@@ -156,7 +156,7 @@ absl::StatusOr<ordered_json> Gemma3DataProcessor::MessageToTemplateInput(
 absl::StatusOr<std::vector<InputData>>
 Gemma3DataProcessor::ToInputDataVectorImpl(
     const std::string& rendered_template_prompt, const ordered_json& messages,
-    const Gemma3DataProcessorArguments& args) {
+    const Gemma3DataProcessorArguments& args) const {
   std::vector<InputData> input_data;
   std::deque<std::unique_ptr<MemoryMappedFile>> image_files;
   std::deque<std::unique_ptr<MemoryMappedFile>> audio_files;
@@ -243,9 +243,9 @@ Gemma3DataProcessor::ToInputDataVectorImpl(
 }
 
 absl::StatusOr<Message> Gemma3DataProcessor::ToMessageImpl(
-    const Responses& responses, const Gemma3DataProcessorArguments& args) {
-  ASSIGN_OR_RETURN(absl::string_view response_text,
-                   responses.GetResponseTextAt(0));
+    const Responses& responses,
+    const Gemma3DataProcessorArguments& args) const {
+  absl::string_view response_text = responses.GetTexts()[0];
   ordered_json message = {{"role", "assistant"}};
   if (preface_.has_value() && std::holds_alternative<JsonPreface>(*preface_) &&
       !std::get<JsonPreface>(*preface_).tools.empty()) {
@@ -269,7 +269,7 @@ absl::StatusOr<Message> Gemma3DataProcessor::ToMessageImpl(
 }
 
 absl::StatusOr<ordered_json> Gemma3DataProcessor::FormatTools(
-    const ordered_json& tools) {
+    const ordered_json& tools) const {
   if (!tools.is_array()) {
     return absl::InvalidArgumentError("Tools must be an array.");
   }
@@ -281,11 +281,11 @@ absl::StatusOr<ordered_json> Gemma3DataProcessor::FormatTools(
   return formatted_tools;
 }
 
-absl::string_view Gemma3DataProcessor::CodeFenceStart() {
+absl::string_view Gemma3DataProcessor::CodeFenceStart() const {
   return config_.code_fence_start;
 }
 
-absl::string_view Gemma3DataProcessor::CodeFenceEnd() {
+absl::string_view Gemma3DataProcessor::CodeFenceEnd() const {
   return config_.code_fence_end;
 }
 

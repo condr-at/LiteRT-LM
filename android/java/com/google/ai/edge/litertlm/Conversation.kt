@@ -31,7 +31,7 @@ import org.json.JSONObject
  *
  * conversation.sendMessageAsync(
  *   Message.of("Hello world"),
- *   object : MessageCallbacks {
+ *   object : MessageCallback {
  *     override fun onMessage(message: Message) {
  *       // Handle the streaming response
  *       println("Response: ${message.contents[0] as Content.Text).text}")
@@ -108,16 +108,16 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
    * [RECURRING_TOOL_CALL_LIMIT] times.
    *
    * @param message The message to send to the model.
-   * @param callbacks The callbacks to receive the streaming responses.
+   * @param callback The callback to receive the streaming responses.
    * @throws IllegalStateException if the conversation has already been closed or the content is
    *   empty.
    */
-  fun sendMessageAsync(message: Message, callbacks: MessageCallbacks) {
+  fun sendMessageAsync(message: Message, callback: MessageCallback) {
     checkIsAlive()
 
-    val jniCallbacks = JniMessageCallbacksImpl(callbacks)
+    val jniCallback = JniMessageCallbackImpl(callback)
     val messageJSONObject = JSONObject().put("role", "user").put("content", message.toJson())
-    LiteRtLmJni.nativeSendMessageAsync(handle, messageJSONObject.toString(), jniCallbacks)
+    LiteRtLmJni.nativeSendMessageAsync(handle, messageJSONObject.toString(), jniCallback)
   }
 
   private fun handleToolCalls(toolCallsJsonObject: JSONObject): JSONObject {
@@ -144,8 +144,8 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
     return JSONObject().put("role", "tool").put("content", toolResponsesJSONArray)
   }
 
-  private inner class JniMessageCallbacksImpl(private val callbacks: MessageCallbacks) :
-    LiteRtLmJni.JniMessageCallbacks {
+  private inner class JniMessageCallbackImpl(private val callback: MessageCallback) :
+    LiteRtLmJni.JniMessageCallback {
 
     /** The tool response to be returned back */
     private var pendingToolResponseJSONMessage: JSONObject? = null
@@ -156,7 +156,7 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
 
       if (messageJsonObject.has("tool_calls")) {
         if (toolCallCount >= RECURRING_TOOL_CALL_LIMIT) {
-          callbacks.onError(
+          callback.onError(
             IllegalStateException(
               "Exceeded recurring tool call limit of $RECURRING_TOOL_CALL_LIMIT"
             )
@@ -166,7 +166,7 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
         toolCallCount++
         pendingToolResponseJSONMessage = handleToolCalls(messageJsonObject)
       } else if (messageJsonObject.has("content")) {
-        callbacks.onMessage(jsonToMessage(messageJsonObject))
+        callback.onMessage(jsonToMessage(messageJsonObject))
       }
     }
 
@@ -179,13 +179,13 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
         LiteRtLmJni.nativeSendMessageAsync(
           handle,
           localToolResponse.toString(),
-          this@JniMessageCallbacksImpl,
+          this@JniMessageCallbackImpl,
         )
         Log.d(TAG, "onDone: Tool response sent.")
         pendingToolResponseJSONMessage = null // Clear after sending
       } else {
-        // If no pending action, then call onDone to the original user callbacks.
-        callbacks.onDone()
+        // If no pending action, then call onDone to the original user callback.
+        callback.onDone()
       }
     }
 
@@ -193,9 +193,9 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
       Log.d(TAG, "onError: $statusCode, $message")
 
       if (statusCode == 1) { // StatusCode::kCancelled
-        callbacks.onError(CancellationException(message))
+        callback.onError(CancellationException(message))
       } else {
-        callbacks.onError(LiteRtLmJniException("Status Code: $statusCode. Message: $message"))
+        callback.onError(LiteRtLmJniException("Status Code: $statusCode. Message: $message"))
       }
     }
   }
@@ -270,8 +270,8 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
   }
 }
 
-/** An observer for receiving streaming message responses. */
-interface MessageCallbacks {
+/** A callback for receiving streaming message responses. */
+interface MessageCallback {
   /**
    * Called when a new message chunk is available from the model.
    *
@@ -297,3 +297,6 @@ interface MessageCallbacks {
    */
   fun onError(throwable: Throwable)
 }
+
+// TODO(hoko): Remove this alias once all references are updated.
+typealias MessageCallbacks = MessageCallback

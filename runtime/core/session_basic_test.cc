@@ -26,6 +26,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -208,43 +209,27 @@ CreateAudioExecutor(Environment& env, const std::string& model_path,
       audio_executor_settings, env);
 }
 
-class StreamingTestCallbacks : public InferenceCallbacks {
- public:
-  StreamingTestCallbacks(absl::Status& status, std::vector<std::string>& texts,
-                         absl::Notification& done)
-      : status_(status), texts_(texts), done_(done) {}
-
-  void OnNext(const Responses& responses) override {
-    ASSERT_EQ(responses.GetNumOutputCandidates(), 1);
-    texts_.push_back(std::string(*responses.GetResponseTextAt(0)));
-  }
-
-  void OnError(const absl::Status& status) override {
-    status_ = status;
-    done_.Notify();
-  }
-
-  void OnDone() override { done_.Notify(); }
-
- private:
-  absl::Status& status_;
-  std::vector<std::string>& texts_;
-  absl::Notification& done_;
-};
-
-class CancelledTestCallbacks : public StreamingTestCallbacks {
- public:
-  CancelledTestCallbacks(absl::Status& status, std::vector<std::string>& texts,
-                         absl::Notification& done)
-      : StreamingTestCallbacks(status, texts, done) {}
-
-  void OnNext(const Responses& responses) override {
-    // Wait for a while to allow cancellation happens in the middle of the
-    // decode step.
-    absl::SleepFor(absl::Milliseconds(50));
-    StreamingTestCallbacks::OnNext(responses);
-  }
-};
+absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateStreamingTestCallback(
+    absl::Status& status_ref, std::vector<std::string>& texts_ref,
+    absl::Notification& done_ref, bool delay_on_next = false) {
+  return [&status_ref, &texts_ref, &done_ref,
+          delay_on_next](absl::StatusOr<Responses> responses) mutable {
+    if (!responses.ok()) {
+      status_ref = std::move(responses.status());
+      done_ref.Notify();
+      return;
+    }
+    if (responses->GetTexts().empty()) {
+      done_ref.Notify();
+      return;
+    }
+    if (delay_on_next) {
+      absl::SleepFor(absl::Milliseconds(50));
+    }
+    EXPECT_EQ(responses->GetTexts().size(), 1);
+    texts_ref.push_back(responses->GetTexts()[0]);
+  };
+}
 
 TEST_F(SessionBasicTest, RunPrefill) {
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
@@ -299,12 +284,11 @@ TEST_F(SessionBasicTest, RunDecode) {
   EXPECT_OK((*session)->RunPrefill(inputs));
   auto responses = (*session)->RunDecode();
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
+  // Expect a single output candidate.
+  EXPECT_EQ(responses->GetTexts().size(), 1);
   // The response is " How's it going?" since "!" is the stop token which is
   // not included in the response.
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going?");
-  EXPECT_THAT(responses->GetResponseTextAt(1),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(responses->GetTexts()[0], " How's it going?");
 }
 
 TEST_F(SessionBasicTest, RunDecodeWithMultipleOutputCandidates) {
@@ -338,14 +322,12 @@ TEST_F(SessionBasicTest, RunDecodeWithMultipleOutputCandidates) {
   EXPECT_OK((*session)->RunPrefill(inputs));
   auto responses = (*session)->RunDecode();
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 3);
+  EXPECT_EQ(responses->GetTexts().size(), 3);
   // The response is " How's it going?" since "!" is the stop token which is
   // not included in the response.
-  EXPECT_EQ(*(responses->GetResponseTextAt(0)), " How's it going?");
-  EXPECT_EQ(*(responses->GetResponseTextAt(1)), " Hello World");
-  EXPECT_EQ(*(responses->GetResponseTextAt(2)), " How's it going?");
-  EXPECT_THAT(responses->GetResponseTextAt(3),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(responses->GetTexts()[0], " How's it going?");
+  EXPECT_EQ(responses->GetTexts()[1], " Hello World");
+  EXPECT_EQ(responses->GetTexts()[2], " How's it going?");
 }
 
 TEST_F(SessionBasicTest, RunDecodeWithSamplerAndConstrainedDecoding) {
@@ -389,8 +371,9 @@ TEST_F(SessionBasicTest, RunDecodeWithSamplerAndConstrainedDecoding) {
   decode_config.SetConstraint(&constraint);
   EXPECT_OK((*session)->RunPrefill(inputs));
   ASSERT_OK_AND_ASSIGN(auto responses, (*session)->RunDecode(decode_config));
-  EXPECT_EQ(responses.GetNumOutputCandidates(), 1);
-  EXPECT_EQ(*responses.GetResponseTextAt(0), " How's it");
+  // Expect a single output candidate.
+  EXPECT_EQ(responses.GetTexts().size(), 1);
+  EXPECT_EQ(responses.GetTexts()[0], " How's it");
 }
 
 TEST_F(SessionBasicTest, RunDecodeWithConstrainedDecodingNoSampler) {
@@ -422,19 +405,19 @@ TEST_F(SessionBasicTest, RunDecodeWithConstrainedDecodingNoSampler) {
   decode_config.SetConstraint(&constraint);
   EXPECT_OK((*session)->RunPrefill(inputs));
   ASSERT_OK_AND_ASSIGN(auto responses, (*session)->RunDecode(decode_config));
-  EXPECT_EQ(responses.GetNumOutputCandidates(), 1);
-  EXPECT_EQ(*responses.GetResponseTextAt(0), " How's it");
+  // Expect a single output candidate.
+  EXPECT_EQ(responses.GetTexts().size(), 1);
+  EXPECT_EQ(responses.GetTexts()[0], " How's it");
 }
 
-class TestCallbacks : public InferenceCallbacks {
- public:
-  explicit TestCallbacks(bool& done) : done_(done) {}
-
-  void OnDone() override { done_ = true; }
-
- private:
-  bool& done_;
-};
+absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateTestCallback(
+    bool& done_ref) {
+  return [&done_ref](absl::StatusOr<Responses> responses) mutable {
+    if (responses.ok() && responses->GetTexts().empty()) {
+      done_ref = true;
+    }
+  };
+}
 
 TEST_F(SessionBasicTest, RunPrefillAsync) {
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
@@ -459,8 +442,8 @@ TEST_F(SessionBasicTest, RunPrefillAsync) {
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   bool done = false;
-  auto callbacks = std::make_unique<TestCallbacks>(done);
-  EXPECT_OK((*session)->RunPrefillAsync(inputs, std::move(callbacks)));
+  auto callback = CreateTestCallback(done);
+  EXPECT_OK((*session)->RunPrefillAsync(inputs, std::move(callback)));
   // Wait for the async call to finish.
   EXPECT_OK(worker_thread_pool_->WaitUntilDone(absl::Seconds(100)));
   EXPECT_TRUE(done);
@@ -489,11 +472,10 @@ TEST_F(SessionBasicTest, RunDecodeAsync) {
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   bool done_prefill = false;
-  EXPECT_OK((*session)->RunPrefillAsync(
-      inputs, std::make_unique<TestCallbacks>(done_prefill)));
-  bool done_decode = false;
   EXPECT_OK(
-      (*session)->RunDecodeAsync(std::make_unique<TestCallbacks>(done_decode)));
+      (*session)->RunPrefillAsync(inputs, CreateTestCallback(done_prefill)));
+  bool done_decode = false;
+  EXPECT_OK((*session)->RunDecodeAsync(CreateTestCallback(done_decode)));
   EXPECT_OK(worker_thread_pool_->WaitUntilDone(absl::Seconds(100)));
   EXPECT_TRUE(done_prefill);
   EXPECT_TRUE(done_decode);
@@ -537,8 +519,8 @@ TEST_F(SessionBasicTest, RunDecodeAsyncWithSamplerAndConstrainedDecoding) {
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("How"));
   bool done_prefill = false;
-  EXPECT_OK((*session)->RunPrefillAsync(
-      inputs, std::make_unique<TestCallbacks>(done_prefill)));
+  EXPECT_OK(
+      (*session)->RunPrefillAsync(inputs, CreateTestCallback(done_prefill)));
 
   absl::Status status;
   std::vector<std::string> texts;
@@ -546,8 +528,7 @@ TEST_F(SessionBasicTest, RunDecodeAsyncWithSamplerAndConstrainedDecoding) {
   auto decode_config = DecodeConfig::CreateDefault();
   decode_config.SetConstraint(&constraint);
   EXPECT_OK((*session)->RunDecodeAsync(
-      std::make_unique<StreamingTestCallbacks>(status, texts, done_decode),
-      decode_config));
+      CreateStreamingTestCallback(status, texts, done_decode), decode_config));
 
   done_decode.WaitForNotification();
   EXPECT_OK(status);
@@ -581,8 +562,8 @@ TEST_F(SessionBasicTest, RunDecodeAsyncWithConstrainedDecodingNoSampler) {
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("How"));
   bool done_prefill = false;
-  EXPECT_OK((*session)->RunPrefillAsync(
-      inputs, std::make_unique<TestCallbacks>(done_prefill)));
+  EXPECT_OK(
+      (*session)->RunPrefillAsync(inputs, CreateTestCallback(done_prefill)));
 
   absl::Status status;
   std::vector<std::string> texts;
@@ -590,8 +571,7 @@ TEST_F(SessionBasicTest, RunDecodeAsyncWithConstrainedDecodingNoSampler) {
   auto decode_config = DecodeConfig::CreateDefault();
   decode_config.SetConstraint(&constraint);
   EXPECT_OK((*session)->RunDecodeAsync(
-      std::make_unique<StreamingTestCallbacks>(status, texts, done_decode),
-      decode_config));
+      CreateStreamingTestCallback(status, texts, done_decode), decode_config));
 
   done_decode.WaitForNotification();
   EXPECT_OK(status);
@@ -677,8 +657,9 @@ TEST_F(SessionBasicTest, RunTextScoringSuccess) {
   target_text.push_back("How's it going?");
   auto responses = (*session)->RunTextScoring(target_text);
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
-  EXPECT_EQ(*(responses->GetScoreAt(0)), 0.0f);
+  // Expect a single output candidate with score 0.0f.
+  EXPECT_EQ(responses->GetScores().size(), 1);
+  EXPECT_EQ(responses->GetScores()[0], 0.0f);
 }
 
 TEST_F(SessionBasicTest, GenerateContentStream) {
@@ -707,7 +688,7 @@ TEST_F(SessionBasicTest, GenerateContentStream) {
   std::vector<std::string> texts;
   absl::Notification done = absl::Notification();
   EXPECT_OK((*session)->GenerateContentStream(
-      inputs, std::make_unique<StreamingTestCallbacks>(status, texts, done)));
+      inputs, CreateStreamingTestCallback(status, texts, done)));
 
   done.WaitForNotification();
   EXPECT_OK(status);
@@ -741,8 +722,7 @@ TEST_F(SessionBasicTest, GenerateContentStreamEmptyInput) {
   std::vector<std::string> texts;
   absl::Notification done;
   EXPECT_THAT((*session)->GenerateContentStream(
-                  inputs, std::make_unique<StreamingTestCallbacks>(
-                              status, texts, done)),
+                  inputs, CreateStreamingTestCallback(status, texts, done)),
               testing::status::StatusIs(absl::StatusCode::kInvalidArgument,
                                         "Input is empty."));
 }
@@ -778,7 +758,7 @@ TEST_F(SessionBasicTest, GenerateContentStreamPrefillError) {
   std::vector<std::string> texts;
   absl::Notification done;
   EXPECT_OK((*session)->GenerateContentStream(
-      inputs, std::make_unique<StreamingTestCallbacks>(status, texts, done)));
+      inputs, CreateStreamingTestCallback(status, texts, done)));
 
   done.WaitForNotification();
   EXPECT_FALSE(status.ok());
@@ -816,7 +796,7 @@ TEST_F(SessionBasicTest, GenerateContentStreamDecodeError) {
   std::vector<std::string> texts;
   absl::Notification done;
   EXPECT_OK((*session)->GenerateContentStream(
-      inputs, std::make_unique<StreamingTestCallbacks>(status, texts, done)));
+      inputs, CreateStreamingTestCallback(status, texts, done)));
 
   done.WaitForNotification();
   EXPECT_FALSE(status.ok());
@@ -1710,8 +1690,9 @@ TEST_F(SessionBasicTest, GenerateContentStreamWithCancellation) {
   absl::Notification done;
 
   (*session)
-      ->GenerateContentStream(inputs, std::make_unique<CancelledTestCallbacks>(
-                                          status, responses, done))
+      ->GenerateContentStream(
+          inputs, CreateStreamingTestCallback(status, responses, done,
+                                              /*delay_on_next=*/true))
       .IgnoreError();
 
   // Wait for a short time to ensure the decoding has started.
@@ -1720,7 +1701,7 @@ TEST_F(SessionBasicTest, GenerateContentStreamWithCancellation) {
   // Cancel the process.
   (*session)->CancelProcess();
 
-  // Wait for the callbacks to be done.
+  // Wait for the callback to be done.
   done.WaitForNotification();
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kCancelled));
 }
@@ -1789,14 +1770,15 @@ TEST_P(SessionBasicCancellationTest,
   absl::Notification done1;
 
   (*session)
-      ->GenerateContentStream(inputs, std::make_unique<CancelledTestCallbacks>(
-                                          status, responses, done1))
+      ->GenerateContentStream(
+          inputs, CreateStreamingTestCallback(status, responses, done1,
+                                              /*delay_on_next=*/true))
       .IgnoreError();
 
   // Cancel the process.
   (*session)->CancelProcess();
 
-  // Wait for the callbacks to be done.
+  // Wait for the callback to be done.
   done1.WaitForNotification();
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kCancelled));
 
@@ -1806,8 +1788,9 @@ TEST_P(SessionBasicCancellationTest,
   responses.clear();
   absl::Notification done2;
   (*session)
-      ->GenerateContentStream(inputs, std::make_unique<CancelledTestCallbacks>(
-                                          status, responses, done2))
+      ->GenerateContentStream(
+          inputs, CreateStreamingTestCallback(status, responses, done2,
+                                              /*delay_on_next=*/true))
       .IgnoreError();
   done2.WaitForNotification();
   EXPECT_OK(status);
@@ -1849,9 +1832,8 @@ TEST_F(SessionBasicTest, GenerateContentStreamOnCancelledSession) {
   // The session is cancelled, so the call should return with a kCancelled
   // error.
   EXPECT_OK((*session)->GenerateContentStream(
-      inputs,
-      std::make_unique<StreamingTestCallbacks>(status, responses, done)));
-  // Wait for the callbacks to be done.
+      inputs, CreateStreamingTestCallback(status, responses, done)));
+  // Wait for the callback to be done.
   done.WaitForNotification();
   EXPECT_OK(status);
 }
@@ -1978,8 +1960,7 @@ TEST_F(SessionBasicTest,
   auto decode_config = DecodeConfig::CreateDefault();
   decode_config.SetConstraint(&constraint);
   EXPECT_OK((*session)->GenerateContentStream(
-      inputs,
-      std::make_unique<StreamingTestCallbacks>(status, texts, done_decode),
+      inputs, CreateStreamingTestCallback(status, texts, done_decode),
       decode_config));
 
   done_decode.WaitForNotification();

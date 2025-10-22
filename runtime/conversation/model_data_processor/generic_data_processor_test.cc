@@ -68,8 +68,9 @@ TEST(GenericDataProcessorTest, ToInputDataVector) {
 
 TEST(GenericDataProcessorTest, ToMessageDefault) {
   ASSERT_OK_AND_ASSIGN(auto processor, GenericDataProcessor::Create());
-  Responses responses(1);
-  responses.GetMutableResponseTexts()[0] = "test response";
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
+  responses.GetMutableTexts()[0] = "test response";
   ASSERT_OK_AND_ASSIGN(const Message message,
                        processor->ToMessage(responses, std::monostate{}));
 
@@ -86,8 +87,9 @@ TEST(GenericDataProcessorTest, ToMessageModelRole) {
   ASSERT_OK_AND_ASSIGN(auto processor,
                        GenericDataProcessor::Create(
                            GenericDataProcessorConfig{.model_role = "model"}));
-  Responses responses(1);
-  responses.GetMutableResponseTexts()[0] = "test response";
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
+  responses.GetMutableTexts()[0] = "test response";
   ASSERT_OK_AND_ASSIGN(const Message message,
                        processor->ToMessage(responses, std::monostate{}));
 

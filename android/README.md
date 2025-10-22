@@ -25,7 +25,7 @@ The core components of the Conversation API include:
     contain various types of content.
 -   **`Content`**: Sealed class representing different types of content within a
     `Message` (e.g., Text, Image, Audio).
--   **`MessageCallbacks`**: An interface for handling streaming responses from
+-   **`MessageCallback`**: An interface for handling streaming responses from
     the model asynchronously.
 -   **`@Tool` / `@ToolParam`**: Annotations used to define custom functions as
     tools that the model can invoke.
@@ -136,7 +136,7 @@ There are two ways to send messages:
 -   **`sendMessage(message: Message): Message`**: Synchronous call that blocks
     until the model returns a complete response. This is simpler for basic
     request/response interactions.
--   **`sendMessageAsync(message: Message, callbacks: MessageCallbacks)`**:
+-   **`sendMessageAsync(message: Message, callback: MessageCallback)`**:
     Asynchronous call for streaming responses. This is better for long-running
     requests or when you want to display the response as it's being
     generated.
@@ -155,16 +155,16 @@ print((response.contents[0] as Content.Text).text)
 **Asynchronous Example:**
 
 Use `sendMessageAsync` to send a message to the model and receive responses
-through callbacks.
+through callback.
 
 ```kotlin
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Message
-import com.google.ai.edge.litertlm.MessageCallbacks
+import com.google.ai.edge.litertlm.MessageCallback
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-val callbacks = object : MessageCallbacks {
+val callback = object : MessageCallback {
     override fun onMessage(message: Message) {
         // Filter and handle text content.
         for (contentText in message.contents.filterIsInstance<Content.Text>()) {
@@ -182,7 +182,7 @@ val callbacks = object : MessageCallbacks {
 }
 
 val userMessage = Message.of("What is the capital of France?")
-conversation.sendMessageAsync(userMessage, callbacks)
+conversation.sendMessageAsync(userMessage, callback)
 ```
 
 ### 5. Multi-Modality
@@ -202,7 +202,7 @@ val multiModalMessage = Message.of(
     )
 )
 
-conversation.sendMessageAsync(multiModalMessage, callbacks)
+conversation.sendMessageAsync(multiModalMessage, callback)
 ```
 
 ### 6. Defining and Using Tools
@@ -277,7 +277,7 @@ val conversation = engine.createConversation(
 
 // Send messages that might trigger the tool
 val userMessage = Message.of("What's the weather like in London?")
-conversation.sendMessageAsync(userMessage, callbacks)
+conversation.sendMessageAsync(userMessage, callback)
 ```
 
 The model will decide when to call the tool based on the conversation. The
@@ -289,4 +289,4 @@ generate the final response.
 API methods can throw `LiteRtLmJniException` for errors from the native layer or
 standard Kotlin exceptions like `IllegalStateException` for lifecycle issues.
 Always wrap API calls in try-catch blocks. The `onError` callback in
-`MessageCallbacks` will also report errors during asynchronous operations.
+`MessageCallback` will also report errors during asynchronous operations.

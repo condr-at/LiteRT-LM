@@ -30,10 +30,12 @@
 #include "absl/base/log_severity.h"  // from @com_google_absl
 #include "absl/flags/flag.h"  // from @com_google_absl
 #include "absl/flags/parse.h"  // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_check.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/log/globals.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
@@ -64,25 +66,28 @@ using ::litert::lm::EngineSettings;
 using ::litert::lm::InputData;
 using ::litert::lm::JsonMessage;
 using ::litert::lm::Message;
-using ::litert::lm::MessageCallbacks;
 using ::litert::lm::ModelAssets;
 using ::nlohmann::json;
 
-class PrintMessageCallbacks : public MessageCallbacks {
- public:
-  explicit PrintMessageCallbacks() = default;
-
-  void OnMessage(const litert::lm::Message& message) override {
-    if (std::holds_alternative<JsonMessage>(message)) {
-      for (const auto& content : std::get<JsonMessage>(message)["content"]) {
+absl::AnyInvocable<void(absl::StatusOr<Message>)> CreateMessageCallback() {
+  return [](absl::StatusOr<Message> message) {
+    if (!message.ok()) {
+      std::cout << "Error: " << message.status() << std::endl;
+      return;
+    }
+    if (std::holds_alternative<JsonMessage>(*message)) {
+      const auto& json_message = std::get<JsonMessage>(*message);
+      if (json_message.is_null()) {
+        std::cout << std::endl << std::flush;
+        return;
+      }
+      for (const auto& content : json_message["content"]) {
         std::cout << content["text"].get<std::string>();
       }
       std::cout << std::flush;
     }
-  }
-  void OnComplete() override { std::cout << std::endl << std::flush; }
-  void OnError(const absl::Status& status) override {}
-};
+  };
+}
 
 // Gets the input prompt from the command line flag or file.
 std::string GetInputPrompt() {
@@ -151,7 +156,7 @@ absl::Status MainHelper(int argc, char** argv) {
   content_list.push_back({{"type", "text"}, {"text", input_prompt}});
   RETURN_IF_ERROR(conversation->SendMessageAsync(
       json::object({{"role", "user"}, {"content", content_list}}),
-      std::make_unique<PrintMessageCallbacks>()));
+      CreateMessageCallback()));
   RETURN_IF_ERROR(engine->WaitUntilDone(absl::Minutes(10)));
 
   // Print the benchmark info.

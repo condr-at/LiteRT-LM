@@ -73,8 +73,8 @@ TEST(EngineTest, CreateEngine_WithoutCache) {
 
   auto responses = (*session)->RunDecode();
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
-  EXPECT_FALSE(responses->GetResponseTextAt(0)->empty());
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_FALSE(responses->GetTexts()[0].empty());
 
   // 2nd run with the same engine.
   session->reset();  // Destroy the previous first.
@@ -85,8 +85,8 @@ TEST(EngineTest, CreateEngine_WithoutCache) {
 
   responses = (*session)->RunDecode();
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
-  EXPECT_FALSE(responses->GetResponseTextAt(0)->empty());
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_FALSE(responses->GetTexts()[0].empty());
 }
 
 TEST(EngineTest, CreateEngine_WithCache) {
@@ -125,8 +125,8 @@ TEST(EngineTest, CreateEngine_WithCache) {
 
   auto responses = (*session)->RunDecode();
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
-  EXPECT_FALSE(responses->GetResponseTextAt(0)->empty());
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_FALSE(responses->GetTexts()[0].empty());
 
   // 2nd run with the same engine and the same cache.
   session->reset();  // Destroy the previous first.
@@ -137,8 +137,8 @@ TEST(EngineTest, CreateEngine_WithCache) {
 
   responses = (*session)->RunDecode();
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
-  EXPECT_FALSE(responses->GetResponseTextAt(0)->empty());
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_FALSE(responses->GetTexts()[0].empty());
 
   // 3rd run with a new engine and the same cache.
   session->reset();  // Destroy the previous first.
@@ -153,8 +153,8 @@ TEST(EngineTest, CreateEngine_WithCache) {
 
   responses = (*session)->RunDecode();
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
-  EXPECT_FALSE(responses->GetResponseTextAt(0)->empty());
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_FALSE(responses->GetTexts()[0].empty());
 }
 
 TEST(EngineTest, CreateEngine_WithModelAndCacheFromFileDescriptor) {
@@ -204,8 +204,8 @@ TEST(EngineTest, CreateEngine_WithModelAndCacheFromFileDescriptor) {
 
   auto responses = (*session)->RunDecode();
   EXPECT_OK(responses);
-  EXPECT_EQ(responses->GetNumOutputCandidates(), 1);
-  EXPECT_FALSE(responses->GetResponseTextAt(0)->empty());
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_FALSE(responses->GetTexts()[0].empty());
 }
 
 TEST(EngineTest, CreateEngine_FailsNoVisionModel) {

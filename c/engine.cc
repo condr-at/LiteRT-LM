@@ -21,8 +21,10 @@
 #include <variant>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_settings.h"
@@ -30,40 +32,28 @@
 #include "runtime/executor/executor_settings_base.h"
 
 namespace {
-// An implementation of InferenceCallbacks that forwards calls to a C-style
-// callback function.
-class CCallbacks : public litert::lm::InferenceCallbacks {
- public:
-  CCallbacks(LiteRtLmStreamCallback callback, void* callback_data)
-      : callback_(callback), callback_data_(callback_data) {}
 
-  // Called when a new response is generated.
-  void OnNext(const litert::lm::Responses& responses) override {
-    for (int i = 0; i < responses.GetNumOutputCandidates(); ++i) {
-      auto response_text = responses.GetResponseTextAt(i);
-      if (!response_text.ok()) {
-        continue;
+absl::AnyInvocable<void(absl::StatusOr<litert::lm::Responses>)> CreateCallback(
+    LiteRtLmStreamCallback callback, void* callback_data) {
+  return [callback,
+          callback_data](absl::StatusOr<litert::lm::Responses> responses) {
+    if (!responses.ok()) {
+      callback(callback_data, /*text=*/nullptr, /*is_error=*/true,
+               responses.status().ToString().c_str());
+      return;
+    }
+    if (responses->GetTexts().empty()) {
+      callback(callback_data, /*text=*/nullptr, /*is_error=*/true,
+               /*error_message=*/nullptr);
+    } else {
+      for (const auto& text : responses->GetTexts()) {
+        callback(callback_data, text.data(), /*is_error=*/false,
+                 /*error_message=*/nullptr);
       }
-      callback_(callback_data_, response_text->data(), false, nullptr);
     }
-  }
-
-  // Called when the inference is done and finished successfully.
-  void OnDone() override {
-    callback_(callback_data_, nullptr, true, nullptr);
   };
+}
 
-  void OnError(const absl::Status& status) override {
-    if (callback_) {
-      std::string error_message = status.ToString();
-      callback_(callback_data_, nullptr, true, error_message.c_str());
-    }
-  }
-
- private:
-  LiteRtLmStreamCallback callback_;
-  void* callback_data_;
-};
 }  // namespace
 
 using ::litert::lm::Engine;
@@ -241,10 +231,8 @@ int litert_lm_session_generate_content_stream(LiteRtLmSession* session,
     }
   }
 
-  auto callbacks = std::make_unique<CCallbacks>(callback, callback_data);
-
   absl::Status status = session->session->GenerateContentStream(
-      std::move(engine_inputs), std::move(callbacks));
+      std::move(engine_inputs), CreateCallback(callback, callback_data));
 
   if (!status.ok()) {
     ABSL_LOG(ERROR) << "Failed to start content stream: " << status;
@@ -262,7 +250,7 @@ int litert_lm_responses_get_num_candidates(const LiteRtLmResponses* responses) {
   if (!responses) {
     return 0;
   }
-  return responses->responses.GetNumOutputCandidates();
+  return responses->responses.GetTexts().size();
 }
 
 const char* litert_lm_responses_get_response_text_at(
@@ -270,12 +258,12 @@ const char* litert_lm_responses_get_response_text_at(
   if (!responses) {
     return nullptr;
   }
-  auto response_text = responses->responses.GetResponseTextAt(index);
-  if (!response_text.ok()) {
+  if (index < 0 || index >= responses->responses.GetTexts().size()) {
     return nullptr;
   }
+
   // The string_view's data is valid as long as the responses object is alive.
-  return response_text->data();
+  return responses->responses.GetTexts()[index].data();
 }
 
 LiteRtLmBenchmarkInfo* litert_lm_session_get_benchmark_info(

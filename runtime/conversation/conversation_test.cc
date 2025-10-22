@@ -23,6 +23,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/match.h"  // from @com_google_absl
@@ -73,32 +74,38 @@ class MockSession : public Engine::Session {
  public:
   MOCK_METHOD(absl::StatusOr<Responses>, GenerateContent,
               (const std::vector<InputData>& contents), (override));
-  MOCK_METHOD(absl::Status, GenerateContentStream,
-              (const std::vector<InputData>& contents,
-               std::unique_ptr<InferenceCallbacks> callbacks),
-              (override));
-  MOCK_METHOD(absl::Status, GenerateContentStream,
-              (const std::vector<InputData>& contents,
-               std::unique_ptr<InferenceCallbacks> callbacks,
-               const DecodeConfig& decode_config),
-              (override));
+  MOCK_METHOD(
+      absl::Status, GenerateContentStream,
+      (const std::vector<InputData>& contents,
+       absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback),
+      (override));
+  MOCK_METHOD(
+      absl::Status, GenerateContentStream,
+      (const std::vector<InputData>& contents,
+       absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
+       const DecodeConfig& decode_config),
+      (override));
   MOCK_METHOD(absl::StatusOr<Responses>, RunTextScoring,
               (const std::vector<absl::string_view>& target_text), (override));
   MOCK_METHOD(absl::Status, RunPrefill,
               (const std::vector<InputData>& contents), (override));
-  MOCK_METHOD(absl::Status, RunPrefillAsync,
-              (const std::vector<InputData>& contents,
-               std::unique_ptr<InferenceCallbacks> callbacks),
-              (override));
+  MOCK_METHOD(
+      absl::Status, RunPrefillAsync,
+      (const std::vector<InputData>& contents,
+       absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback),
+      (override));
   MOCK_METHOD(absl::StatusOr<Responses>, RunDecode, (), (override));
   MOCK_METHOD(absl::StatusOr<Responses>, RunDecode,
               (const DecodeConfig& decode_config), (override));
-  MOCK_METHOD(absl::Status, RunDecodeAsync,
-              (std::unique_ptr<InferenceCallbacks> callbacks), (override));
-  MOCK_METHOD(absl::Status, RunDecodeAsync,
-              (std::unique_ptr<InferenceCallbacks> callbacks,
-               const DecodeConfig& decode_config),
-              (override));
+  MOCK_METHOD(
+      absl::Status, RunDecodeAsync,
+      (absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback),
+      (override));
+  MOCK_METHOD(
+      absl::Status, RunDecodeAsync,
+      (absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
+       const DecodeConfig& decode_config),
+      (override));
   MOCK_METHOD(absl::StatusOr<BenchmarkInfo>, GetBenchmarkInfo, (), (override));
   MOCK_METHOD(void, CancelProcess, (), (override));
   MOCK_METHOD(const SessionConfig&, GetSessionConfig, (), (const, override));
@@ -114,46 +121,43 @@ class MockEngine : public Engine {
               (override));
 };
 
-class TestMessageCallbacks : public MessageCallbacks {
- public:
-  explicit TestMessageCallbacks(const Message& expected_message,
-                                absl::Notification& done)
-      : expected_message_(expected_message), done_(done) {}
-
-  void OnError(const absl::Status& status) override {
-    FAIL() << "OnError: " << status.message();
-  }
-
-  void OnMessage(const Message& message) override {
-    const JsonMessage& json_message = std::get<JsonMessage>(message);
-    JsonMessage& expected_json_message =
-        std::get<JsonMessage>(expected_message_);
-    // Compare the message text content by prefix, and update the expected
-    // message to the remaining text for the next callback.
-    ASSERT_TRUE(expected_json_message["content"][0]["text"].is_string());
-    ASSERT_TRUE(json_message["content"][0]["text"].is_string());
-    std::string expected_string = expected_json_message["content"][0]["text"];
-    std::string actual_string = json_message["content"][0]["text"];
-    EXPECT_TRUE(absl::StartsWith(expected_string, actual_string))
-        << "Expected: " << expected_string << "\nActual: " << actual_string;
-    expected_json_message["content"][0]["text"] =
-        expected_string.substr(actual_string.size());
-  }
-
-  void OnComplete() override {
-    JsonMessage& expected_json_message =
-        std::get<JsonMessage>(expected_message_);
-    ASSERT_TRUE(expected_json_message["content"][0]["text"].is_string());
-    std::string expected_string = expected_json_message["content"][0]["text"];
-    // The expected string should be empty after the last callback.
-    EXPECT_TRUE(expected_string.empty());
-    done_.Notify();
-  }
-
- private:
-  Message expected_message_;
-  absl::Notification& done_;
-};
+absl::AnyInvocable<void(absl::StatusOr<Message>)> CreateTestMessageCallback(
+    Message& expected_message, absl::Notification& done) {
+  return [&expected_message, &done](absl::StatusOr<Message> message) mutable {
+    // If the message is not ok, fail the test.
+    if (!message.ok()) {
+      FAIL() << "Message user_callback failed: " << message.status();
+      return;
+    }
+    // If the message is null, the last callback is received.
+    if (auto json_message = std::get_if<JsonMessage>(&message.value());
+        json_message->is_null()) {
+      JsonMessage& expected_json_message =
+          std::get<JsonMessage>(expected_message);
+      ASSERT_TRUE(expected_json_message["content"][0]["text"].is_string());
+      std::string expected_string = expected_json_message["content"][0]["text"];
+      // The expected string should be empty after the last callback.
+      EXPECT_TRUE(expected_string.empty());
+      done.Notify();
+      return;
+    }
+    // Otherwise, this is a partial response.
+    if (auto json_message = std::get_if<JsonMessage>(&message.value())) {
+      JsonMessage& expected_json_message =
+          std::get<JsonMessage>(expected_message);
+      // Compare the message text content by prefix, and update the expected
+      // message to the remaining text for the next user_callback.
+      ASSERT_TRUE(expected_json_message["content"][0]["text"].is_string());
+      ASSERT_TRUE((*json_message)["content"][0]["text"].is_string());
+      std::string expected_string = expected_json_message["content"][0]["text"];
+      std::string actual_string = (*json_message)["content"][0]["text"];
+      EXPECT_TRUE(absl::StartsWith(expected_string, actual_string))
+          << "Expected: " << expected_string << "\nActual: " << actual_string;
+      expected_json_message["content"][0]["text"] =
+          expected_string.substr(actual_string.size());
+    }
+  };
+}
 
 TEST(ConversationConfigTest, CreateDefault) {
   ASSERT_OK_AND_ASSIGN(auto model_assets,
@@ -281,8 +285,9 @@ TEST(ConversationTest, SendSingleMessage) {
   // We will send a single message.
   JsonMessage user_message = {{"role", "user"}, {"content", "How are you?"}};
 
-  Responses responses(1);
-  responses.GetMutableResponseTexts()[0] = "I am good.";
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
+  responses.GetMutableTexts()[0] = "I am good.";
   absl::string_view expected_input_text =
       "<start_of_turn>user\n"
       "How are you?<end_of_turn>\n";
@@ -358,8 +363,9 @@ TEST(ConversationTest, SendMultipleMessages) {
     ]
   )json");
 
-  Responses responses(1);
-  responses.GetMutableResponseTexts()[0] = "I am good.";
+  Responses responses;
+  responses.GetMutableTexts().resize(1);
+  responses.GetMutableTexts()[0] = "I am good.";
   absl::string_view expected_input_text =
       "<start_of_turn>user\n"
       "Hello world!<end_of_turn>\n"
@@ -435,8 +441,9 @@ TEST(ConversationTest, SendMultipleMessagesWithHistory) {
       .WillOnce(testing::Return(absl::OkStatus()));
 
   // The first assistant response.
-  Responses responses_1(1);
-  responses_1.GetMutableResponseTexts()[0] = "I am good.";
+  Responses responses_1;
+  responses_1.GetMutableTexts().resize(1);
+  responses_1.GetMutableTexts()[0] = "I am good.";
   EXPECT_CALL(*mock_session_ptr, RunDecode(testing::_))
       .WillOnce(testing::Return(responses_1));
 
@@ -469,8 +476,9 @@ TEST(ConversationTest, SendMultipleMessagesWithHistory) {
       .WillOnce(testing::Return(absl::OkStatus()));
 
   // The second assistant response.
-  Responses responses_2(1);
-  responses_2.GetMutableResponseTexts()[0] = "baz";
+  Responses responses_2;
+  responses_2.GetMutableTexts().resize(1);
+  responses_2.GetMutableTexts()[0] = "baz";
   EXPECT_CALL(*mock_session_ptr, RunDecode(testing::_))
       .WillOnce(testing::Return(responses_2));
 
@@ -517,21 +525,21 @@ TEST(ConversationTest, SendMessageAsync) {
   JsonMessage user_message = {{"role", "user"}, {"content", "Hello world!"}};
   // The expected message is just some gibberish text, because the test LLM has
   // random weights.
-  JsonMessage expected_message = {
-      {"role", "assistant"},
-      {"content",
-       {{{"type", "text"},
-         {"text", "TarefaByte دارایेत्र investigaciónప్రదేశসাইন"}}}}};
+  Message expected_message =
+      JsonMessage({{"role", "assistant"},
+                   {"content",
+                    {{{"type", "text"},
+                      {"text", "TarefaByte دارایेत्र investigaciónప్రదేశসাইন"}}}}});
+  Message expected_message_for_confirm = expected_message;
 
   absl::Notification done;
   EXPECT_OK(conversation->SendMessageAsync(
-      user_message,
-      std::make_unique<TestMessageCallbacks>(expected_message, done)));
+      user_message, CreateTestMessageCallback(expected_message, done)));
   // Wait for the async message to be processed.
   EXPECT_OK(engine->WaitUntilDone(absl::Seconds(100)));
   done.WaitForNotification();
   EXPECT_THAT(conversation->GetHistory(),
-              testing::ElementsAre(user_message, expected_message));
+              testing::ElementsAre(user_message, expected_message_for_confirm));
 }
 
 TEST(ConversationTest, SendSingleMessageAsync) {
@@ -579,17 +587,19 @@ TEST(ConversationTest, SendSingleMessageAsync) {
                       testing::VariantWith<InputText>(testing::Property(
                           &InputText::GetRawTextString, expected_input_text))),
                   testing::_, testing::_))
-      .WillOnce([](const std::vector<InputData>& contents,
-                   std::unique_ptr<InferenceCallbacks> callbacks,
-                   const DecodeConfig& decode_config) {
-        Responses responses(1);
-        responses.GetMutableResponseTexts()[0] = "I am good.";
-        callbacks->OnNext(responses);
-        callbacks->OnDone();
-        return absl::OkStatus();
-      });
+      .WillOnce(
+          [](const std::vector<InputData>& contents,
+             absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
+             const DecodeConfig& decode_config) {
+            Responses responses;
+            responses.GetMutableTexts().resize(1);
+            responses.GetMutableTexts()[0] = "I am good.";
+            user_callback(responses);
+            user_callback(Responses());
+            return absl::OkStatus();
+          });
 
-  JsonMessage assistant_message = nlohmann::ordered_json::parse(R"({
+  Message assistant_message = JsonMessage(nlohmann::ordered_json::parse(R"({
     "role": "assistant",
     "content": [
       {
@@ -597,16 +607,17 @@ TEST(ConversationTest, SendSingleMessageAsync) {
         "text": "I am good."
       }
     ]
-  })");
+  })"));
+  Message assistant_message_for_confirm = assistant_message;
   absl::Notification done;
-  auto message_callbacks =
-      std::make_unique<TestMessageCallbacks>(assistant_message, done);
+  auto message_callback = CreateTestMessageCallback(assistant_message, done);
   EXPECT_OK(conversation->SendMessageAsync(user_message,
-                                           std::move(message_callbacks)));
+                                           std::move(message_callback)));
   done.WaitForNotification();
 
-  EXPECT_THAT(conversation->GetHistory(),
-              testing::ElementsAre(user_message, assistant_message));
+  EXPECT_THAT(
+      conversation->GetHistory(),
+      testing::ElementsAre(user_message, assistant_message_for_confirm));
 }
 
 TEST(ConversationTest, SendMultipleMessagesAsync) {
@@ -667,17 +678,19 @@ TEST(ConversationTest, SendMultipleMessagesAsync) {
                       testing::VariantWith<InputText>(testing::Property(
                           &InputText::GetRawTextString, expected_input_text))),
                   testing::_, testing::_))
-      .WillOnce([](const std::vector<InputData>& contents,
-                   std::unique_ptr<InferenceCallbacks> callbacks,
-                   const DecodeConfig& decode_config) {
-        Responses responses(1);
-        responses.GetMutableResponseTexts()[0] = "I am good.";
-        callbacks->OnNext(responses);
-        callbacks->OnDone();
-        return absl::OkStatus();
-      });
+      .WillOnce(
+          [](const std::vector<InputData>& contents,
+             absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
+             const DecodeConfig& decode_config) {
+            Responses responses;
+            responses.GetMutableTexts().resize(1);
+            responses.GetMutableTexts()[0] = "I am good.";
+            user_callback(responses);
+            user_callback(Responses());
+            return absl::OkStatus();
+          });
 
-  JsonMessage assistant_message = nlohmann::ordered_json::parse(R"json({
+  Message assistant_message = JsonMessage(nlohmann::ordered_json::parse(R"json({
     "role": "assistant",
     "content": [
       {
@@ -685,17 +698,17 @@ TEST(ConversationTest, SendMultipleMessagesAsync) {
         "text": "I am good."
       }
     ]
-  })json");
+  })json"));
+  Message assistant_message_for_confirm = assistant_message;
   absl::Notification done;
-  auto message_callbacks =
-      std::make_unique<TestMessageCallbacks>(assistant_message, done);
+  auto message_callback = CreateTestMessageCallback(assistant_message, done);
   EXPECT_OK(conversation->SendMessageAsync(user_messages,
-                                           std::move(message_callbacks)));
+                                           std::move(message_callback)));
   done.WaitForNotification();
 
   EXPECT_THAT(conversation->GetHistory(),
               testing::ElementsAre(user_messages[0], user_messages[1],
-                                   assistant_message));
+                                   assistant_message_for_confirm));
 }
 
 TEST(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
@@ -740,17 +753,20 @@ TEST(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
   )json");
   EXPECT_CALL(*mock_session_ptr,
               GenerateContentStream(testing::_, testing::_, testing::_))
-      .WillOnce([](const std::vector<InputData>& contents,
-                   std::unique_ptr<InferenceCallbacks> callbacks,
-                   const DecodeConfig& decode_config) {
-        Responses responses(1);
-        responses.GetMutableResponseTexts()[0] = "I am good.";
-        callbacks->OnNext(responses);
-        callbacks->OnDone();
-        return absl::OkStatus();
-      });
+      .WillOnce(
+          [](const std::vector<InputData>& contents,
+             absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
+             const DecodeConfig& decode_config) {
+            Responses responses;
+            responses.GetMutableTexts().resize(1);
+            responses.GetMutableTexts()[0] = "I am good.";
+            user_callback(responses);
+            user_callback(Responses());
+            return absl::OkStatus();
+          });
 
-  JsonMessage assistant_message_1 = nlohmann::ordered_json::parse(R"json({
+  Message assistant_message_1 =
+      JsonMessage(nlohmann::ordered_json::parse(R"json({
     "role": "assistant",
     "content": [
       {
@@ -758,12 +774,12 @@ TEST(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
         "text": "I am good."
       }
     ]
-  })json");
+  })json"));
+  Message assistant_message_1_for_confirm = assistant_message_1;
+
   absl::Notification done_1;
-  auto message_callbacks_1 =
-      std::make_unique<TestMessageCallbacks>(assistant_message_1, done_1);
-  EXPECT_OK(conversation->SendMessageAsync(user_message_1,
-                                           std::move(message_callbacks_1)));
+  EXPECT_OK(conversation->SendMessageAsync(
+      user_message_1, CreateTestMessageCallback(assistant_message_1, done_1)));
   done_1.WaitForNotification();
   ASSERT_THAT(conversation->GetHistory().size(), testing::Eq(2));
 
@@ -792,17 +808,20 @@ TEST(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
                       testing::VariantWith<InputText>(testing::Property(
                           &InputText::GetRawTextString, expected_input_text))),
                   testing::_, testing::_))
-      .WillOnce([](const std::vector<InputData>& contents,
-                   std::unique_ptr<InferenceCallbacks> callbacks,
-                   const DecodeConfig& decode_config) {
-        Responses responses(1);
-        responses.GetMutableResponseTexts()[0] = "baz";
-        callbacks->OnNext(responses);
-        callbacks->OnDone();
-        return absl::OkStatus();
-      });
+      .WillOnce(
+          [](const std::vector<InputData>& contents,
+             absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
+             const DecodeConfig& decode_config) {
+            Responses responses;
+            responses.GetMutableTexts().resize(1);
+            responses.GetMutableTexts()[0] = "baz";
+            user_callback(responses);
+            user_callback(Responses());
+            return absl::OkStatus();
+          });
 
-  JsonMessage assistant_message_2 = nlohmann::ordered_json::parse(R"json({
+  Message assistant_message_2 =
+      JsonMessage(nlohmann::ordered_json::parse(R"json({
     "role": "assistant",
     "content": [
       {
@@ -810,18 +829,21 @@ TEST(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
         "text": "baz"
       }
     ]
-  })json");
+  })json"));
+  Message assistant_message_2_for_confirm = assistant_message_2;
+
   absl::Notification done_2;
   auto message_callbacks_2 =
-      std::make_unique<TestMessageCallbacks>(assistant_message_2, done_2);
+      CreateTestMessageCallback(assistant_message_2, done_2);
   EXPECT_OK(conversation->SendMessageAsync(user_messages,
                                            std::move(message_callbacks_2)));
   done_2.WaitForNotification();
 
-  EXPECT_THAT(conversation->GetHistory(),
-              testing::ElementsAre(user_message_1, assistant_message_1,
-                                   user_messages[0], user_messages[1],
-                                   assistant_message_2));
+  EXPECT_THAT(
+      conversation->GetHistory(),
+      testing::ElementsAre(user_message_1, assistant_message_1_for_confirm,
+                           user_messages[0], user_messages[1],
+                           assistant_message_2_for_confirm));
 }
 
 TEST(ConversationTest, SendMessageWithPreface) {
@@ -893,31 +915,25 @@ TEST(ConversationTest, GetBenchmarkInfo) {
   EXPECT_EQ(benchmark_info_2.GetTotalPrefillTurns(), 2);
 }
 
-class CancelledMessageCallbacks : public MessageCallbacks {
- public:
-  explicit CancelledMessageCallbacks(absl::Status& status,
-                                     absl::Notification& done)
-      : status_(status), done_(done) {}
-
-  void OnError(const absl::Status& status) override {
-    status_ = status;
-    done_.Notify();
-  }
-  void OnMessage(const Message& message) override {
+absl::AnyInvocable<void(absl::StatusOr<Message>)>
+CreateCancelledMessageCallback(absl::Status& status, absl::Notification& done) {
+  return [&status, &done](absl::StatusOr<Message> message) mutable {
+    if (!message.ok()) {
+      status = message.status();
+      done.Notify();
+      return;
+    }
+    if (auto json_message = std::get_if<JsonMessage>(&message.value());
+        json_message->is_null()) {
+      status = absl::OkStatus();
+      done.Notify();
+      return;
+    }
     // Wait for a short time to slow down the decoding process, so that the
     // cancellation can be triggered in the middle of decoding.
     absl::SleepFor(absl::Milliseconds(100));
-  }
-
-  void OnComplete() override {
-    status_ = absl::OkStatus();
-    done_.Notify();
-  }
-
- private:
-  absl::Status& status_;
-  absl::Notification& done_;
-};
+  };
+}
 
 TEST(ConversationAccessHistoryTest, AccessHistory) {
   // Create a Conversation.
@@ -934,23 +950,24 @@ TEST(ConversationAccessHistoryTest, AccessHistory) {
 
   // Send a message to the LLM.
   JsonMessage user_message = {{"role", "user"}, {"content", "Hello world!"}};
-  JsonMessage expected_assistant_message = {
-      {"role", "assistant"},
-      {"content",
-       {{{"type", "text"},
-         {"text", "TarefaByte دارایेत्र investigaciónప్రదేశসাইন"}}}}};
+  Message expected_assistant_message =
+      JsonMessage({{"role", "assistant"},
+                   {"content",
+                    {{{"type", "text"},
+                      {"text", "TarefaByte دارایेत्र investigaciónప్రదేశসাইন"}}}}});
+  Message expected_assistant_message_for_confirm = expected_assistant_message;
   absl::Notification done;
-  auto message_callbacks =
-      std::make_unique<TestMessageCallbacks>(expected_assistant_message, done);
-  EXPECT_OK(conversation->SendMessageAsync(user_message,
-                                           std::move(message_callbacks)));
+  EXPECT_OK(conversation->SendMessageAsync(
+      user_message,
+      CreateTestMessageCallback(expected_assistant_message, done)));
   done.WaitForNotification();
 
   // Get the history copy.
   auto history = conversation->GetHistory();
   ASSERT_THAT(history.size(), 2);
   ASSERT_THAT(history.back(),
-              testing::VariantWith<JsonMessage>(expected_assistant_message));
+              testing::VariantWith<JsonMessage>(std::get<JsonMessage>(
+                  expected_assistant_message_for_confirm)));
 
   // Access the history with visitor function, and copy the last message.
   Message last_message;
@@ -961,7 +978,8 @@ TEST(ConversationAccessHistoryTest, AccessHistory) {
         last_message = history_view.back();
       });
   EXPECT_THAT(last_message,
-              testing::VariantWith<JsonMessage>(expected_assistant_message));
+              testing::VariantWith<JsonMessage>(std::get<JsonMessage>(
+                  expected_assistant_message_for_confirm)));
 }
 
 class ConversationCancellationTest : public testing::TestWithParam<bool> {
@@ -993,12 +1011,12 @@ TEST_P(ConversationCancellationTest, CancelProcessWithBenchmarkInfo) {
   conversation
       ->SendMessageAsync(
           JsonMessage{{"role", "user"}, {"content", "Hello world!"}},
-          std::make_unique<CancelledMessageCallbacks>(status, done_1))
+          CreateCancelledMessageCallback(status, done_1))
       .IgnoreError();
   // Wait for a short time to ensure the decoding has started.
   absl::SleepFor(absl::Milliseconds(100));
   conversation->CancelProcess();
-  // Wait for the callbacks to be done.
+  // Wait for the callback to be done.
   done_1.WaitForNotification();
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kCancelled));
 
@@ -1011,10 +1029,10 @@ TEST_P(ConversationCancellationTest, CancelProcessWithBenchmarkInfo) {
   conversation
       ->SendMessageAsync(
           JsonMessage{{"role", "user"}, {"content", "Hello world!"}},
-          std::make_unique<CancelledMessageCallbacks>(status, done_2))
+          CreateCancelledMessageCallback(status, done_2))
       .IgnoreError();
   EXPECT_OK(status);
-  // Wait for the callbacks to be done.
+  // Wait for the callback to be done.
   done_2.WaitForNotification();
   // Without cancellation, the history should have two messages, user and
   // assistant.

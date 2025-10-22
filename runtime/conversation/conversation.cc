@@ -21,6 +21,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
@@ -30,7 +31,7 @@
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/components/prompt_template.h"
-#include "runtime/conversation/internal_callbacks_adapter.h"
+#include "runtime/conversation/internal_callback_util.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/conversation/model_data_processor/config_registry.h"
 #include "runtime/conversation/model_data_processor/model_data_processor.h"
@@ -250,7 +251,8 @@ absl::StatusOr<Message> Conversation::SendMessage(
 }
 
 absl::Status Conversation::SendMessageAsync(
-    const Message& message, std::unique_ptr<MessageCallbacks> callbacks,
+    const Message& message,
+    absl::AnyInvocable<void(absl::StatusOr<Message>)> user_callback,
     std::optional<DataProcessorArguments> args) {
   if (!std::holds_alternative<nlohmann::ordered_json>(message)) {
     return absl::InvalidArgumentError("Json message is required for now.");
@@ -275,27 +277,26 @@ absl::Status Conversation::SendMessageAsync(
           single_turn_text, nlohmann::ordered_json::array({json_message}),
           args.value_or(std::monostate())));
 
-  auto internal_callbacks_adapter = InternalCallbacksAdapter::Create(
-      model_data_processor_.get(), std::move(callbacks),
-      args.value_or(std::monostate()));
-
-  InternalCallbacksAdapter::CompleteMessageCallback complete_message_callback =
+  absl::AnyInvocable<void(Message)> complete_message_callback =
       [this](const Message& complete_message) {
         absl::MutexLock lock(this->history_mutex_);  // NOLINT
         this->history_.push_back(complete_message);
       };
-  internal_callbacks_adapter->SetCompleteMessageCallback(
-      std::move(complete_message_callback));
 
-  InternalCallbacksAdapter::CancelCallback cancel_callback = [this]() {
+  absl::AnyInvocable<void()> cancel_callback = [this]() {
     absl::MutexLock lock(&this->history_mutex_);  // NOLINT
     this->history_.pop_back();
   };
-  internal_callbacks_adapter->SetCancelCallback(std::move(cancel_callback));
+
+  absl::AnyInvocable<void(absl::StatusOr<Responses>)> internal_callback =
+      CreateInternalCallback(
+          *model_data_processor_, args.value_or(std::monostate()),
+          std::move(user_callback), std::move(cancel_callback),
+          std::move(complete_message_callback));
 
   ASSIGN_OR_RETURN(auto decode_config, CreateDecodeConfig());
   RETURN_IF_ERROR(session_->GenerateContentStream(
-      session_inputs, std::move(internal_callbacks_adapter), decode_config));
+      session_inputs, std::move(internal_callback), decode_config));
   return absl::OkStatus();
 };
 

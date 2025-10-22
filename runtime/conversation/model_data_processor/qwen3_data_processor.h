@@ -45,7 +45,7 @@ class Qwen3DataProcessor
 
   // Return the same tools as the input for generic models.
   absl::StatusOr<nlohmann::ordered_json> FormatTools(
-      const nlohmann::ordered_json& tools) override {
+      const nlohmann::ordered_json& tools) const override {
     return tools;
   }
 
@@ -53,12 +53,14 @@ class Qwen3DataProcessor
   absl::StatusOr<nlohmann::ordered_json> MessageToTemplateInput(
       const nlohmann::ordered_json& message) const override;
 
-  absl::string_view CodeFenceStart() override;
+  // No-op for generic models.
+  absl::string_view CodeFenceStart() const override;
 
-  absl::string_view CodeFenceEnd() override;
+  // No-op for generic models.
+  absl::string_view CodeFenceEnd() const override;
 
   // Returns the config of the model data processor.
-  const Qwen3DataProcessorConfig& GetConfig() override { return config_; }
+  const Qwen3DataProcessorConfig& GetConfig() const override { return config_; }
 
  private:
   explicit Qwen3DataProcessor(Qwen3DataProcessorConfig config,
@@ -68,11 +70,11 @@ class Qwen3DataProcessor
   absl::StatusOr<std::vector<InputData>> ToInputDataVectorImpl(
       const std::string& rendered_template_prompt,
       const nlohmann::ordered_json& messages,
-      const Qwen3DataProcessorArguments& args) override;
+      const Qwen3DataProcessorArguments& args) const override;
 
   absl::StatusOr<Message> ToMessageImpl(
       const Responses& responses,
-      const Qwen3DataProcessorArguments& args) override;
+      const Qwen3DataProcessorArguments& args) const override;
 
   Qwen3DataProcessorConfig config_;
   std::optional<Preface> preface_;

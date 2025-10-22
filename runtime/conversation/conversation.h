@@ -147,11 +147,11 @@ class ConversationConfig {
 //                        {"role", "user"}, {"content", "Hello world!"}}));
 //
 //   // Send a message to the LLM and process the asynchronous message results
-//   // via the callbacks. The callbacks is a user-defined callback class that
-//   // handles the message results.
+//   // via the user_callback. The user_callback is a user-defined callback
+//   function that handles the message results.
 //   EXPECT_OK(conversation->SendMessageAsync(
 //       JsonMessage{{"role", "user"}, {"content", "Hello world!"}},
-//       std::make_unique<MyMessageCallbacks>()));
+//       std::make_unique<MyMessageCallback>()));
 //
 class Conversation {
  public:
@@ -178,12 +178,20 @@ class Conversation {
       std::optional<DataProcessorArguments> args = std::nullopt);
 
   // Sends a message to the LLM and process the asynchronous message results via
-  // the callbacks.
+  // the user_callback.
   // Args:
   // - `message`: The message to be sent to the LLM. If `message` is an array,
   //    each element will be treated as a separate message and be prefilled
   //    before generating the response.
-  // - `callbacks`: The callbacks to receive the message events.
+  // - `user_callback`: The callback to receive the message events. The
+  //    user_callback will be invoked in the following conditions:
+  //    - On every new message chunk.
+  //    - When the generation is complete, the user_callback will be invoked
+  //      with an empty message.
+  //    - When the generation is cancelled, the user_callback will be invoked
+  //      with absl::CancelledError.
+  //    - When an error occurs, the user_callback will be invoked with the error
+  //      status.
   // - `args`: The optional arguments for the corresponding model data
   //    processor. Most of the time, the users don't need to provide this
   //    argument.
@@ -191,7 +199,8 @@ class Conversation {
   // - absl::OkStatus if the message is sent and processing successfully,
   //   otherwise the error status.
   absl::Status SendMessageAsync(
-      const Message& message, std::unique_ptr<MessageCallbacks> callbacks,
+      const Message& message,
+      absl::AnyInvocable<void(absl::StatusOr<Message>)> user_callback,
       std::optional<DataProcessorArguments> args = std::nullopt);
 
   // Returns the history of the conversation.
