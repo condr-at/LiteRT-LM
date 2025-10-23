@@ -102,6 +102,7 @@ cc_library(
     hdrs = ["litert_compiled_model_executor_utils.h"],
     deps = [
         ":executor_settings_base",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
@@ -126,7 +127,6 @@ cc_library(
             "@litert//litert/cc:litert_api_with_dynamic_runtime",
         ],
         "//conditions:default": [
-            "@litert//litert/cc:litert_buffer_ref",
             "@litert//litert/cc:litert_element_type",
             "@litert//litert/cc:litert_expected",
             "@litert//litert/cc:litert_macros",

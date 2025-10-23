@@ -71,9 +71,11 @@ struct ModelSignatures {
 // match any of the predefined signature set.
 // For now, we should use decode runner, since it contains all input and output
 // signatures of the model.
+// If strict is true, we will check that: `input_tokens` or `input_embeddings`
+// is provided, `input_positions` is provided, and `output_logits` is provided.
 absl::StatusOr<ModelSignatures> GetModelSignaturesFromInputOutputNames(
     const std::vector<absl::string_view>& input_names,
-    const std::vector<absl::string_view>& output_names);
+    const std::vector<absl::string_view>& output_names, bool strict = true);
 
 // Gets a set of prefill signature runners from the interpreter.
 // The signature runners are sorted by the input tokens dimension.
@@ -98,8 +100,7 @@ GetOptimizedPrefillWorkGroups(
 // Initializes the attention mask tensor for prefill/decode.
 // The mask is a 4D tensor with shape [batch=1, seq_len, 1, max_kv_len].
 // is_f16 only applies to FLOAT mask data type.
-absl::Status InitializeAttentionMask(::litert::TensorBuffer& mask,
-                                     bool is_f16);
+absl::Status InitializeAttentionMask(::litert::TensorBuffer& mask, bool is_f16);
 
 // Fill attention mask for a given range of timesteps.
 // The mask is a 4D tensor with shape [batch=1, seq_len, 1, max_kv_len].

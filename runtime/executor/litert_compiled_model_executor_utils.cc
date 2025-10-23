@@ -15,22 +15,21 @@
 #include "runtime/executor/litert_compiled_model_executor_utils.h"
 
 #include <algorithm>
-#include <cstdint>
+#include <array>
 #include <cstring>
 #include <iterator>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/match.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
-#include "litert/cc/litert_buffer_ref.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_expected.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
@@ -49,116 +48,24 @@ namespace litert::lm {
 
 namespace {
 
-using ::litert::Expected;
-using ::litert::Model;
-using ::litert::lm::ModelAssetBundleResources;
-
 // The name of the prefill decode model in the task bundle.
 constexpr char kPrefilDecodeModelNameInTaskBundle[] = "TF_LITE_PREFILL_DECODE";
-
-// Gemma2 JAX model signatures.
-// Input: [batch_size, max_seq_len]
-constexpr char kGemma2JAX_InputTokens[] = "token_ids";
-// Input: [batch_size, max_seq_len]
-constexpr char kGemma2JAX_InputPositions[] = "positions";
-// Input: [batch_size, max_seq_len, 1, context_size]
-constexpr char kGemma2JAX_InputAttnMask[] = "attn_mask";
-// Output: [batch_size, max_seq_len, vocab_size]
-constexpr char kGemma2JAX_OutputLogits[] = "logits";
-
-// PyTorch model signatures running on CPU and GPU including Gemma2 & 3 and
-// other open source models, which has "mask" as input.
-// Input: [batch_size, max_seq_len]
-constexpr char kPyTorch_InputTokens[] = "tokens";
-// Input: [max_seq_len]
-constexpr char kPyTorch_InputPositions[] = "input_pos";
-// Input: [batch_size, 1, max_seq_len, context_size]
-constexpr char kPyTorch_InputAttnMask[] = "mask";
-// Output: [batch_size, max_seq_len, vocab_size]
-constexpr char kPyTorch_OutputLogits[] = "logits";
-
-// PyTorch model signatures running only on CPU including Gemma2 & 3 and other
-// open source models, which does not have "mask" as input.
-// Input: [batch_size, max_seq_len]
-constexpr char kPyTorchCpuOnly_InputTokens[] = "tokens";
-// Input: [max_seq_len]
-constexpr char kPyTorchCpuOnly_InputPositions[] = "input_pos";
-// Output: [batch_size, max_seq_len, vocab_size]
-constexpr char kPyTorchCpuOnly_OutputLogits[] = "logits";
-
-// Gemma 3n with external embeddings model signature.
-// Input: [max_seq_len]
-constexpr char kExternalEmbeddingsModel_InputPositions[] = "input_pos";
-// Input: [batch_size, 1, max_seq_len, context_size]
-constexpr char kExternalEmbeddingsModel_InputAttnMask[] = "mask";
-// Input: [batch_size, max_seq_len, embedding_dim]
-constexpr char kExternalEmbeddingsModel_Embeddings[] = "embeddings";
-// Input: [batch_size, max_seq_len, num_layers,embedding_dim]
-constexpr char kExternalEmbeddingsModel_PerLayerEmbeddings[] =
-    "per_layer_embeddings";
-// Output: [batch_size, max_seq_len, vocab_size]
-constexpr char kExternalEmbeddingsModel_OutputLogits[] = "logits";
-
-// Gemini V1.5 model signatures.
-// Input: [batch_size, max_seq_len]
-constexpr char kGemini_InputTokens[] = "token_ids";
-// Input: [batch_size, max_seq_len]
-constexpr char kGemini_InputPositions[] = "positions";
-// Input: [batch_size, max_seq_len, 1, context_size]
-constexpr char kGemini_InputAttnMask[] = "attn_mask";
-// Output: [batch_size, max_seq_len, vocab_size]
-constexpr char kGemini_OutputLogits[] = "logits";
-
-bool Contains(const std::vector<absl::string_view>& input_names,
-              const char* name) {
-  return std::find(input_names.begin(), input_names.end(), name) !=
-         input_names.end();
-}
-
-bool IsGemma2JAX(const std::vector<absl::string_view>& input_names,
-                 const std::vector<absl::string_view>& output_names) {
-  return Contains(input_names, kGemma2JAX_InputTokens) &&
-         Contains(input_names, kGemma2JAX_InputPositions) &&
-         Contains(input_names, kGemma2JAX_InputAttnMask) &&
-         Contains(output_names, kGemma2JAX_OutputLogits);
-}
-
-bool IsPyTorch(const std::vector<absl::string_view>& input_names,
-               const std::vector<absl::string_view>& output_names) {
-  return Contains(input_names, kPyTorch_InputTokens) &&
-         Contains(input_names, kPyTorch_InputPositions) &&
-         Contains(input_names, kPyTorch_InputAttnMask) &&
-         Contains(output_names, kPyTorch_OutputLogits);
-}
-
-bool IsPyTorchCpuOnly(const std::vector<absl::string_view>& input_names,
-                      const std::vector<absl::string_view>& output_names) {
-  return Contains(input_names, kPyTorchCpuOnly_InputTokens) &&
-         Contains(input_names, kPyTorchCpuOnly_InputPositions) &&
-         Contains(output_names, kPyTorchCpuOnly_OutputLogits);
-}
-
-bool IsGemini(const std::vector<absl::string_view>& input_names,
-              const std::vector<absl::string_view>& output_names) {
-  return Contains(input_names, kGemini_InputTokens) &&
-         Contains(input_names, kGemini_InputPositions) &&
-         Contains(input_names, kGemini_InputAttnMask) &&
-         Contains(output_names, kGemini_OutputLogits);
-}
-
-bool IsExternalEmbeddingModel(
-    const std::vector<absl::string_view>& input_names,
-    const std::vector<absl::string_view>& output_names) {
-  // When checking if the model has external embeddings, we need to double check
-  // that the signature does not include any input tokens.
-  return !Contains(input_names, kPyTorch_InputTokens) &&
-         !Contains(input_names, kGemma2JAX_InputTokens) &&
-         !Contains(input_names, kPyTorch_InputTokens) &&
-         Contains(input_names, kExternalEmbeddingsModel_InputPositions) &&
-         Contains(input_names, kExternalEmbeddingsModel_InputAttnMask) &&
-         Contains(input_names, kExternalEmbeddingsModel_Embeddings) &&
-         Contains(output_names, kExternalEmbeddingsModel_OutputLogits);
-}
+// Possible input tokens names:
+constexpr std::array<absl::string_view, 2> kInputTokensNames = {"token_ids",
+                                                                "tokens"};
+// Possible input positions names:
+constexpr std::array<absl::string_view, 2> kInputPositionsNames = {"positions",
+                                                                   "input_pos"};
+// Possible input attention mask names:
+constexpr std::array<absl::string_view, 2> kInputAttnMaskNames = {"attn_mask",
+                                                                  "mask"};
+// Possible embedding names:
+constexpr std::array<absl::string_view, 1> kEmbeddingNames = {"embeddings"};
+// Possible per layer embedding names:
+constexpr std::array<absl::string_view, 1> kPerLayerEmbeddingNames = {
+    "per_layer_embeddings"};
+// Possible output logits names:
+constexpr std::array<absl::string_view, 1> kOutputLogitsNames = {"logits"};
 
 absl::StatusOr<std::unique_ptr<ModelResources>>
 BuildModelResourcesFromTaskFormat(std::shared_ptr<ScopedFile> model_file) {
@@ -187,57 +94,51 @@ BuildModelResourcesFromLitertLmFormat(ScopedFile model_file) {
 
 absl::StatusOr<ModelSignatures> GetModelSignaturesFromInputOutputNames(
     const std::vector<absl::string_view>& input_names,
-    const std::vector<absl::string_view>& output_names) {
-  if (IsGemma2JAX(input_names, output_names)) {
-    return ModelSignatures{
-        .input_tokens = kGemma2JAX_InputTokens,
-        .input_positions = kGemma2JAX_InputPositions,
-        .input_attn_mask = kGemma2JAX_InputAttnMask,
-        .output_logits = kGemma2JAX_OutputLogits,
-    };
+    const std::vector<absl::string_view>& output_names, bool strict) {
+  ModelSignatures model_signatures;
+  for (auto input_name : input_names) {
+    if (absl::c_linear_search(kInputTokensNames, input_name)) {
+      model_signatures.input_tokens = std::string(input_name);
+      continue;
+    }
+    if (absl::c_linear_search(kInputPositionsNames, input_name)) {
+      model_signatures.input_positions = std::string(input_name);
+      continue;
+    }
+    if (absl::c_linear_search(kInputAttnMaskNames, input_name)) {
+      model_signatures.input_attn_mask = std::string(input_name);
+      continue;
+    }
+    if (absl::c_linear_search(kEmbeddingNames, input_name)) {
+      model_signatures.input_embeddings = std::string(input_name);
+      continue;
+    }
+    if (absl::c_linear_search(kPerLayerEmbeddingNames, input_name)) {
+      model_signatures.input_per_layer_embeddings = std::string(input_name);
+      continue;
+    }
   }
 
-  if (IsPyTorch(input_names, output_names)) {
-    return ModelSignatures{
-        .input_tokens = kPyTorch_InputTokens,
-        .input_positions = kPyTorch_InputPositions,
-        .input_attn_mask = kPyTorch_InputAttnMask,
-        .output_logits = kPyTorch_OutputLogits,
-    };
+  for (auto output_name : output_names) {
+    if (absl::c_linear_search(kOutputLogitsNames, output_name)) {
+      model_signatures.output_logits = std::string(output_name);
+      continue;
+    }
   }
 
-  if (IsPyTorchCpuOnly(input_names, output_names)) {
-    return ModelSignatures{
-        .input_tokens = kPyTorch_InputTokens,
-        .input_positions = kPyTorch_InputPositions,
-        .output_logits = kPyTorchCpuOnly_OutputLogits,
-    };
+  if (strict) {
+    RET_CHECK(!model_signatures.input_tokens.empty() ||
+              model_signatures.input_embeddings.has_value())
+            .SetCode(absl::StatusCode::kFailedPrecondition)
+        << "Input tokens or embeddings not found.";
+    RET_CHECK(!model_signatures.input_positions.empty())
+            .SetCode(absl::StatusCode::kFailedPrecondition)
+        << "Input positions not found.";
+    RET_CHECK(!model_signatures.output_logits.empty())
+            .SetCode(absl::StatusCode::kFailedPrecondition)
+        << "Output logits not found.";
   }
-
-  if (IsGemini(input_names, output_names)) {
-    return ModelSignatures{
-        .input_tokens = kGemini_InputTokens,
-        .input_positions = kGemini_InputPositions,
-        .input_attn_mask = kGemini_InputAttnMask,
-        .output_logits = kGemini_OutputLogits,
-    };
-  }
-
-  if (IsExternalEmbeddingModel(input_names, output_names)) {
-    return ModelSignatures{
-        .input_positions = kExternalEmbeddingsModel_InputPositions,
-        .input_attn_mask = kExternalEmbeddingsModel_InputAttnMask,
-        .input_embeddings = kExternalEmbeddingsModel_Embeddings,
-        .input_per_layer_embeddings =
-            Contains(input_names, kExternalEmbeddingsModel_PerLayerEmbeddings)
-                ? std::make_optional(
-                      kExternalEmbeddingsModel_PerLayerEmbeddings)
-                : std::nullopt,
-        .output_logits = kExternalEmbeddingsModel_OutputLogits,
-    };
-  }
-
-  return absl::FailedPreconditionError("Unsupported model signature.");
+  return model_signatures;
 }
 
 absl::StatusOr<SortedPrefillSignatureMap> GetPrefillRunnerSetFromModel(
