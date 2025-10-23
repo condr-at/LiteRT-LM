@@ -62,7 +62,7 @@ ThreadPool::~ThreadPool() {
     ABSL_CHECK(threads_.empty());
     ABSL_CHECK_EQ(num_active_tasks_, 0);
   }
-  ABSL_LOG(INFO) << "ThreadPool '" << name_prefix_ << "': Shutdown complete. ";
+  ABSL_LOG(INFO) << "ThreadPool '" << name_prefix_ << "': Shutdown complete.";
 }
 
 absl::Status ThreadPool::Schedule(absl::AnyInvocable<void() &&> callback) {
