@@ -136,18 +136,6 @@ class Session(private val handle: Long) : AutoCloseable {
     LiteRtLmJni.nativeCancelProcess(handle)
   }
 
-  /**
-   * Gets the benchmark info for the session.
-   *
-   * @return The benchmark info.
-   * @throws IllegalStateException if the session is not alive.
-   * @throws LiteRtLmJniException if benchmark is not enabled in the engine config.
-   */
-  fun getBenchmarkInfo(): BenchmarkInfo {
-    checkIsAlive()
-    return LiteRtLmJni.nativeGetBenchmarkInfo(handle)
-  }
-
   /** Throws [IllegalStateException] if the session is not alive. */
   private fun checkIsAlive() {
     check(isAlive) { "Session is not alive." }

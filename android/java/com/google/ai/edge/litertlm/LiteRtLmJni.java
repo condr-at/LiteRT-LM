@@ -48,8 +48,8 @@ final class LiteRtLmJni {
       String visionBackend,
       String audioBackend,
       int maxNumTokens,
-      boolean enableBenchmark,
-      String cacheDir);
+      String cacheDir,
+      boolean enableBenchmark);
 
   /**
    * Delete the LiteRT-LM engine.
@@ -147,15 +147,6 @@ final class LiteRtLmJni {
    * @param sessionPointer A pointer to the native session instance.
    */
   public static native void nativeCancelProcess(long sessionPointer);
-
-  /**
-   * Gets the benchmark info for the session.
-   *
-   * @param sessionPointer A pointer to the native session instance.
-   * @return The benchmark info.
-   * @throws LiteRtLmJniException if the underlying native method fails.
-   */
-  public static native BenchmarkInfo nativeGetBenchmarkInfo(long sessionPointer);
 
   /**
    * Creates a new LiteRT-LM conversation.

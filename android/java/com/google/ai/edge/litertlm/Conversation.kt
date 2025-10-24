@@ -220,6 +220,7 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
    * @throws IllegalStateException if the conversation is not alive.
    * @throws LiteRtLmJniException if benchmark is not enabled in the engine config.
    */
+  @ExperimentalApi
   fun getBenchmarkInfo(): BenchmarkInfo {
     checkIsAlive()
     return LiteRtLmJni.nativeConversationGetBenchmarkInfo(handle)

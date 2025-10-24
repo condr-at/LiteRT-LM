@@ -37,7 +37,6 @@ enum class Backend {
  *   not be initialized.
  * @property maxNumTokens The maximum number of the sum of input and output tokens. It is equivalent
  *   to the size of the kv-cache. When `null`, use the default value from the model or the engine.
- * @property enableBenchmark Whether to enable benchmark or not.
  * @property cacheDir The directory for placing cache files. It should be a directory where the
  *   Android application has write access. If not unset, it uses the directory of the [modelPath].
  */
@@ -47,7 +46,6 @@ data class EngineConfig(
   val visionBackend: Backend? = null,
   val audioBackend: Backend? = null,
   val maxNumTokens: Int? = null,
-  val enableBenchmark: Boolean = false,
   val cacheDir: String? = null,
 ) {
   init {

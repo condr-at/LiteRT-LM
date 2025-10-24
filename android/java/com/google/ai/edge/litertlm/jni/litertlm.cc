@@ -224,7 +224,7 @@ extern "C" {
 JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(
     JNIEnv* env, jclass thiz, jstring model_path, jstring backend,
     jstring vision_backend, jstring audio_backend, jint max_num_tokens,
-    jboolean enable_benchmark, jstring cache_dir) {
+    jstring cache_dir, jboolean enable_benchmark) {
   const char* model_path_chars = env->GetStringUTFChars(model_path, nullptr);
   std::string model_path_str(model_path_chars);
   env->ReleaseStringUTFChars(model_path, model_path_chars);
@@ -507,21 +507,6 @@ JNIEXPORT void JNICALL JNI_METHOD(nativeCancelProcess)(JNIEnv* env, jclass thiz,
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
   session->CancelProcess();
-}
-
-JNIEXPORT jobject JNICALL JNI_METHOD(nativeGetBenchmarkInfo)(
-    JNIEnv* env, jclass thiz, jlong session_pointer) {
-  Engine::Session* session =
-      reinterpret_cast<Engine::Session*>(session_pointer);
-
-  auto benchmark_info = session->GetBenchmarkInfo();
-  if (!benchmark_info.ok()) {
-    ThrowLiteRtLmJniException(env, "Failed to get benchmark info: " +
-                                       benchmark_info.status().ToString());
-    return nullptr;
-  }
-
-  return CreateBenchmarkInfoJni(env, *benchmark_info);
 }
 
 JNIEXPORT jobject JNICALL JNI_METHOD(nativeConversationGetBenchmarkInfo)(

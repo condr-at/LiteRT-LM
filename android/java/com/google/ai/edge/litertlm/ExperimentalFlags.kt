@@ -26,6 +26,14 @@ package com.google.ai.edge.litertlm
 object ExperimentalFlags {
 
   /**
+   * Whether to enable benchmark.
+   *
+   * Note: This flag is read only when a new [Engine] is created. Changing this value will not
+   * affect any existing [Engine] or [Conversation] instances.
+   */
+  var enableBenchmark: Boolean = false
+
+  /**
    * Whether to force disabling conversation constrained decoding.
    *
    * Note: This flag is read only when a new [Conversation] is created. Changing this value will not
@@ -35,6 +43,7 @@ object ExperimentalFlags {
 }
 
 // Mark this annotation itself as requiring opt-in
+// TODO: Switch level to ERROR
 @RequiresOptIn(
   message = "This API is experimental and temporary. It may change or be removed without notice.",
   level = RequiresOptIn.Level.WARNING,

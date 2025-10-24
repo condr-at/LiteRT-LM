@@ -23,4 +23,5 @@ package com.google.ai.edge.litertlm
  * @property lastDecodeTokenCount The number of tokens in the last decode. Returns 0 if there was no
  *   decode.
  */
+@OptIn(ExperimentalApi::class)
 data class BenchmarkInfo(val lastPrefillTokenCount: Int, val lastDecodeTokenCount: Int)
