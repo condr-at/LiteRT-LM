@@ -16,13 +16,21 @@ including:
     hardware
 
 ### Status: Early Preview
-
-Expect our first full release of LiteRT-LM late summer / early fall. We heard
-the community feedback regarding Google AI Edge's Gemma 3n LiteRT preview. You
-want access on more platforms, more visibility into the underlying stack, and
-more flexibility. LiteRT-LM can help with all three.
+Full release is coming soon.
+We heard the community feedback regarding Google AI Edge's Gemma 3n LiteRT
+preview. You want access on more platforms, more visibility into the underlying
+stack, and more flexibility. LiteRT-LM can help with all three.
 
 ### 🚀 What's New
+
+*   ***Oct 2025*** **: Desktop GPU support and more**
+    - Desktop GPU support.
+    - Simple CLI for Desktop: [Link to Quick Start section](#quick_start)
+    - Multi-Modality support: Vision and Audio input are supported when models
+      support it. [See more details here](#multimodal)
+    - Kotlin support: [Link to LiteRT-LM Android API](./android/README.md)
+    - Function calling support.
+    - Conversation API.
 
 *   ***June 24, 2025*** **: Run Gemma models with NPU Support (`v0.7.0`)**
     Unlock significant performance gains! Our latest release leverages the power
@@ -44,10 +52,10 @@ more flexibility. LiteRT-LM can help with all three.
 Platform     | CPU Support | GPU Support | NPU Support |
 :----------- | :---------: | :-----------: | :-----------:
 **Android**  | ✅           | ✅            | ✅ |
-**macOS**    | ✅           | *Coming Soon* | - |
-**Windows**  | ✅           | *Coming Soon* | - |
-**Linux**    | ✅           | *Coming Soon* | - |
-**Embedded** | ✅           | *Coming Soon* | - |
+**macOS**    | ✅           | ✅            | - |
+**Windows**  | ✅           | ✅            | - |
+**Linux**    | ✅           | ✅            | - |
+**Embedded** | ✅           | -             | - |
 
 ### Supported Models and Performance
 
@@ -58,6 +66,8 @@ Model       | Quantization      | Context size | Model Size (Mb) | Download link
 Gemma3-1B   | 4-bit per-channel | 4096         | 557             | [download](https://huggingface.co/litert-community/Gemma3-1B-IT/blob/main/Gemma3-1B-IT_multi-prefill-seq_q4_ekv4096.litertlm)
 Gemma3n-E2B | 4-bit per-channel | 4096         | 2965            | [download](https://huggingface.co/google/gemma-3n-E2B-it-litert-lm-preview)
 Gemma3n-E4B | 4-bit per-channel | 4096         | 4235            | [download](https://huggingface.co/google/gemma-3n-E4B-it-litert-lm-preview)
+phi-4-mini  | 8-bit per-channel | 4096         | 3728            | [download](https://huggingface.co/litert-community/Phi-4-mini-instruct/resolve/main/Phi-4-mini-instruct_multi-prefill-seq_q8_ekv4096.litertlm)
+qwen2.5-1.5b| 8-bit per-channel | 4096         | 1524            | [download](https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm)
 
 Below are the performance numbers of running each model on various devices. Note
 that the benchmark is measured with 1024 tokens prefill and 256 tokens decode (
@@ -76,30 +86,54 @@ with performance lock on Android devices).
 | Gemma3n-E4B | Samsung S24<br>(Ultra) | CPU | 73.5 | 9.2 | 4096 |
 | Gemma3n-E4B | Samsung S24<br>(Ultra) | GPU | 548.0 | 9.4 | 4096 |
 
-## Quick Start
+## Quick Start <span id="quick_start"></span>
 
-This guide provides the necessary steps to build and execute a Large Language
-Model (LLM) on your device. Note that the LiteRT-LM runtime is designed to work
+**Want to try it out first?** Before proceeding with the full setup, you can use
+the pre-built binary below to run the LiteRT-LM immediately.
+### Desktop CLI (LIT)
+
+-   [MacOS ARM64](https://github.com/google-ai-edge/LiteRT-LM/blob/main/prebuilt/macos_arm64/lit)
+-   [Linux x86_64](https://github.com/google-ai-edge/LiteRT-LM/blob/main/prebuilt/linux_x86_64/lit)
+-   [Linux ARM64](https://github.com/google-ai-edge/LiteRT-LM/blob/main/prebuilt/linux_arm64/lit)
+-   [Windows x86_64](https://github.com/google-ai-edge/LiteRT-LM/blob/main/prebuilt/windows_x86_64/lit.exe)
+
+After the download the `lit` binary, just run `lit` to see the options.
+Simple use case is like:
+
+```
+lit list --show_all
+lit pull gemma3-1b --tf_token="**your huggingface token**"
+lit run gemma3-1b
+```
+Tip: Follow this [link](https://huggingface.co/docs/hub/en/security-tokens) to
+get your own hugging face token
+
+Tip: you may have to explicitly approve the usage of pre-built binaries. For
+example, in MacOS, you should go to **System Settings > Privacy & Security >
+Security** to approve the binary.
+
+### Mobile Apps
+
+-   [Android AI Edge Gallery App]
+(https://play.google.com/store/apps/details?id=com.google.ai.edge.gallery&hl=en_US&pli=1)
+-   iOS (Coming soon)
+
+Note that the LiteRT-LM runtime is designed to work
 with models in the `.litertlm` format. You can find and download compatible
 models in the [Supported Models and
 Performance](#supported-models-and-performance) section.
 
-**Want to try it out first?** Before proceeding with the full setup, you can use
-the pre-built binary below to run the LiteRT-LM immediately:
+Note: that the first time a given model is loaded on a given device, it will
+take longer to load. This is because the model weights are being arranged to run
+optimally on your particular device. Subsequent loads will be faster
+because the optimized weights are cached on your device.
 
--   [Android Arm64](https://github.com/google-ai-edge/LiteRT-LM/releases/latest/download/litert_lm_main.android_arm64)
--   [MacOS](https://github.com/google-ai-edge/LiteRT-LM/releases/latest/download/litert_lm_main.macos_arm64)
--   [Linux x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/latest/download/litert_lm_main.linux_x86_64)
--   [Windows x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/latest/download/litert_lm_main.windows_x86_64.exe)
--   [iOS Arm64](https://github.com/google-ai-edge/LiteRT-LM/releases/latest/download/litert_lm_main.ios_sim_arm64)
-
-*Tip: you may have to explicitly approve the usage of pre-built binaries. For
-example, in MacOS, you should go to **System Settings > Privacy & Security >
-Security** to approve the binary. *
+## Build and Run
+This guide provides the necessary steps to build and execute a Large Language
+Model (LLM) on your device.
+Follow the instructions below to build and run the sample code.
 
 ### Prerequisites
-
-Before you begin, please ensure you have the following installed:
 
 -   **Git**: To clone the repository and manage versions.
 -   **Bazel (version 7.6.1)**: This project uses `bazel` as its build system.
@@ -133,7 +167,7 @@ To start working, create a new branch from the stable tag. This is the
 recommended approach for development.
 
 ```
-git checkout -b <my-feature-branch> <release-tag, e.g. "v0.6.1">
+git checkout -b <my-feature-branch> <release-tag, e.g. "v0.7.0">
 ```
 
 You are now on a local branch created from the tag and ready to work.
@@ -151,15 +185,23 @@ download and use the correct Bazel version specified in the project's
 Alternatively, you can install Bazel manually by following the official
 installation [instructions](https://bazel.build/install) for your platform.
 
-### Build and Run the Command Line Demo
+### Build and Run the Demo
 
 **LiteRT-LM** allows you to deploy and run LLMs on various platforms, including
 Android, Linux, MacOS, and Windows. `runtime/engine/litert_lm_main.cc` is a
-[command line demo](#litert_lm_main) that shows how to initialize and interact
+[demo](#litert_lm_main) that shows how to initialize and interact
 with the model.
 
 Please check the corresponding section below depending on your target deployment
 device and your development platform.
+
+> Note: In order to run on GPU on all platforms, we need to take extra steps:
+>
+> 1. Add `--define=litert_link_capi_so=true`
+  `--define=resolve_symbols_in_exec=false` in the build command.
+> 2. `cp ./prebuilt/<your OS>/<shared libaries> <path to binary directory>/` and
+ make sure the prebuilt .so/.dll/.dylib files are in the same directory as
+  litert_lm_main binary
 
 <details>
 <summary><strong>Deploy to Windows</strong></summary>
@@ -389,16 +431,11 @@ adb shell LD_LIBRARY_PATH=$DEVICE_FOLDER \
     --model_path=$DEVICE_FOLDER/model.litertlm
 ```
 
-Note that the first time a given model is loaded on a given device, it will take
-longer to load. This is because the model weights are being arranged to run
-optimally on your particular device's GPU. Subsequent loads will be faster
-because the optimized weights are cached on your device.
-
 </details>
 
-### Command Line Demo Usage <span id="litert_lm_main"></span>
+### Demo Usage <span id="litert_lm_main"></span>
 
-`litert_lm_main` is a command line demo for running and evaluating large
+`litert_lm_main` is a demo for running and evaluating large
 language models (LLMs) using our LiteRT [Engine/Session interface](#engine). It
 provides basic functionalities as the following:
 
@@ -408,6 +445,9 @@ provides basic functionalities as the following:
     prefill and decoding speeds, as well as monitor peak memory consumption
     during the run.
 -   supports both synchronous and asynchronous execution modes.
+
+<details>
+<summary><strong>Example commands</strong></summary>
 
 Below are a few example commands (please update accordingly when using `adb`):
 
@@ -456,6 +496,8 @@ More detailed description about each of the flags are in the following table:
 | `benchmark_decode_tokens` | If benchmark is true and this value is > 0, the benchmark will use this number to set the number of decode steps, regardless of the input prompt. | `0` |
 | `async` | Run the LLM execution asynchronously. | `true` |
 | `report_peak_memory_footprint` | Report peak memory footprint. | `false` |
+
+</details>
 
 ## LiteRT-LM API <span id="engine"></span>
 
@@ -540,7 +582,7 @@ std::cout << *model_message << std::endl;
 
 ### Inference with GPU Backend
 
-On Android, the runtime can pick GPU as the backend for inference instead of
+The runtime can pick GPU as the backend for inference instead of
 CPU, by passing `litert::lm::Backend::GPU` in `EngineSettings::CreateDefault()`.
 
 ```cpp
@@ -560,7 +602,7 @@ example, if an app binary and .so files are packaged in an APK by Android SDK,
 .so files are unpacked by Android Package Manager where the app binary can find
 them, i.e. under app's `/lib` directory.
 
-### Inference with Multimodal data
+### Inference with Multimodal data <span id="multimodal"></span>
 
 To use multimodality, the engine must be created with vision and audio backend
 depending on the multimodality to be used.
