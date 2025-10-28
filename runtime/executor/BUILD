@@ -147,6 +147,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@litert//litert/c:litert_tensor_buffer_types",
         "@litert//litert/cc:litert_element_type",
         "@litert//litert/cc:litert_environment",
         "@litert//litert/cc:litert_layout",
@@ -493,6 +494,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/types:span",
         "@litert//litert/cc:litert_element_type",
+        "@litert//litert/cc:litert_environment",
         "@litert//litert/cc:litert_layout",
         "@litert//litert/cc:litert_model",
         "@litert//litert/cc:litert_tensor_buffer",
@@ -636,6 +638,7 @@ cc_library(
             "@litert//litert/cc:litert_api_with_dynamic_runtime",
         ],
         "//conditions:default": [
+            "@litert//litert/c:litert_tensor_buffer_types",
             "@litert//litert/cc:litert_compiled_model",
             "@litert//litert/cc:litert_element_type",
             "@litert//litert/cc:litert_environment",

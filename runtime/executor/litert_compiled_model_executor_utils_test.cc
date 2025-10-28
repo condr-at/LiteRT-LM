@@ -24,6 +24,7 @@
 #include <gtest/gtest.h>
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
@@ -216,7 +217,7 @@ TEST(LlmLiteRTCompiledModelExecutorUtilsTest, InitializeAttentionMask_Float32) {
   auto layout = ::litert::Layout(::litert::Dimensions({1, 1, 1, 128}));
   RankedTensorType ranked_tensor_type(ElementType::Float32, std::move(layout));
   auto mask_buffer =
-      TensorBuffer::CreateManaged(env.Get(), kLiteRtTensorBufferTypeHostMemory,
+      TensorBuffer::CreateManaged(env, kLiteRtTensorBufferTypeHostMemory,
                                   ranked_tensor_type, sizeof(float) * 128);
   ASSERT_TRUE(mask_buffer);
 
@@ -254,7 +255,7 @@ TEST(LlmLiteRTCompiledModelExecutorUtilsTest, InitializeAttentionMask_Bool) {
   auto layout = ::litert::Layout(::litert::Dimensions({1, 1, 1, 128}));
   RankedTensorType ranked_tensor_type(ElementType::Bool, std::move(layout));
   auto mask_buffer =
-      TensorBuffer::CreateManaged(env.Get(), kLiteRtTensorBufferTypeHostMemory,
+      TensorBuffer::CreateManaged(env, kLiteRtTensorBufferTypeHostMemory,
                                   ranked_tensor_type, sizeof(bool) * 128);
   ASSERT_TRUE(mask_buffer);
 
@@ -275,7 +276,7 @@ TEST(LlmLiteRTCompiledModelExecutorUtilsTest, FillAttentionMask_Float32) {
   auto layout = ::litert::Layout(::litert::Dimensions({1, 4, 1, 10}));
   RankedTensorType ranked_tensor_type(ElementType::Float32, std::move(layout));
   auto mask_buffer =
-      TensorBuffer::CreateManaged(env.Get(), kLiteRtTensorBufferTypeHostMemory,
+      TensorBuffer::CreateManaged(env, kLiteRtTensorBufferTypeHostMemory,
                                   ranked_tensor_type, sizeof(float) * 40);
   ASSERT_TRUE(mask_buffer);
 
@@ -309,7 +310,7 @@ TEST(LlmLiteRTCompiledModelExecutorUtilsTest, FillAttentionMask_Bool) {
   auto layout = ::litert::Layout(::litert::Dimensions({1, 3, 1, 8}));
   RankedTensorType ranked_tensor_type(ElementType::Bool, std::move(layout));
   auto mask_buffer =
-      TensorBuffer::CreateManaged(env.Get(), kLiteRtTensorBufferTypeHostMemory,
+      TensorBuffer::CreateManaged(env, kLiteRtTensorBufferTypeHostMemory,
                                   ranked_tensor_type, sizeof(bool) * 24);
   ASSERT_TRUE(mask_buffer);
 

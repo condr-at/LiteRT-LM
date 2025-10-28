@@ -77,7 +77,7 @@ TEST(InputTextTest, GetPreprocessedTextTensor) {
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
 
   LITERT_ASSERT_OK(
@@ -132,7 +132,7 @@ TEST(InputImageTest, GetPreprocessedImageTensor) {
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
 
   LITERT_ASSERT_OK(
@@ -183,7 +183,7 @@ TEST(InputAudioTest, GetPreprocessedAudioTensor) {
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
 
   LITERT_ASSERT_OK(
@@ -237,7 +237,7 @@ TEST(InputTextTest, CreateCopyFromTensorBuffer) {
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
   LITERT_ASSERT_OK(
       original_tensor_buffer.Write<float>(absl::MakeSpan(kTensorData, 4)));
@@ -276,7 +276,7 @@ TEST(InputImageTest, CreateCopyFromTensorBuffer) {
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
   LITERT_ASSERT_OK(
       original_tensor_buffer.Write<float>(absl::MakeSpan(kTensorData, 4)));
@@ -315,7 +315,7 @@ TEST(InputAudioTest, CreateCopyFromTensorBuffer) {
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
   LITERT_ASSERT_OK(
       original_tensor_buffer.Write<float>(absl::MakeSpan(kTensorData, 4)));
@@ -350,7 +350,7 @@ TEST(CreateInputDataCopyTest, InputText) {
   const size_t kTensorSize = sizeof(kTensorData);
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
   original_data = InputText(std::move(original_tensor_buffer));
   ASSERT_OK_AND_ASSIGN(copied_data, CreateInputDataCopy(original_data));
@@ -372,7 +372,7 @@ TEST(CreateInputDataCopyTest, InputImage) {
   const size_t kTensorSize = sizeof(kTensorData);
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
   original_data = InputImage(std::move(original_tensor_buffer));
   ASSERT_OK_AND_ASSIGN(copied_data, CreateInputDataCopy(original_data));
@@ -394,7 +394,7 @@ TEST(CreateInputDataCopyTest, InputAudio) {
   const size_t kTensorSize = sizeof(kTensorData);
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBuffer original_tensor_buffer,
-      TensorBuffer::CreateManaged(env.Get(), kTensorBufferType, kTensorType,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
                                   kTensorSize));
   original_data = InputAudio(std::move(original_tensor_buffer));
   ASSERT_OK_AND_ASSIGN(copied_data, CreateInputDataCopy(original_data));

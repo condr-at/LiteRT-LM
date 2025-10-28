@@ -24,6 +24,7 @@
 #include <gtest/gtest.h>
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/cc/litert_element_type.h"  // from @litert
+#include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
@@ -43,8 +44,10 @@ TEST(LlmExecutorIoTypesTest, InputsPrint) {
     int32_t d[6] = {1, 2, 3, 4, 5, 6};
   } data;
 
+  auto env = Environment::Create({});
   // Create a TensorBuffer for token_ids
   auto token_ids = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Int32,
                                  Layout(Dimensions({3, 2}))),
       data.d, 6 * sizeof(int32_t));
@@ -77,8 +80,10 @@ TEST(LlmExecutorIoTypesTest, ExecutorVisionDataPrint) {
     float d[2] = {31.0f, 32.0f};
   } emb_data;
 
+  auto env = Environment::Create({});
   // Create a TensorBuffer for embeddings
   auto embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       emb_data.d, sizeof(emb_data.d));
   ASSERT_TRUE(embeddings.HasValue());
@@ -107,8 +112,10 @@ TEST(LlmExecutorIoTypesTest, ExecutorAudioDataPrint) {
     float d[2] = {131.0f, 132.0f};
   } emb_data;
 
+  auto env = Environment::Create({});
   // Create a TensorBuffer for embeddings
   auto embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       emb_data.d, sizeof(emb_data.d));
   ASSERT_TRUE(embeddings.HasValue());
@@ -162,7 +169,9 @@ TEST(LlmExecutorIoTypesTest, ExecutorTextDataGetSet) {
   struct alignas(LITERT_HOST_MEMORY_BUFFER_ALIGNMENT) {
     int32_t d[2] = {7, 8};
   } data;
+  auto env = Environment::Create({});
   auto token_ids = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Int32, Layout(Dimensions({2}))),
       data.d, 2 * sizeof(int32_t));
   ASSERT_TRUE(token_ids.HasValue());
@@ -190,6 +199,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorTextDataGetSet) {
     int32_t d[2] = {9, 10};
   } new_data;
   auto new_token_ids = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Int32, Layout(Dimensions({2}))),
       new_data.d, 2 * sizeof(int32_t));
   ASSERT_TRUE(new_token_ids.HasValue());
@@ -210,8 +220,10 @@ TEST(LlmExecutorIoTypesTest, ExecutorVisionDataGetSet) {
     float d[2] = {31.0f, 32.0f};
   } emb_data;
 
+  auto env = Environment::Create({});
   // Create a TensorBuffer for embeddings
   auto embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       emb_data.d, sizeof(emb_data.d));
   ASSERT_TRUE(embeddings.HasValue());
@@ -221,6 +233,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorVisionDataGetSet) {
   } ple_emb_data;
   // Create a TensorBuffer for per_layer_embeddings
   auto per_layer_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({4}))),
       ple_emb_data.d, sizeof(ple_emb_data.d));
   ASSERT_TRUE(per_layer_embeddings.HasValue());
@@ -286,6 +299,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorVisionDataGetSet) {
   } new_emb_data;
   // Create a new TensorBuffer for embeddings
   auto new_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       new_emb_data.d, sizeof(new_emb_data.d));
   ASSERT_TRUE(new_embeddings.HasValue());
@@ -307,6 +321,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorVisionDataGetSet) {
   } new_ple_emb_data;
   // Create a new TensorBuffer for per_layer_embeddings
   auto new_per_layer_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({4}))),
       new_ple_emb_data.d, sizeof(new_ple_emb_data.d));
   ASSERT_TRUE(new_per_layer_embeddings.HasValue());
@@ -335,8 +350,10 @@ TEST(LlmExecutorIoTypesTest, ExecutorAudioDataGetSet) {
     float d[2] = {131.0f, 132.0f};
   } emb_data;
 
+  auto env = Environment::Create({});
   // Create a TensorBuffer for embeddings
   auto embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       emb_data.d, sizeof(emb_data.d));
   ASSERT_TRUE(embeddings.HasValue());
@@ -346,6 +363,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorAudioDataGetSet) {
   } ple_emb_data;
   // Create a TensorBuffer for per_layer_embeddings
   auto per_layer_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({4}))),
       ple_emb_data.d, sizeof(ple_emb_data.d));
   ASSERT_TRUE(per_layer_embeddings.HasValue());
@@ -413,6 +431,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorAudioDataGetSet) {
   } new_emb_data;
   // Create a new TensorBuffer for embeddings
   auto new_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       new_emb_data.d, sizeof(new_emb_data.d));
   ASSERT_TRUE(new_embeddings.HasValue());
@@ -434,6 +453,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorAudioDataGetSet) {
   } new_ple_emb_data;
   // Create a new TensorBuffer for per_layer_embeddings
   auto new_per_layer_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({4}))),
       new_ple_emb_data.d, sizeof(new_ple_emb_data.d));
   ASSERT_TRUE(new_per_layer_embeddings.HasValue());
@@ -465,7 +485,9 @@ TEST(LlmExecutorIoTypesTest, ExecutorInputsGetSet) {
   struct alignas(LITERT_HOST_MEMORY_BUFFER_ALIGNMENT) {
     int32_t d[2] = {7, 8};
   } data;
+  auto env = Environment::Create({});
   auto token_ids = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Int32, Layout(Dimensions({2}))),
       data.d, 2 * sizeof(int32_t));
   ASSERT_TRUE(token_ids.HasValue());
@@ -476,6 +498,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorInputsGetSet) {
   } emb_data;
   // Create a TensorBuffer for embeddings
   auto embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       emb_data.d, sizeof(emb_data.d));
   ASSERT_TRUE(embeddings.HasValue());
@@ -486,6 +509,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorInputsGetSet) {
   } audio_emb_data;
   // Create a TensorBuffer for embeddings
   auto audio_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       audio_emb_data.d, sizeof(audio_emb_data.d));
   ASSERT_TRUE(audio_embeddings.HasValue());
@@ -644,6 +668,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorInputsGetSet) {
     int32_t d[2] = {9, 10};
   } new_data;
   auto new_token_ids = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Int32, Layout(Dimensions({2}))),
       new_data.d, 2 * sizeof(int32_t));
   ASSERT_TRUE(new_token_ids.HasValue());
@@ -668,6 +693,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorInputsGetSet) {
   } new_emb_data;
   // Create a new TensorBuffer for embeddings
   auto new_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       new_emb_data.d, sizeof(new_emb_data.d));
   ASSERT_TRUE(new_embeddings.HasValue());
@@ -694,6 +720,7 @@ TEST(LlmExecutorIoTypesTest, ExecutorInputsGetSet) {
   } new_audio_emb_data;
   // Create a new TensorBuffer for embeddings
   auto new_audio_embeddings = TensorBuffer::CreateFromHostMemory(
+      *env,
       ::litert::RankedTensorType(ElementType::Float32, Layout(Dimensions({2}))),
       new_audio_emb_data.d, sizeof(new_audio_emb_data.d));
   ASSERT_TRUE(new_audio_embeddings.HasValue());
