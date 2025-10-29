@@ -169,7 +169,7 @@ TEST(SamplingCpuUtilTest, TopKTopPSampling_BatchSize1_TopK) {
   EXPECT_THAT(sampled_scores, ElementsAre(1.0));
 }
 
-TEST(SamplingCpuUtilTest, TopKTopPSampling_BatchSize2) {
+TEST(SamplingCpuUtilTest, TopKTopPSampling_BatchSize3) {
   // Batch of 3, vocab size of 3. The sampled ids are 2, 1, 0.
   const std::vector<float> logits = {0.0, 0.0, 1.0, 0.0, 1.0,
                                             0.0, 1.0, 0.0, 0.0};
@@ -181,6 +181,25 @@ TEST(SamplingCpuUtilTest, TopKTopPSampling_BatchSize2) {
   EXPECT_TRUE(sampled_ids.ok());
   EXPECT_THAT((*sampled_ids), ElementsAre(2, 1, 0));
   EXPECT_THAT(sampled_scores, ElementsAre(1.0, 1.0, 1.0));
+}
+
+TEST(SamplingCpuUtilTest, TopKTopPSampling_LargeVocabIndices) {
+  // Tests that sampling works correctly when top-k indices are larger than k.
+  // This exposes a bug where vocab indices were incorrectly used as offsets.
+  std::vector<float> logits = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                               1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 10.0};
+  absl::BitGen rng;
+  std::vector<float> sampled_scores;
+  // Top p = 0.0001f, should always return the token with the highest logit,
+  // which is the 14th token in this case.
+  auto sampled_ids = TopKTopPSampling(
+      absl::MakeConstSpan(logits), /*k=*/15, /*p=*/0.0001f,
+      /*temperature=*/1.0f, rng, /*batch_size=*/1, sampled_scores);
+  EXPECT_TRUE(sampled_ids.ok());
+  // With very small temperature, it should pick the logit with the highest
+  // value, which is at index 11.
+  EXPECT_THAT((*sampled_ids), ElementsAre(14));
+  EXPECT_THAT(sampled_scores, ElementsAre(0.99827528f));
 }
 
 }  // namespace
