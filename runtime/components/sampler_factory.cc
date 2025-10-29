@@ -144,11 +144,8 @@ class TopKCApiSampler : public Sampler {
       const char* lib_name, const char* create_func_name,
       const char* destroy_func_name, const char* sample_func_name) {
     // Load Sampler C API library and get the symbols.
-    auto maybe_lib = SharedLibrary::Load(lib_name, RtldFlags::Lazy().Local());
-    if (!maybe_lib.HasValue()) {
-      maybe_lib = SharedLibrary::Load(RtldFlags::kDefault);
-    }
-    SharedLibrary lib(std::move(maybe_lib.Value()));
+    LITERT_ASSIGN_OR_RETURN(
+        auto lib, SharedLibrary::Load(lib_name, RtldFlags::Lazy().Local()));
     LITERT_ASSIGN_OR_RETURN(
         auto sampler_create_func,
         lib.LookupSymbol<LiteRtTopKSampler_Create>(create_func_name));
@@ -193,6 +190,8 @@ class TopKOpenClCApiSampler : public TopKCApiSampler {
       if (capi_or.status().code() != absl::StatusCode::kUnavailable) {
         return capi_or.status();
       }
+      ABSL_LOG(WARNING) << "OpenCL sampler not available, falling back to "
+                           "statically linked C API: " << capi_or.status();
       auto static_capi_or = GetStaticTopKOpenClSamplerCApi();
       if (!static_capi_or.ok()) {
         return capi_or.status();
@@ -260,6 +259,8 @@ class TopKWebGpuCApiSampler : public TopKCApiSampler {
       if (capi_or.status().code() != absl::StatusCode::kUnavailable) {
         return capi_or.status();
       }
+      ABSL_LOG(WARNING) << "WebGPU sampler not available, falling back to "
+                           "statically linked C API: " << capi_or.status();
       auto static_capi_or = GetStaticTopKWebGpuSamplerCApi();
       if (!static_capi_or.ok()) {
         return capi_or.status();
@@ -322,33 +323,52 @@ absl::StatusOr<std::unique_ptr<Sampler>> CreateGpuSampler(
     int batch_size, proto::SamplerParameters sampler_params,
     LiteRtEnvironment env, int vocab_size,
     std::optional<ActivationDataType> activation_data_type) {
-#if LITERT_HAS_OPENCL_SUPPORT
-  auto opencl_sampler_or = TopKOpenClCApiSampler::Create(
+#ifdef __ANDROID__
+#if LITERT_HAS_OPENCL_SUPPORT  // NOLINT(misc-include-cleaner)
+  auto opencl_sampler = TopKOpenClCApiSampler::Create(
       env, batch_size, vocab_size, activation_data_type, sampler_params);
-  if (opencl_sampler_or.ok()) {
-    return opencl_sampler_or;
-  }
-  if (opencl_sampler_or.status().code() != absl::StatusCode::kUnavailable) {
-    // Normal failure, return the error.
-    return opencl_sampler_or.status();
+  if (opencl_sampler.ok() ||
+      opencl_sampler.status().code() != absl::StatusCode::kUnavailable) {
+    return opencl_sampler;
   }
   ABSL_LOG(INFO)
       << "OpenCL sampler not available, falling back to other sampler options.";
 #endif  // LITERT_HAS_OPENCL_SUPPORT
 
-#if LITERT_HAS_WEBGPU_SUPPORT
-  auto webgpu_sampler_or = TopKWebGpuCApiSampler::Create(
+#if LITERT_HAS_WEBGPU_SUPPORT  // NOLINT(misc-include-cleaner)
+  auto webgpu_sampler = TopKWebGpuCApiSampler::Create(
       env, batch_size, vocab_size, activation_data_type, sampler_params);
-  if (webgpu_sampler_or.ok()) {
-    return webgpu_sampler_or;
-  }
-  if (webgpu_sampler_or.status().code() != absl::StatusCode::kUnavailable) {
-    // Normal failure, return the error.
-    return webgpu_sampler_or.status();
+  if (webgpu_sampler.ok() ||
+      webgpu_sampler.status().code() != absl::StatusCode::kUnavailable) {
+    return webgpu_sampler;
   }
   ABSL_LOG(INFO)
       << "WebGPU sampler not available, falling back to other sampler options.";
 #endif  // LITERT_HAS_WEBGPU_SUPPORT
+
+#else  // !__ANDROID__
+#if LITERT_HAS_WEBGPU_SUPPORT  // NOLINT(misc-include-cleaner)
+  auto webgpu_sampler = TopKWebGpuCApiSampler::Create(
+      env, batch_size, vocab_size, activation_data_type, sampler_params);
+  if (webgpu_sampler.ok() ||
+      webgpu_sampler.status().code() != absl::StatusCode::kUnavailable) {
+    return webgpu_sampler;
+  }
+  ABSL_LOG(INFO)
+      << "WebGPU sampler not available, falling back to other sampler options.";
+#endif  // LITERT_HAS_WEBGPU_SUPPORT
+
+#if LITERT_HAS_OPENCL_SUPPORT  // NOLINT(misc-include-cleaner)
+  auto opencl_sampler = TopKOpenClCApiSampler::Create(
+      env, batch_size, vocab_size, activation_data_type, sampler_params);
+  if (opencl_sampler.ok() ||
+      opencl_sampler.status().code() != absl::StatusCode::kUnavailable) {
+    return opencl_sampler;
+  }
+  ABSL_LOG(INFO)
+      << "OpenCL sampler not available, falling back to other sampler options.";
+#endif  // LITERT_HAS_OPENCL_SUPPORT
+#endif  // !__ANDROID__
 
   return absl::UnavailableError("GPU sampler not available.");
 }
@@ -388,4 +408,5 @@ absl::StatusOr<std::unique_ptr<Sampler>> CreateSampler(
           absl::StrCat("Unsupported backend: ", backend));
   }
 }
+
 }  // namespace litert::lm
