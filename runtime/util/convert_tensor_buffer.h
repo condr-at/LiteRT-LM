@@ -22,11 +22,13 @@
 
 #include "absl/log/absl_check.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
+#include "litert/c/litert_common.h"  // from @litert
+#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_expected.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
-#include "litert/cc/litert_model.h"  // from @litert
+#include "litert/cc/litert_ranked_tensor_type.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 
 namespace litert::lm {
@@ -79,7 +81,7 @@ template <typename T>
 // Copies a ::litert::TensorBuffer of arbitrary shape to a std::vector<T>.
 template <typename T>
 ::litert::Expected<std::vector<T>> CopyFromTensorBuffer(
-    ::litert::TensorBuffer& tensor_buffer) {
+    const ::litert::TensorBuffer& tensor_buffer) {
   if (auto type = tensor_buffer.TensorType();
       !type.HasValue() || type->ElementType() != ElementTypeFor<T>::kType) {
     return ::litert::Unexpected(
@@ -91,25 +93,18 @@ template <typename T>
   LITERT_ASSIGN_OR_RETURN(auto num_elements,
                           tensor_type.Layout().NumElements());
   std::vector<T> copied_data(num_elements);
-  tensor_buffer.Read(absl::MakeSpan(copied_data));
+  LITERT_ASSIGN_OR_RETURN(auto lock_and_addr,
+                          ::litert::TensorBufferScopedLock::Create(
+                              tensor_buffer, TensorBuffer::LockMode::kRead));
+  std::memcpy(copied_data.data(), lock_and_addr.second,
+              num_elements * sizeof(T));
   return copied_data;
-}
-
-// Const version of CopyFromTensorBuffer() above.
-template <typename T>
-::litert::Expected<std::vector<T>> CopyFromTensorBuffer(
-    const ::litert::TensorBuffer& tensor_buffer) {
-  auto mutable_tensor_buffer = tensor_buffer.Duplicate();
-  if (!mutable_tensor_buffer) {
-    return mutable_tensor_buffer.Error();
-  }
-  return CopyFromTensorBuffer<T>(*mutable_tensor_buffer);
 }
 
 // Copies a 2D ::litert::TensorBuffer to a std::vector<std::vector<T>>.
 template <typename T>
 ::litert::Expected<std::vector<std::vector<T>>> CopyFromTensorBuffer2D(
-    ::litert::TensorBuffer& tensor_buffer) {
+    const ::litert::TensorBuffer& tensor_buffer) {
   auto type = tensor_buffer.TensorType();
   if (!type.HasValue() || type->ElementType() != ElementTypeFor<T>::kType) {
     return ::litert::Unexpected(
@@ -124,7 +119,7 @@ template <typename T>
   }
 
   auto lock_and_addr = ::litert::TensorBufferScopedLock::Create(
-      tensor_buffer, TensorBuffer::LockMode::kRead);
+      tensor_buffer.Get(), TensorBuffer::LockMode::kRead);
   ABSL_DCHECK(lock_and_addr.HasValue());
   auto data_from = absl::MakeConstSpan(static_cast<T*>(lock_and_addr->second),
                                        dimensions[0] * dimensions[1]);
@@ -135,17 +130,6 @@ template <typename T>
               data_from.begin() + (i + 1) * dimensions[1], data_to[i].begin());
   }
   return std::move(data_to);
-}
-
-// Const version of CopyFromTensorBuffer2D() above.
-template <typename T>
-::litert::Expected<std::vector<std::vector<T>>> CopyFromTensorBuffer2D(
-    const ::litert::TensorBuffer& tensor_buffer) {
-  auto mutable_tensor_buffer = tensor_buffer.Duplicate();
-  if (!mutable_tensor_buffer) {
-    return mutable_tensor_buffer.Error();
-  }
-  return CopyFromTensorBuffer2D<T>(*mutable_tensor_buffer);
 }
 
 // Copies an absl::Span<const T> to a ::litert::TensorBuffer with the given
@@ -196,7 +180,7 @@ template <typename TargetType, typename SourceType>
 // possible since it's more efficient.
 template <typename T>
 ::litert::Expected<absl::Span<T>> ReferTensorBufferAsSpan(
-    ::litert::TensorBuffer& tensor_buffer) {
+    const ::litert::TensorBuffer& tensor_buffer) {
   if (auto buffer_type = tensor_buffer.BufferType();
       !buffer_type.HasValue() ||
       *buffer_type != kLiteRtTensorBufferTypeHostMemory) {
@@ -212,21 +196,10 @@ template <typename T>
   }
 
   auto lock_and_addr = ::litert::TensorBufferScopedLock::Create(
-      tensor_buffer, TensorBuffer::LockMode::kRead);
+      tensor_buffer.Get(), TensorBuffer::LockMode::kRead);
   ABSL_DCHECK(lock_and_addr.HasValue());
   LITERT_ASSIGN_OR_RETURN(auto num_elements, type->Layout().NumElements());
   return absl::MakeSpan(static_cast<T*>(lock_and_addr->second), num_elements);
-}
-
-// Const version of ReferTensorBufferAsSpan() above.
-template <typename T>
-::litert::Expected<absl::Span<T>> ReferTensorBufferAsSpan(
-    const ::litert::TensorBuffer& tensor_buffer) {
-  auto mutable_tensor_buffer = tensor_buffer.Duplicate();
-  if (!mutable_tensor_buffer) {
-    return mutable_tensor_buffer.Error();
-  }
-  return ReferTensorBufferAsSpan<T>(*mutable_tensor_buffer);
 }
 
 // TODO: b/431234598 - This copies data between GPU and CPU backends which
