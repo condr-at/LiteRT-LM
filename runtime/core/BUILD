@@ -24,53 +24,64 @@ package(
 
 licenses(["notice"])
 
+ENGINE_IMPL_COMMON_DEPS = [
+    ":session_factory",
+    "@com_google_absl//absl/base:no_destructor",
+    "@com_google_absl//absl/log",
+    "@com_google_absl//absl/log:absl_check",
+    "@com_google_absl//absl/log:absl_log",
+    "@com_google_absl//absl/log:check",
+    "@com_google_absl//absl/memory",
+    "@com_google_absl//absl/status",
+    "@com_google_absl//absl/status:statusor",
+    "@com_google_absl//absl/strings",
+    "@com_google_absl//absl/strings:string_view",
+    "@com_google_absl//absl/time",
+    "@litert//litert/cc:litert_macros",
+    "//runtime/components:model_resources",
+    "//runtime/engine:engine_interface",
+    "//runtime/engine:engine_settings",
+    "//runtime/engine:io_types",
+    "//runtime/executor:audio_executor",
+    "//runtime/executor:audio_executor_settings",
+    "//runtime/executor:audio_litert_compiled_model_executor",
+    "//runtime/executor:executor_settings_base",
+    "//runtime/executor:litert_compiled_model_executor_utils",
+    "//runtime/executor:llm_executor",
+    "//runtime/executor:llm_executor_settings",
+    "//runtime/executor:llm_litert_compiled_model_executor",
+    "//runtime/executor:llm_litert_npu_compiled_model_executor",
+    "//runtime/executor:magic_number_configs_helper",
+    "//runtime/executor:vision_executor",
+    "//runtime/executor:vision_executor_settings",
+    "//runtime/executor:vision_litert_compiled_model_executor",
+    "//runtime/framework:threadpool",
+    "//runtime/proto:llm_metadata_cc_proto",
+    "//runtime/proto:sampler_params_cc_proto",
+    "//runtime/util:file_format_util",
+    "//runtime/util:litert_status_util",
+] + select({
+    "@litert//litert:litert_link_capi_so": [
+        "@litert//litert/cc:litert_api_with_dynamic_runtime",
+    ],
+    "//conditions:default": [
+        "@litert//litert/cc:litert_environment",
+    ],
+})
+
 cc_library(
     name = "engine_impl",
     srcs = ["engine_impl.cc"],
-    deps = [
-        ":session_factory",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/time",
-        "@litert//litert/cc:litert_macros",
-        "//runtime/components:model_resources",
-        "//runtime/engine:engine_interface",
-        "//runtime/engine:engine_settings",
-        "//runtime/engine:io_types",
-        "//runtime/executor:audio_executor",
-        "//runtime/executor:audio_executor_settings",
-        "//runtime/executor:audio_litert_compiled_model_executor",
-        "//runtime/executor:executor_settings_base",
-        "//runtime/executor:litert_compiled_model_executor_utils",
-        "//runtime/executor:llm_executor",
-        "//runtime/executor:llm_executor_settings",
-        "//runtime/executor:llm_litert_compiled_model_executor",
-        "//runtime/executor:llm_litert_npu_compiled_model_executor",
-        "//runtime/executor:magic_number_configs_helper",
-        "//runtime/executor:vision_executor",
-        "//runtime/executor:vision_executor_settings",
-        "//runtime/executor:vision_litert_compiled_model_executor",
-        "//runtime/framework:threadpool",
-        "//runtime/proto:llm_metadata_cc_proto",
-        "//runtime/proto:sampler_params_cc_proto",
-        "//runtime/util:file_format_util",
-        "//runtime/util:litert_status_util",
-    ] + select({
-        "@litert//litert:litert_link_capi_so": [
-            "@litert//litert/cc:litert_api_with_dynamic_runtime",
-        ],
-        "//conditions:default": [
-            "@litert//litert/cc:litert_environment",
-        ],
-    }),
+    deps = ENGINE_IMPL_COMMON_DEPS + [
+        "//runtime/components:default_static_gpu_samplers",
+        "//runtime/executor:default_static_gpu_accelerator",
+    ],
+)
+
+cc_library(
+    name = "engine_impl_cpu_only",
+    srcs = ["engine_impl.cc"],
+    deps = ENGINE_IMPL_COMMON_DEPS,
 )
 
 cc_test(

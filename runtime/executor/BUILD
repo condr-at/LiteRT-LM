@@ -217,7 +217,6 @@ cc_library(
     srcs = ["llm_litert_compiled_model_executor.cc"],
     hdrs = ["llm_litert_compiled_model_executor.h"],
     deps = [
-        ":default_static_gpu_accelerator",  # buildcleaner: keep
         ":executor_settings_base",
         ":litert_compiled_model_executor_utils",
         ":llm_executor",
@@ -275,6 +274,7 @@ cc_test(
     data = ["//runtime/testdata"],
     tags = ["requires-gpu-nvidia"],
     deps = [
+        ":default_static_gpu_accelerator",
         ":executor_settings_base",
         ":llm_executor_io_types",
         ":llm_executor_settings",
@@ -548,7 +548,6 @@ cc_library(
     srcs = ["vision_litert_compiled_model_executor.cc"],
     hdrs = ["vision_litert_compiled_model_executor.h"],
     deps = [
-        ":default_static_gpu_accelerator",  # buildcleaner: keep
         ":executor_settings_base",
         ":litert_compiled_model_executor_utils",
         ":llm_executor_io_types",

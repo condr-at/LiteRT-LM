@@ -345,7 +345,14 @@ cc_library(
         "//conditions:default": [
             "@litert//litert/cc:litert_tensor_buffer",
         ],
-    }) + select({
+    }),
+)
+
+# This is the target to link all the static GPU samplers. If you plan to enable GPU sampling, this
+# target should be linked.
+cc_library(
+    name = "default_static_gpu_samplers",
+    deps = select({
         # If CAPI is linked dynamically, need to link the sampler dynamically as well.
         "@litert//litert:litert_link_capi_so": [],
         "@platforms//os:android": [
