@@ -402,22 +402,57 @@ TEST(CreateInputDataCopyTest, InputAudio) {
   EXPECT_TRUE(std::get<InputAudio>(copied_data).IsTensorBuffer());
 }
 
+TEST(ResponsesTest, GetTaskState) {
+  {
+    Responses responses(TaskState::kProcessing, {});
+    EXPECT_EQ(responses.GetTaskState(), TaskState::kProcessing);
+  }
+  {
+    Responses responses(TaskState::kDone, {});
+    EXPECT_EQ(responses.GetTaskState(), TaskState::kDone);
+  }
+  {
+    Responses responses(TaskState::kUnknown, {});
+    EXPECT_EQ(responses.GetTaskState(), TaskState::kUnknown);
+  }
+}
+
+TEST(ResponsesTest, TaskStateToString) {
+  {
+    std::stringstream ss;
+    ss << TaskState::kProcessing;
+    EXPECT_EQ(ss.str(), "Processing");
+  }
+  {
+    std::stringstream ss;
+    ss << TaskState::kDone;
+    EXPECT_EQ(ss.str(), "Done");
+  }
+  {
+    std::stringstream ss;
+    ss << TaskState::kUnknown;
+    EXPECT_EQ(ss.str(), "Unknown");
+  }
+}
+
 TEST(ResponsesTest, GetTexts) {
-  Responses responses({"Hello World!", "How's it going?"});
+  Responses responses(TaskState::kProcessing,
+                      {"Hello World!", "How's it going?"});
 
   EXPECT_THAT(responses.GetTexts(),
               ElementsAre("Hello World!", "How's it going?"));
 }
 
 TEST(ResponsesTest, GetScores) {
-  Responses responses =
-      Responses(/*response_texts=*/{}, /*scores=*/{0.1f, 0.2f});
+  Responses responses(TaskState::kProcessing, /*response_texts=*/{},
+                      /*scores=*/{0.1f, 0.2f});
 
   EXPECT_THAT(responses.GetScores(), ElementsAre(0.1, 0.2));
 }
 
 TEST(ResponsesTest, GetMutableTexts) {
-  Responses responses = Responses({"Hello World!", "How's it going?"});
+  Responses responses =
+      Responses(TaskState::kProcessing, {"Hello World!", "How's it going?"});
 
   EXPECT_EQ(responses.GetMutableTexts().size(), 2);
   EXPECT_THAT(responses.GetMutableTexts()[0], "Hello World!");
@@ -425,8 +460,8 @@ TEST(ResponsesTest, GetMutableTexts) {
 }
 
 TEST(ResponsesTest, GetMutableScores) {
-  Responses responses =
-      Responses(/*response_texts=*/{}, /*scores=*/{0.1f, 0.2f});
+  Responses responses = Responses(TaskState::kProcessing, /*response_texts=*/{},
+                                  /*scores=*/{0.1f, 0.2f});
 
   EXPECT_EQ(responses.GetMutableScores().size(), 2);
   EXPECT_FLOAT_EQ(responses.GetMutableScores()[0], 0.1f);
@@ -435,12 +470,13 @@ TEST(ResponsesTest, GetMutableScores) {
 
 TEST(ResponsesTest, HandlesMultipleCandidatesWithTextAndScores) {
   litert::lm::Responses responses =
-      Responses({"Hello", "World"}, {0.9f, -0.5f});
+      Responses(TaskState::kProcessing, {"Hello", "World"}, {0.9f, -0.5f});
 
   std::stringstream ss;
   ss << responses;
 
   const std::string expected_output =
+      "Task State: Processing\n"
       "Total candidates: 2:\n"
       "  Candidate 0 (score: " +
       FloatToString(0.9f) +
@@ -454,12 +490,14 @@ TEST(ResponsesTest, HandlesMultipleCandidatesWithTextAndScores) {
 }
 
 TEST(ResponsesTest, HandlesMultipleCandidatesWithTextAndNoScores) {
-  litert::lm::Responses responses = Responses({"Hello", "World"});
+  litert::lm::Responses responses =
+      Responses(TaskState::kProcessing, {"Hello", "World"});
 
   std::stringstream ss;
   ss << responses;
 
   const std::string expected_output =
+      "Task State: Processing\n"
       "Total candidates: 2:\n"
       "  Candidate 0 (score: N/A):\n"
       "    Text: \"Hello\"\n"

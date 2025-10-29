@@ -71,7 +71,8 @@ TEST(GenericDataProcessorTest, ToMessageDefault) {
 
   ASSERT_OK_AND_ASSIGN(
       const Message message,
-      processor->ToMessage(Responses({"test response"}), std::monostate{}));
+      processor->ToMessage(Responses(TaskState::kProcessing, {"test response"}),
+                           std::monostate{}));
 
   ASSERT_TRUE(std::holds_alternative<nlohmann::ordered_json>(message));
   const nlohmann::ordered_json& json_message =
@@ -89,7 +90,8 @@ TEST(GenericDataProcessorTest, ToMessageModelRole) {
 
   ASSERT_OK_AND_ASSIGN(
       const Message message,
-      processor->ToMessage(Responses({"test response"}), std::monostate{}));
+      processor->ToMessage(Responses(TaskState::kProcessing, {"test response"}),
+                           std::monostate{}));
 
   ASSERT_TRUE(std::holds_alternative<nlohmann::ordered_json>(message));
   const nlohmann::ordered_json& json_message =

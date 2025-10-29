@@ -73,7 +73,8 @@ TEST(Qwen3DataProcessorTest, ToMessageDefault) {
 
   ASSERT_OK_AND_ASSIGN(
       const Message message,
-      processor->ToMessage(Responses({"test response"}), std::monostate{}));
+      processor->ToMessage(Responses(TaskState::kProcessing, {"test response"}),
+                           std::monostate{}));
 
   ASSERT_TRUE(std::holds_alternative<nlohmann::ordered_json>(message));
   const nlohmann::ordered_json& json_message =
@@ -96,7 +97,8 @@ TEST(Qwen3DataProcessorTest, ToMessageModelRole) {
   ASSERT_OK_AND_ASSIGN(
       const Message message,
       processor->ToMessage(
-          Responses({"this is text and tool call "
+          Responses(TaskState::kProcessing,
+                    {"this is text and tool call "
                      "<tool_call>{\"name\":\"func1\",\"arguments\":{"
                      "\"arg1\":1}}</tool_call>"}),
           std::monostate{}));

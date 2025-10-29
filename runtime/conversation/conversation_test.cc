@@ -295,7 +295,8 @@ TEST(ConversationTest, SendSingleMessage) {
                       &InputText::GetRawTextString, expected_input_text)))))
       .WillOnce(testing::Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session_ptr, RunDecode(testing::_))
-      .WillOnce(testing::Return(Responses({"I am good."})));
+      .WillOnce(
+          testing::Return(Responses(TaskState::kProcessing, {"I am good."})));
 
   ASSERT_OK_AND_ASSIGN(const Message response,
                        conversation->SendMessage(user_message));
@@ -372,7 +373,8 @@ TEST(ConversationTest, SendMultipleMessages) {
                       &InputText::GetRawTextString, expected_input_text)))))
       .WillOnce(testing::Return(absl::OkStatus()));
   EXPECT_CALL(*mock_session_ptr, RunDecode(testing::_))
-      .WillOnce(testing::Return(Responses({"I am good."})));
+      .WillOnce(
+          testing::Return(Responses(TaskState::kProcessing, {"I am good."})));
 
   ASSERT_OK_AND_ASSIGN(const Message response,
                        conversation->SendMessage(user_messages));
@@ -437,7 +439,8 @@ TEST(ConversationTest, SendMultipleMessagesWithHistory) {
 
   // The first assistant response.
   EXPECT_CALL(*mock_session_ptr, RunDecode(testing::_))
-      .WillOnce(testing::Return(Responses({"I am good."})));
+      .WillOnce(
+          testing::Return(Responses(TaskState::kProcessing, {"I am good."})));
 
   // Send the first user message to fill the history.
   ASSERT_OK(conversation->SendMessage(user_message_1));
@@ -469,7 +472,7 @@ TEST(ConversationTest, SendMultipleMessagesWithHistory) {
 
   // The second assistant response.
   EXPECT_CALL(*mock_session_ptr, RunDecode(testing::_))
-      .WillOnce(testing::Return(Responses({"baz"})));
+      .WillOnce(testing::Return(Responses(TaskState::kProcessing, {"baz"})));
 
   // Send the user messages.
   ASSERT_OK(conversation->SendMessage(user_messages));
@@ -580,8 +583,8 @@ TEST(ConversationTest, SendSingleMessageAsync) {
           [](const std::vector<InputData>& contents,
              absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
              const DecodeConfig& decode_config) {
-            user_callback(Responses({"I am good."}));
-            user_callback(Responses());
+            user_callback(Responses(TaskState::kProcessing, {"I am good."}));
+            user_callback(Responses(TaskState::kDone));
             return absl::OkStatus();
           });
 
@@ -668,8 +671,8 @@ TEST(ConversationTest, SendMultipleMessagesAsync) {
           [](const std::vector<InputData>& contents,
              absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
              const DecodeConfig& decode_config) {
-            user_callback(Responses({"I am good."}));
-            user_callback(Responses());
+            user_callback(Responses(TaskState::kProcessing, {"I am good."}));
+            user_callback(Responses(TaskState::kDone));
             return absl::OkStatus();
           });
 
@@ -740,8 +743,8 @@ TEST(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
           [](const std::vector<InputData>& contents,
              absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
              const DecodeConfig& decode_config) {
-            user_callback(Responses({"I am good."}));
-            user_callback(Responses());
+            user_callback(Responses(TaskState::kProcessing, {"I am good."}));
+            user_callback(Responses(TaskState::kDone));
             return absl::OkStatus();
           });
 
@@ -792,8 +795,8 @@ TEST(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
           [](const std::vector<InputData>& contents,
              absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
              const DecodeConfig& decode_config) {
-            user_callback(Responses({"baz"}));
-            user_callback(Responses());
+            user_callback(Responses(TaskState::kProcessing, {"baz"}));
+            user_callback(Responses(TaskState::kDone));
             return absl::OkStatus();
           });
 

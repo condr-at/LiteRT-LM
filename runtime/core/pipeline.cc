@@ -414,8 +414,8 @@ absl::StatusOr<Responses> DecodeLoop(
     }
 
     if (is_streaming && any_updates && !*all_done) {
-      callback.value()(
-          Responses(std::move(step_texts), std::move(step_scores)));
+      callback.value()(Responses(TaskState::kProcessing, std::move(step_texts),
+                                 std::move(step_scores)));
     }
 
     if (ShouldStop(*all_done, benchmark_decode_token_count, num_decode_steps,
@@ -450,9 +450,9 @@ absl::StatusOr<Responses> DecodeLoop(
     if (executor.GetCurrentStep().value() >= max_num_tokens) {
       callback.value()(absl::InternalError("Maximum kv-cache size reached."));
     } else {
-      callback.value()(Responses());
+      callback.value()(Responses(TaskState::kDone));
     }
-    return Responses();  // Return empty response for streaming.
+    return Responses(TaskState::kDone);
   }
 
   // Finalize scores for non-streaming custom sampling.
@@ -465,7 +465,8 @@ absl::StatusOr<Responses> DecodeLoop(
       }
     }
   }
-  return Responses(std::move(final_texts), std::move(final_scores));
+  return Responses(TaskState::kDone, std::move(final_texts),
+                   std::move(final_scores));
 }
 
 }  // namespace
@@ -531,7 +532,7 @@ absl::StatusOr<Responses> ScoreCustomSampling(
       }
     }
   }
-  return Responses(/*response_texts=*/{}, std::move(scores));
+  return Responses(TaskState::kDone, /*response_texts=*/{}, std::move(scores));
 }
 
 absl::StatusOr<int> Prefill(LlmExecutor& executor, ExecutorInputs& inputs,

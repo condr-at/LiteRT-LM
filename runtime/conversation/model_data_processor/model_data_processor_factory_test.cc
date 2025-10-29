@@ -71,8 +71,9 @@ TEST_F(ModelDataProcessorFactoryTest, CreateGenericModelDataProcessor) {
                                            Gemma3DataProcessorArguments()),
               StatusIs(absl::StatusCode::kInvalidArgument));
 
-  EXPECT_OK(processor->ToMessage(Responses({"test response"}),
-                                 GenericDataProcessorArguments()));
+  EXPECT_OK(
+      processor->ToMessage(Responses(TaskState::kProcessing, {"test response"}),
+                           GenericDataProcessorArguments()));
 
   EXPECT_THAT(processor->ToInputDataVector("test prompt", {},
                                            Gemma3DataProcessorArguments()),
@@ -98,8 +99,9 @@ TEST_F(ModelDataProcessorFactoryTest, CreateGemma3DataProcessor) {
                                            GenericDataProcessorArguments()),
               StatusIs(absl::StatusCode::kInvalidArgument));
 
-  EXPECT_OK(processor->ToMessage(Responses({"test response"}),
-                                 Gemma3DataProcessorArguments()));
+  EXPECT_OK(
+      processor->ToMessage(Responses(TaskState::kProcessing, {"test response"}),
+                           Gemma3DataProcessorArguments()));
   EXPECT_THAT(processor->ToInputDataVector("test prompt", {},
                                            GenericDataProcessorArguments()),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -128,8 +130,9 @@ TEST_F(ModelDataProcessorFactoryTest, CreateQwen3ModelDataProcessor) {
                                            Gemma3DataProcessorArguments()),
               StatusIs(absl::StatusCode::kInvalidArgument));
 
-  EXPECT_OK(processor->ToMessage(Responses({"test response"}),
-                                 Qwen3DataProcessorArguments()));
+  EXPECT_OK(
+      processor->ToMessage(Responses(TaskState::kProcessing, {"test response"}),
+                           Qwen3DataProcessorArguments()));
 
   EXPECT_THAT(processor->ToInputDataVector("test prompt", {},
                                            Gemma3DataProcessorArguments()),

@@ -58,8 +58,8 @@ void SendMessage(
   if (text.empty()) {
     return;
   }
-  auto message = model_data_processor.ToMessage(Responses({std::string(text)}),
-                                                processor_args);
+  auto message = model_data_processor.ToMessage(
+      Responses(TaskState::kProcessing, {std::string(text)}), processor_args);
   if (!message.ok()) {
     user_callback(message.status());
     return;
@@ -78,7 +78,9 @@ void SendCompleteMessage(
                 model_data_processor, processor_args);
   }
   const auto& complete_message = model_data_processor.ToMessage(
-      Responses({std::string(accumulated_response_text)}), processor_args);
+      Responses(TaskState::kProcessing,
+                {std::string(accumulated_response_text)}),
+      processor_args);
   if (!complete_message.ok()) {
     user_callback(complete_message.status());
     return;
@@ -126,7 +128,7 @@ absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateInternalCallback(
     // If there are no more new responses, it means the model has finished
     // generating content, trigger the complete message callback and return an
     // OK status to indicate the inference is done.
-    if (responses->GetTexts().empty()) {
+    if (responses->GetTaskState() == TaskState::kDone) {
       SendCompleteMessage(user_callback, accumulated_response_text,
                           model_data_processor, processor_args, cursor,
                           complete_message_callback);
@@ -134,77 +136,86 @@ absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateInternalCallback(
     }
     // Else, add the new response text to the accumulated text and process the
     // response text.(Which sends to the user callback accordingly.)
-
-    accumulated_response_text += responses->GetTexts()[0];
-
-    absl::string_view code_fence_start = model_data_processor.CodeFenceStart();
-    absl::string_view code_fence_end = model_data_processor.CodeFenceEnd();
-
-    while (cursor < accumulated_response_text.size()) {
-      if (!inside_tool_call) {
-        size_t code_fence_start_pos =
-            accumulated_response_text.find(code_fence_start, cursor);
-        if (!code_fence_start.empty() &&
-            code_fence_start_pos != std::string::npos) {
-          // The text from the cursor up to the code fence is normal text.
-          SendMessage(user_callback,
-                      absl::string_view(accumulated_response_text)
-                          .substr(cursor, code_fence_start_pos - cursor),
-                      model_data_processor, processor_args);
-
-          // Move cursor up to code_fence_start.
-          cursor = code_fence_start_pos;
-          inside_tool_call = true;
-        } else {
-          // code_fence_start not found, but we still need to check
-          // if there's a partial match at the end of the string.
-          size_t overlap = SuffixPrefixOverlap(
-              accumulated_response_text.substr(cursor), code_fence_start);
-
-          if (overlap > 0) {
-            // There's a partial match of the code fence at the end of the
-            // string.
-            size_t possible_start_pos =
-                accumulated_response_text.size() - overlap;
-
-            // Call the callback with text up to the potential start of the
-            // code fence.
-            SendMessage(user_callback,
-                        accumulated_response_text.substr(
-                            cursor, possible_start_pos - cursor),
-                        model_data_processor, processor_args);
-
-            // Move cursor up to potential start of code fence.
-            cursor = possible_start_pos;
-            break;
-          } else {
-            // Remaining string is text.
-            SendMessage(user_callback, accumulated_response_text.substr(cursor),
-                        model_data_processor, processor_args);
-
-            cursor = accumulated_response_text.size();
-          }
-        }
+    if (responses->GetTaskState() == TaskState::kProcessing) {
+      // If there are no new responses, it is just a state update and we can
+      // return early.
+      if (responses->GetTexts().empty()) {
+        return;
       }
 
-      if (inside_tool_call) {
-        // Look for code fence end.
-        size_t code_fence_end_pos = accumulated_response_text.find(
-            code_fence_end, cursor + code_fence_start.size());
-        if (code_fence_end_pos != std::string::npos) {
-          SendMessage(
-              user_callback,
-              accumulated_response_text.substr(
-                  cursor, code_fence_end_pos + code_fence_end.size() - cursor),
-              model_data_processor, processor_args);
+      accumulated_response_text += responses->GetTexts()[0];
 
-          // Move cursor to end of tool code block.
-          cursor = code_fence_end_pos + code_fence_end.size();
-          inside_tool_call = false;
-        } else {
-          // We're inside a tool call but the code fence end has not been
-          // found. Break for the next token.
-          break;
+      absl::string_view code_fence_start =
+          model_data_processor.CodeFenceStart();
+      absl::string_view code_fence_end = model_data_processor.CodeFenceEnd();
+
+      while (cursor < accumulated_response_text.size()) {
+        if (!inside_tool_call) {
+          size_t code_fence_start_pos =
+              accumulated_response_text.find(code_fence_start, cursor);
+          if (!code_fence_start.empty() &&
+              code_fence_start_pos != std::string::npos) {
+            // The text from the cursor up to the code fence is normal text.
+            SendMessage(user_callback,
+                        absl::string_view(accumulated_response_text)
+                            .substr(cursor, code_fence_start_pos - cursor),
+                        model_data_processor, processor_args);
+
+            // Move cursor up to code_fence_start.
+            cursor = code_fence_start_pos;
+            inside_tool_call = true;
+          } else {
+            // code_fence_start not found, but we still need to check
+            // if there's a partial match at the end of the string.
+            size_t overlap = SuffixPrefixOverlap(
+                accumulated_response_text.substr(cursor), code_fence_start);
+
+            if (overlap > 0) {
+              // There's a partial match of the code fence at the end of the
+              // string.
+              size_t possible_start_pos =
+                  accumulated_response_text.size() - overlap;
+
+              // Call the callback with text up to the potential start of the
+              // code fence.
+              SendMessage(user_callback,
+                          accumulated_response_text.substr(
+                              cursor, possible_start_pos - cursor),
+                          model_data_processor, processor_args);
+
+              // Move cursor up to potential start of code fence.
+              cursor = possible_start_pos;
+              break;
+            } else {
+              // Remaining string is text.
+              SendMessage(user_callback,
+                          accumulated_response_text.substr(cursor),
+                          model_data_processor, processor_args);
+
+              cursor = accumulated_response_text.size();
+            }
+          }
+        }
+
+        if (inside_tool_call) {
+          // Look for code fence end.
+          size_t code_fence_end_pos = accumulated_response_text.find(
+              code_fence_end, cursor + code_fence_start.size());
+          if (code_fence_end_pos != std::string::npos) {
+            SendMessage(user_callback,
+                        accumulated_response_text.substr(
+                            cursor, code_fence_end_pos + code_fence_end.size() -
+                                        cursor),
+                        model_data_processor, processor_args);
+
+            // Move cursor to end of tool code block.
+            cursor = code_fence_end_pos + code_fence_end.size();
+            inside_tool_call = false;
+          } else {
+            // We're inside a tool call but the code fence end has not been
+            // found. Break for the next token.
+            break;
+          }
         }
       }
     }

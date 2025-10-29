@@ -165,14 +165,26 @@ inline absl::StatusOr<InputData> CreateInputDataCopy(const InputData& data) {
       "The InputData is not a InputText, InputImage, or InputAudio.");
 }
 
+// The state of the task.
+enum class TaskState {
+  kUnknown,     // The task is in an unknown state.
+  kProcessing,  // The task is being processed.
+  kDone,        // The task is done.
+};
+std::ostream& operator<<(std::ostream& os, const TaskState& task_state);
+
 // A container to host the model responses.
 class Responses {
  public:
-  explicit Responses() = default;
-  explicit Responses(std::vector<std::string> response_texts,
+  explicit Responses(TaskState task_state,
+                     std::vector<std::string> response_texts = {},
                      std::vector<float> scores = {})
-      : response_texts_(std::move(response_texts)),
+      : task_state_(task_state),
+        response_texts_(std::move(response_texts)),
         scores_(std::move(scores)) {};
+
+  // Returns the task state.
+  const TaskState& GetTaskState() const { return task_state_; }
 
   // Returns the const texts vector.
   const std::vector<std::string>& GetTexts() const { return response_texts_; }
@@ -187,6 +199,9 @@ class Responses {
   std::vector<float>& GetMutableScores() { return scores_; };
 
  private:
+  // The state of the task.
+  TaskState task_state_;
+
   // The output vector of response tokens (as strings).
   std::vector<std::string> response_texts_;
 

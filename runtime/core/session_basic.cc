@@ -517,7 +517,7 @@ absl::Status SessionBasic::RunPrefillAsync(
         if (!status.ok()) {
           callback(status);
         } else {
-          callback(Responses());
+          callback(Responses(TaskState::kDone));
         }
       }));
   return absl::OkStatus();

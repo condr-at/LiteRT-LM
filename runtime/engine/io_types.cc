@@ -127,7 +127,23 @@ absl::StatusOr<InputAudio> InputAudio::CreateCopy() const {
       "The data_ is not a string or a TensorBuffer.");
 }
 
+std::ostream& operator<<(std::ostream& os, const TaskState& task_state) {
+  switch (task_state) {
+    case TaskState::kProcessing:
+      os << "Processing";
+      break;
+    case TaskState::kDone:
+      os << "Done";
+      break;
+    default:
+      os << "Unknown";
+      break;
+  }
+  return os;
+}
+
 std::ostream& operator<<(std::ostream& os, const Responses& responses) {
+  os << "Task State: " << responses.GetTaskState() << std::endl;
   if (responses.GetTexts().empty()) {
     os << " No reponses." << std::endl;
     return os;

@@ -219,7 +219,7 @@ absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateStreamingTestCallback(
       done_ref.Notify();
       return;
     }
-    if (responses->GetTexts().empty()) {
+    if (responses->GetTaskState() == TaskState::kDone) {
       done_ref.Notify();
       return;
     }

@@ -73,8 +73,8 @@ absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateTestCallback(
       done_ref = true;
       return;
     }
-    // If the responses is empty, the generation is completed.
-    if (responses.value().GetTexts().empty()) {
+    // If the responses is done, the done reference is set to true.
+    if (responses->GetTaskState() == TaskState::kDone) {
       EXPECT_FALSE(done_ref);
       done_ref = true;
       return;
