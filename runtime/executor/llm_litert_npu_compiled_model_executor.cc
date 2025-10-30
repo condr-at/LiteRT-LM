@@ -38,6 +38,7 @@
 #include "absl/time/time.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/c/options/litert_qualcomm_options.h"  // from @litert
+#include "litert/cc/litert_common.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
@@ -399,7 +400,7 @@ LlmLiteRtNpuCompiledModelExecutor::CreateEmbedderContextWithBufferSharing(
         gemma_decode_input_buffers) {
   LITERT_ASSIGN_OR_RETURN(
       CompiledModel embedder_compiled_model,
-      CompiledModel::Create(env, embedder_model, kLiteRtHwAcceleratorCpu));
+      CompiledModel::Create(env, embedder_model, litert::HwAccelerators::kCpu));
 
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       prefill_input_buffers;
@@ -445,7 +446,7 @@ LlmLiteRtNpuCompiledModelExecutor::
             gemma_decode_input_buffers) {
   LITERT_ASSIGN_OR_RETURN(
       CompiledModel embedder_compiled_model,
-      CompiledModel::Create(env, embedder_model, kLiteRtHwAcceleratorCpu));
+      CompiledModel::Create(env, embedder_model, litert::HwAccelerators::kCpu));
 
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       prefill_input_buffers;
@@ -482,9 +483,9 @@ LlmLiteRtNpuCompiledModelExecutor::
 absl::StatusOr<LlmLiteRtNpuCompiledModelExecutor::NpuAuxiliaryContext>
 LlmLiteRtNpuCompiledModelExecutor::CreateNpuAuxiliaryContext(
     ::litert::Environment& env, const litert::Model& npu_auxiliary_model) {
-  LITERT_ASSIGN_OR_RETURN(
-      auto npu_auxiliary_compiled_model,
-      CompiledModel::Create(env, npu_auxiliary_model, kLiteRtHwAcceleratorCpu));
+  LITERT_ASSIGN_OR_RETURN(auto npu_auxiliary_compiled_model,
+                          CompiledModel::Create(env, npu_auxiliary_model,
+                                                litert::HwAccelerators::kCpu));
   NpuAuxiliaryContext npu_auxiliary_context(
       std::move(npu_auxiliary_compiled_model));
   return npu_auxiliary_context;
@@ -1418,7 +1419,7 @@ LlmLiteRtNpuCompiledModelExecutor::Create(
 // Creates LiteRT options for NPU accelerator.
 litert::Expected<litert::Options> CreateLiteRtOptions() {
   LITERT_ASSIGN_OR_RETURN(auto options, ::litert::Options::Create());
-  options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+  options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
   LITERT_ASSIGN_OR_RETURN(auto qnn_opts,
                           ::litert::qualcomm::QualcommOptions::Create());
   qnn_opts.SetLogLevel(kLiteRtQualcommLogOff);

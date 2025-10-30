@@ -34,6 +34,7 @@
 #include "absl/strings/str_join.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
+#include "litert/cc/litert_common.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
@@ -1017,7 +1018,8 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
       gpu_compilation_options.SetGpuBackend(kLiteRtGpuBackendWebGpu);
 #endif  // defined(LITERT_USE_WEBGPU_ACCELERATOR)
       compilation_options->AddOpaqueOptions(std::move(gpu_compilation_options));
-      compilation_options->SetHardwareAccelerators(kLiteRtHwAcceleratorGpu);
+      compilation_options->SetHardwareAccelerators(
+          litert::HwAccelerators::kGpu);
       break;
     }
     case Backend::CPU: {
@@ -1051,7 +1053,8 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
       compilation_options->AddOpaqueOptions(std::move(runtime_options));
       compilation_options->AddOpaqueOptions(
           std::move(*cpu_compilation_options));
-      compilation_options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+      compilation_options->SetHardwareAccelerators(
+          litert::HwAccelerators::kCpu);
       break;
     }
     default:

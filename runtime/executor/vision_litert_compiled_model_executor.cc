@@ -28,6 +28,7 @@
 #if !defined(LITERT_DISABLE_NPU)
 #include "litert/c/options/litert_qualcomm_options.h"  // from @litert
 #endif  // !defined(LITERT_DISABLE_NPU)
+#include "litert/cc/litert_common.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
@@ -74,7 +75,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionEncoder::Initialize() {
       runtime_options.SetShloCompositeInlining(true);
       options.AddOpaqueOptions(std::move(runtime_options));
       options.AddOpaqueOptions(std::move(cpu_compilation_options));
-      options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+      options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
       break;
     }
     case Backend::GPU: {
@@ -88,7 +89,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionEncoder::Initialize() {
           LiteRtDelegatePrecision::kLiteRtDelegatePrecisionFp16);
       gpu_compilation_options.SetPreferTextureWeights(true);
       options.AddOpaqueOptions(std::move(gpu_compilation_options));
-      options.SetHardwareAccelerators(kLiteRtHwAcceleratorGpu);
+      options.SetHardwareAccelerators(litert::HwAccelerators::kGpu);
       break;
     }
 #if !defined(LITERT_DISABLE_NPU)
@@ -100,7 +101,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionEncoder::Initialize() {
           kLiteRtQualcommHtpPerformanceModeBurst);
       options.AddOpaqueOptions(std::move(qualcomm_options));
       // TODO: yunandrew - Add support for other NPU backends.
-      options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+      options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
       break;
     }
 #endif  // !defined(LITERT_DISABLE_NPU)
@@ -156,7 +157,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionAdapter::Initialize() {
       runtime_options.SetShloCompositeInlining(true);
       options.AddOpaqueOptions(std::move(runtime_options));
       options.AddOpaqueOptions(std::move(cpu_compilation_options));
-      options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+      options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
       break;
     }
     case Backend::GPU: {
@@ -171,7 +172,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionAdapter::Initialize() {
           LiteRtDelegatePrecision::kLiteRtDelegatePrecisionFp16);
       gpu_compilation_options.SetPreferTextureWeights(true);
       options.AddOpaqueOptions(std::move(gpu_compilation_options));
-      options.SetHardwareAccelerators(kLiteRtHwAcceleratorGpu);
+      options.SetHardwareAccelerators(litert::HwAccelerators::kGpu);
       break;
     }
     default:

@@ -24,6 +24,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"  // from @com_google_absl
+#include "litert/cc/litert_common.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
@@ -70,7 +71,7 @@ class LoraTest : public ::testing::Test {
     LITERT_ASSERT_OK_AND_ASSIGN(Options compilation_options,
                                 litert::Options::Create());
 
-    compilation_options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+    compilation_options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
 
     // Create CompiledModel.
     LITERT_ASSERT_OK_AND_ASSIGN(

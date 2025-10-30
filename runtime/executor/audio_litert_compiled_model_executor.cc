@@ -32,6 +32,7 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/c/litert_tensor_buffer_types.h"  // from @litert
+#include "litert/cc/litert_common.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
@@ -113,12 +114,12 @@ absl::Status AudioLiteRtCompiledModelExecutor::AudioEncoder::Initialize() {
         LiteRtDelegatePrecision::kLiteRtDelegatePrecisionFp32);
     gpu_compilation_options.SetPreferTextureWeights(true);
     options.AddOpaqueOptions(std::move(gpu_compilation_options));
-    options.SetHardwareAccelerators(kLiteRtHwAcceleratorGpu);
+    options.SetHardwareAccelerators(litert::HwAccelerators::kGpu);
   } else if (executor_settings_.GetBackend() == Backend::CPU) {
     CpuOptions cpu_options;
     cpu_options.SetNumThreads(4);
     options.AddOpaqueOptions(std::move(cpu_options));
-    options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+    options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
   } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unsupported backend for AudioEncoder: ",
@@ -209,12 +210,12 @@ absl::Status AudioLiteRtCompiledModelExecutor::AudioAdapter::Initialize() {
         LiteRtDelegatePrecision::kLiteRtDelegatePrecisionFp32);
     gpu_compilation_options.SetPreferTextureWeights(true);
     options.AddOpaqueOptions(std::move(gpu_compilation_options));
-    options.SetHardwareAccelerators(kLiteRtHwAcceleratorGpu);
+    options.SetHardwareAccelerators(litert::HwAccelerators::kGpu);
   } else if (executor_settings_.GetBackend() == Backend::CPU) {
     CpuOptions cpu_options;
     cpu_options.SetNumThreads(4);
     options.AddOpaqueOptions(std::move(cpu_options));
-    options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+    options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
   } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unsupported backend for AudioAdapter: ",

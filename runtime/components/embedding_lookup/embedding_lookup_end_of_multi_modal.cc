@@ -27,6 +27,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
+#include "litert/cc/litert_common.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
@@ -159,7 +160,7 @@ EndOfMultiModalEmbedding::Create(const litert::Model* absl_nonnull model,
 
 absl::Status EndOfMultiModalEmbedding::Initialize() {
   LITERT_ASSIGN_OR_RETURN(auto options, Options::Create());
-  options.SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+  options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
 
   LITERT_ASSIGN_OR_RETURN(litert::CompiledModel compiled_model,
                           litert::CompiledModel::Create(env_, model_, options));
