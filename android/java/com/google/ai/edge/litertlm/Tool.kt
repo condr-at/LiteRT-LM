@@ -35,11 +35,11 @@ import kotlin.reflect.full.functions
  *   fun getCurrentWeather(
  *     @ToolParam(description = "The city and state, e.g. San Francisco, CA") location: String,
  *     @ToolParam(description = "The temperature unit to use") unit: String = "celsius",
- *   ): JsonObject {
- *     return JsonObject().apply {
- *       addProperty("temperature", 25)
- *       addProperty("unit", "Celsius")
- *     }
+ *   ): Map {
+ *     return mapOf(
+ *       "temperature" to 25,
+ *       "unit" to "Celsius",
+ *     )
  *   }
  * }
  * ```
@@ -98,7 +98,7 @@ internal class Tooling(val instance: Any, val kFunction: kotlin.reflect.KFunctio
             param.index == 0 -> instance // First parameter is the instance
             param.name != null && params.has(param.name) -> {
               val value = params.get(param.name!!)
-              convertJsonValue(value, param.type)
+              convertJsonValueToKotlinValue(value, param.type)
             }
             param.isOptional -> null // Use default value
             else -> throw IllegalArgumentException("Missing parameter: ${param.name}")
@@ -117,12 +117,12 @@ internal class Tooling(val instance: Any, val kFunction: kotlin.reflect.KFunctio
    * @return The converted value.
    * @throws IllegalArgumentException if the value cannot be converted to the target type.
    */
-  private fun convertJsonValue(value: JsonElement, type: kotlin.reflect.KType): Any {
+  private fun convertJsonValueToKotlinValue(value: JsonElement, type: kotlin.reflect.KType): Any {
     val classifier = type.classifier
     return when {
       classifier == List::class && value is JsonArray -> {
         val listTypeArgument = type.arguments.firstOrNull()?.type
-        value.map { convertJsonValue(it, listTypeArgument!!) }
+        value.map { convertJsonValueToKotlinValue(it, listTypeArgument!!) }
       }
       classifier == Int::class && value is JsonPrimitive && value.isNumber -> value.asInt
       classifier == Float::class && value is JsonPrimitive && value.isNumber -> value.asFloat
@@ -186,7 +186,11 @@ internal class Tooling(val instance: Any, val kFunction: kotlin.reflect.KFunctio
     }
 
     val requiredParams = JsonArray()
-    parameters.filter { !it.isOptional }.forEach { requiredParams.add(it.name) }
+    for (param in parameters) {
+      if (!param.isOptional) {
+        requiredParams.add(param.name)
+      }
+    }
 
     val schema =
       JsonObject().apply {
@@ -231,20 +235,13 @@ class ToolManager(val toolSets: List<Any>) {
    * @return The result of the tool function execution as a string.
    * @throws IllegalArgumentException if the tool function is not found.
    */
-  fun execute(functionName: String, params: JsonObject): String {
+  fun execute(functionName: String, params: JsonObject): JsonElement {
     try {
       val tool =
         tools[functionName] ?: throw IllegalArgumentException("Tool not found: ${functionName}")
-      val value = tool.execute(params)
-
-      // specifical case when a Kotlin function return nothing.
-      if (value is kotlin.Unit) {
-        return ""
-      } else {
-        return value.toString()
-      }
+      return convertKotlinValueToJsonValue(tool.execute(params))
     } catch (e: Exception) {
-      return "Error occured. ${e.toString()}"
+      return JsonPrimitive("Error occured. ${e.toString()}")
     }
   }
 
@@ -259,5 +256,33 @@ class ToolManager(val toolSets: List<Any>) {
       array.add(tool.getToolDescription())
     }
     return array
+  }
+
+  private fun convertKotlinValueToJsonValue(kValue: Any?): JsonElement {
+    return when (kValue) {
+      is List<*> -> {
+        val array = JsonArray()
+        for (item in kValue) {
+          if (item != null) {
+            array.add(convertKotlinValueToJsonValue(item))
+          }
+        }
+        array
+      }
+      is Map<*, *> -> {
+        val obj = JsonObject()
+        for ((key, value) in kValue) {
+          if (key != null && value != null) {
+            obj.add(key.toString(), convertKotlinValueToJsonValue(value))
+          }
+        }
+        obj
+      }
+      is String -> JsonPrimitive(kValue)
+      is Number -> JsonPrimitive(kValue)
+      is Boolean -> JsonPrimitive(kValue)
+      is kotlin.Unit -> JsonPrimitive("") // special case when a Kotlin function return nothing.
+      else -> JsonPrimitive(kValue.toString())
+    }
   }
 }

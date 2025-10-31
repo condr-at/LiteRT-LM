@@ -151,7 +151,7 @@ class Conversation(private val handle: Long, val toolManager: ToolManager) : Aut
             "tool_response",
             JsonObject().apply {
               addProperty("name", functionName)
-              addProperty("value", result)
+              add("value", result)
             },
           )
         }

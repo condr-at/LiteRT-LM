@@ -218,7 +218,6 @@ Create a class and annotate methods with `@Tool` and parameters with
 ```kotlin
 import com.google.ai.edge.litertlm.Tool
 import com.google.ai.edge.litertlm.ToolParam
-import org.json.JSONObject
 
 class SampleToolSet {
     @Tool(description = "Get the current weather for a city")
@@ -226,9 +225,9 @@ class SampleToolSet {
         @ToolParam(description = "The city name, e.g., San Francisco") city: String,
         @ToolParam(description = "Optional country code, e.g., US") country: String? = null,
         @ToolParam(description = "Temperature unit (celsius or fahrenheit). Default: celsius") unit: String = "celsius"
-    ): JSONObject {
+    ): Map<String, Any> {
         // In a real application, you would call a weather API here
-        return JSONObject().put("temperature", 25).put("unit", unit).put("condition", "Sunny")
+        return mapOf("temperature" to 25, "unit" to  unit, "condition" to "Sunny")
     }
 
     @Tool(description = "Get the sum of a list of numbers.")
@@ -256,11 +255,15 @@ default value in the description in `@ToolParam`.
 ##### Return Type
 
 The return type of your tool function can be any Kotlin type. The result will be
-converted to a `String` using its `toString()` method before being sent back to
-the model. For structured data, it's recommended to return a `JSONObject` as
-this helps the model understand the tool's output in a clear, map-like JSON
-format. Custom return value should provide a meaningful `toString()`
-implementation.
+converted to a JSON element before being sent back to the model.
+
+-   `List` types are converted to json array.
+-   `Map` types are converted to json object.
+-   Primitive types (`String`, `Number`, `Boolean`) are converted to the corresponding json primitive.
+-   Other types are converted to string with the `toString()` method.
+
+For structured data, returning `Map` or a data class that will be converted to a
+json object is recommended.
 
 #### Registering Tools
 
