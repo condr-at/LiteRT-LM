@@ -32,6 +32,7 @@
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/test/matchers.h"  // from @litert
 
 namespace litert::lm {
@@ -71,7 +72,7 @@ class EmbeddingLookupMultiModalTest : public testing::Test {
 
     LITERT_ASSIGN_OR_RETURN(auto buffer,
                             TensorBuffer::CreateManaged(
-                                env.Get(), kLiteRtTensorBufferTypeHostMemory,
+                                env, ::litert::TensorBufferType::kHostMemory,
                                 ranked_tensor_type, buffer_size));
 
     // Clear the buffer to 0.

@@ -36,6 +36,7 @@
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/test/matchers.h"  // from @litert
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/util/status_macros.h"  //NOLINT
@@ -188,8 +189,8 @@ class EmbeddingLookupManagerTest : public ::testing::Test {
     RankedTensorType ranked_tensor_type(ElementType::Float32,
                                         std::move(layout));
 
-    return TensorBuffer::CreateManaged(env.Get(),
-                                       kLiteRtTensorBufferTypeHostMemory,
+    return TensorBuffer::CreateManaged(env,
+                                       ::litert::TensorBufferType::kHostMemory,
                                        ranked_tensor_type, buffer_size);
   }
 

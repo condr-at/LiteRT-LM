@@ -34,6 +34,7 @@
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/test/matchers.h"  // from @litert
 
 namespace litert::lm {
@@ -77,7 +78,7 @@ class EndOfMultiModalEmbeddingTest : public testing::Test {
 
     LITERT_ASSIGN_OR_RETURN(auto buffer,
                             TensorBuffer::CreateManaged(
-                                env.Get(), kLiteRtTensorBufferTypeHostMemory,
+                                env, ::litert::TensorBufferType::kHostMemory,
                                 ranked_tensor_type, buffer_size));
     // Clear the buffer to 0.
     auto buffer_lock_and_addr = ::litert::TensorBufferScopedLock::Create(
