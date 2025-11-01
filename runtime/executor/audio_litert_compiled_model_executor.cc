@@ -31,7 +31,6 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
-#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_common.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
@@ -41,6 +40,7 @@
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_options.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/options/litert_cpu_options.h"  // from @litert
 #include "litert/cc/options/litert_gpu_options.h"  // from @litert
 #include "runtime/components/model_resources.h"
@@ -410,7 +410,7 @@ absl::StatusOr<ExecutorAudioData> AudioLiteRtCompiledModelExecutor::Encode(
       Layout(Dimensions({1, total_valid_tokens, audio_embedding_dimensions_})));
   LITERT_ASSIGN_OR_RETURN(
       auto audio_embeddings_tensor,
-      TensorBuffer::CreateManaged(env_, kLiteRtTensorBufferTypeHostMemory,
+      TensorBuffer::CreateManaged(env_, ::litert::TensorBufferType::kHostMemory,
                                   audio_embeddings_tensor_type,
                                   audio_embeddings.size() * sizeof(float)));
   LITERT_RETURN_IF_ERROR(audio_embeddings_tensor.Write<float>(
@@ -435,7 +435,7 @@ absl::StatusOr<ExecutorAudioData> AudioLiteRtCompiledModelExecutor::Encode(
   LITERT_ASSIGN_OR_RETURN(
       auto mask_tensor,
       TensorBuffer::CreateManaged(
-          env_, kLiteRtTensorBufferTypeHostMemory,
+          env_, ::litert::TensorBufferType::kHostMemory,
           RankedTensorType(GetElementType<uint8_t>(),
                            Layout(Dimensions({1, input_sequence_length}))),
           input_sequence_length * sizeof(uint8_t)));

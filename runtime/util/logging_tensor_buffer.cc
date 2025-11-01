@@ -21,9 +21,9 @@
 #include "absl/strings/str_join.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
-#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 
 namespace litert::lm {
 namespace {
@@ -70,11 +70,14 @@ std::ostream& LogTensorBuffer(std::ostream& os, const void* data,
 
 std::ostream& operator<<(std::ostream& os,
                          const ::litert::TensorBuffer& tensor_buffer) {
-  if (auto type = tensor_buffer.BufferType();
-      !type.HasValue() || *type != kLiteRtTensorBufferTypeHostMemory) {
-    return os << kTensorBufferPrefix << "[tensor in non-host memory type="
-              << (type.HasValue() ? *type : kLiteRtTensorBufferTypeUnknown)
-              << "]";
+  if (auto type = tensor_buffer.BufferTypeCC();
+      !type.HasValue() || *type != ::litert::TensorBufferType::kHostMemory) {
+    const int type_value =
+        type.HasValue()
+            ? static_cast<int>(*type)
+            : static_cast<int>(::litert::TensorBufferType::kUnknown);
+    return os << kTensorBufferPrefix
+              << "[tensor in non-host memory type=" << type_value << "]";
   }
 
   auto tensor_type = tensor_buffer.TensorType();

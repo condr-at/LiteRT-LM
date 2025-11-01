@@ -22,9 +22,9 @@
 #include <gtest/gtest.h>
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/c/litert_common.h"  // from @litert
-#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/test/matchers.h"  // from @litert
 
 namespace litert::lm {
@@ -46,8 +46,8 @@ TEST(ConvertTensorBufferTest, CreateTensorBuffer_Success) {
   EXPECT_THAT(tensor_buffer.TensorType(),
               IsOkAndHolds(LayoutDimensionsAre(Dimensions({2, 5}))));
   EXPECT_THAT(tensor_buffer.Size(), IsOkAndHolds(10));
-  EXPECT_THAT(tensor_buffer.BufferType(),
-              IsOkAndHolds(kLiteRtTensorBufferTypeHostMemory));
+  EXPECT_THAT(tensor_buffer.BufferTypeCC(),
+              IsOkAndHolds(::litert::TensorBufferType::kHostMemory));
 }
 
 TEST(ConvertTensorBufferTest, CreateTensorBuffer_Success_MultipleBytes) {
@@ -56,8 +56,8 @@ TEST(ConvertTensorBufferTest, CreateTensorBuffer_Success_MultipleBytes) {
   EXPECT_THAT(tensor_buffer.TensorType(),
               IsOkAndHolds(LayoutDimensionsAre(Dimensions({2, 5}))));
   EXPECT_THAT(tensor_buffer.Size(), IsOkAndHolds(40));
-  EXPECT_THAT(tensor_buffer.BufferType(),
-              IsOkAndHolds(kLiteRtTensorBufferTypeHostMemory));
+  EXPECT_THAT(tensor_buffer.BufferTypeCC(),
+              IsOkAndHolds(::litert::TensorBufferType::kHostMemory));
 }
 
 TEST(ConvertTensorBufferTest, CopyToTensorBuffer_Success) {
@@ -67,8 +67,8 @@ TEST(ConvertTensorBufferTest, CopyToTensorBuffer_Success) {
   EXPECT_THAT(tensor_buffer.TensorType(),
               IsOkAndHolds(LayoutDimensionsAre(Dimensions({2, 5}))));
   EXPECT_THAT(tensor_buffer.Size(), IsOkAndHolds(10));
-  EXPECT_THAT(tensor_buffer.BufferType(),
-              IsOkAndHolds(kLiteRtTensorBufferTypeHostMemory));
+  EXPECT_THAT(tensor_buffer.BufferTypeCC(),
+              IsOkAndHolds(::litert::TensorBufferType::kHostMemory));
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto lock_and_addr, ::litert::TensorBufferScopedLock::Create(
@@ -86,8 +86,8 @@ TEST(ConvertTensorBufferTest, CopyToTensorBuffer_Success_MultipleBytes) {
   EXPECT_THAT(tensor_buffer.TensorType(),
               IsOkAndHolds(LayoutDimensionsAre(Dimensions({2, 5}))));
   EXPECT_THAT(tensor_buffer.Size(), IsOkAndHolds(40));
-  EXPECT_THAT(tensor_buffer.BufferType(),
-              IsOkAndHolds(kLiteRtTensorBufferTypeHostMemory));
+  EXPECT_THAT(tensor_buffer.BufferTypeCC(),
+              IsOkAndHolds(::litert::TensorBufferType::kHostMemory));
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto lock_and_addr, ::litert::TensorBufferScopedLock::Create(
@@ -118,7 +118,7 @@ TEST(ConvertTensorBufferTest, ConvertAndCopyToTensorBuffer_ToInt8) {
   EXPECT_THAT(span, ElementsAre(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
 }
 
-TEST(ConvertTensorBufferTest, ConvertAndCopyToTensorBuffer_ToInt32) {
+TEST(ConvertTensorBufferTest, ConvertAndCopyToTensorBuffer_ToInt33) {
   std::vector<int8_t> data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto tensor_buffer,
@@ -126,8 +126,8 @@ TEST(ConvertTensorBufferTest, ConvertAndCopyToTensorBuffer_ToInt32) {
   EXPECT_THAT(tensor_buffer.TensorType(),
               IsOkAndHolds(LayoutDimensionsAre(Dimensions({2, 5}))));
   EXPECT_THAT(tensor_buffer.Size(), IsOkAndHolds(40));
-  EXPECT_THAT(tensor_buffer.BufferType(),
-              IsOkAndHolds(kLiteRtTensorBufferTypeHostMemory));
+  EXPECT_THAT(tensor_buffer.BufferTypeCC(),
+              IsOkAndHolds(::litert::TensorBufferType::kHostMemory));
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto lock_and_addr, ::litert::TensorBufferScopedLock::Create(
@@ -146,8 +146,8 @@ TEST(ConvertTensorBufferTest, ConvertAndCopyToTensorBuffer_ToFloat) {
   EXPECT_THAT(tensor_buffer.TensorType(),
               IsOkAndHolds(LayoutDimensionsAre(Dimensions({2, 5}))));
   EXPECT_THAT(tensor_buffer.Size(), IsOkAndHolds(40));
-  EXPECT_THAT(tensor_buffer.BufferType(),
-              IsOkAndHolds(kLiteRtTensorBufferTypeHostMemory));
+  EXPECT_THAT(tensor_buffer.BufferTypeCC(),
+              IsOkAndHolds(::litert::TensorBufferType::kHostMemory));
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto lock_and_addr, ::litert::TensorBufferScopedLock::Create(

@@ -23,13 +23,13 @@
 #include "absl/log/absl_check.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/c/litert_common.h"  // from @litert
-#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_expected.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_ranked_tensor_type.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 
 namespace litert::lm {
 
@@ -65,7 +65,8 @@ struct ElementTypeFor<float> {
 template <typename T>
 ::litert::Expected<::litert::TensorBuffer> CreateTensorBuffer(
     ::litert::Dimensions&& dimensions,
-    LiteRtTensorBufferType buffer_type = kLiteRtTensorBufferTypeHostMemory) {
+    ::litert::TensorBufferType buffer_type =
+        ::litert::TensorBufferType::kHostMemory) {
   int size = 1;
   for (int dim : dimensions) {
     size *= dim;
@@ -93,9 +94,11 @@ template <typename T>
   LITERT_ASSIGN_OR_RETURN(auto num_elements,
                           tensor_type.Layout().NumElements());
   std::vector<T> copied_data(num_elements);
-  LITERT_ASSIGN_OR_RETURN(auto lock_and_addr,
-                          ::litert::TensorBufferScopedLock::Create(
-                              tensor_buffer, TensorBuffer::LockMode::kRead));
+  LITERT_ASSIGN_OR_RETURN(
+      auto lock_and_addr,
+      ::litert::TensorBufferScopedLock::Create(
+          *const_cast<::litert::TensorBuffer*>(&tensor_buffer),
+          TensorBuffer::LockMode::kRead));
   std::memcpy(copied_data.data(), lock_and_addr.second,
               num_elements * sizeof(T));
   return copied_data;
@@ -119,7 +122,8 @@ template <typename T>
   }
 
   auto lock_and_addr = ::litert::TensorBufferScopedLock::Create(
-      tensor_buffer.Get(), TensorBuffer::LockMode::kRead);
+      *const_cast<::litert::TensorBuffer*>(&tensor_buffer),
+      TensorBuffer::LockMode::kRead);
   ABSL_DCHECK(lock_and_addr.HasValue());
   auto data_from = absl::MakeConstSpan(static_cast<T*>(lock_and_addr->second),
                                        dimensions[0] * dimensions[1]);
@@ -137,7 +141,8 @@ template <typename T>
 template <typename T>
 ::litert::Expected<::litert::TensorBuffer> CopyToTensorBuffer(
     absl::Span<const T> data, ::litert::Dimensions&& dimensions,
-    LiteRtTensorBufferType buffer_type = kLiteRtTensorBufferTypeHostMemory) {
+    ::litert::TensorBufferType buffer_type =
+        ::litert::TensorBufferType::kHostMemory) {
   auto output_tensor_buffer = ::litert::TensorBuffer::CreateManaged(
       buffer_type,
       ::litert::RankedTensorType(ElementTypeFor<T>::kType,
@@ -155,7 +160,8 @@ template <typename T>
 template <typename TargetType, typename SourceType>
 ::litert::Expected<::litert::TensorBuffer> ConvertAndCopyToTensorBuffer(
     absl::Span<const SourceType> source, ::litert::Dimensions&& dimensions,
-    LiteRtTensorBufferType buffer_type = kLiteRtTensorBufferTypeHostMemory) {
+    ::litert::TensorBufferType buffer_type =
+        ::litert::TensorBufferType::kHostMemory) {
   auto tensor_buffer = ::litert::TensorBuffer::CreateManaged(
       buffer_type,
       ::litert::RankedTensorType(ElementTypeFor<TargetType>::kType,
@@ -181,9 +187,9 @@ template <typename TargetType, typename SourceType>
 template <typename T>
 ::litert::Expected<absl::Span<T>> ReferTensorBufferAsSpan(
     const ::litert::TensorBuffer& tensor_buffer) {
-  if (auto buffer_type = tensor_buffer.BufferType();
+  if (auto buffer_type = tensor_buffer.BufferTypeCC();
       !buffer_type.HasValue() ||
-      *buffer_type != kLiteRtTensorBufferTypeHostMemory) {
+      *buffer_type != ::litert::TensorBufferType::kHostMemory) {
     return ::litert::Unexpected(kLiteRtStatusErrorInvalidArgument,
                                 "Tensor buffer is not in the host memory.");
   }
@@ -196,7 +202,8 @@ template <typename T>
   }
 
   auto lock_and_addr = ::litert::TensorBufferScopedLock::Create(
-      tensor_buffer.Get(), TensorBuffer::LockMode::kRead);
+      *const_cast<::litert::TensorBuffer*>(&tensor_buffer),
+      TensorBuffer::LockMode::kRead);
   ABSL_DCHECK(lock_and_addr.HasValue());
   LITERT_ASSIGN_OR_RETURN(auto num_elements, type->Layout().NumElements());
   return absl::MakeSpan(static_cast<T*>(lock_and_addr->second), num_elements);
