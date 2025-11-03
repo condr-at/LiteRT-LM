@@ -151,7 +151,7 @@ stable version of the code.
 **Clone the repository:**
 
 ```
-git clone git@github.com:google-ai-edge/LiteRT-LM.git
+git clone https://github.com/google-ai-edge/LiteRT-LM.git
 cd LiteRT-LM
 ```
 
