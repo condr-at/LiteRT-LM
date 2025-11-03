@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
 #include "absl/memory/memory.h"  // from @com_google_absl
@@ -81,8 +82,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionEncoder::Initialize() {
     case Backend::GPU: {
       // TODO: b/403132820 - Add accelerator compilation options for ML_DRIFT.
       LITERT_ASSIGN_OR_RETURN(GpuOptions gpu_compilation_options,
-                                   GpuOptions::Create());
-      // TODO --- ask fengwu about this
+                              GpuOptions::Create());
       gpu_compilation_options.EnableConstantTensorSharing(true);
 
       gpu_compilation_options.SetDelegatePrecision(
@@ -163,8 +163,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionAdapter::Initialize() {
     case Backend::GPU: {
       // TODO: b/403132820 - Add accelerator compilation options for ML_DRIFT.
       LITERT_ASSIGN_OR_RETURN(GpuOptions gpu_compilation_options,
-                                   GpuOptions::Create());
-      // TODO --- ask fengwu about this
+                              GpuOptions::Create());
       gpu_compilation_options.EnableConstantTensorSharing(true);
       gpu_compilation_options.EnableAllowSrcQuantizedFcConvOps(true);
 
@@ -261,14 +260,24 @@ absl::StatusOr<ExecutorVisionData> VisionLiteRtCompiledModelExecutor::Encode(
   LITERT_RETURN_IF_ERROR(
       vision_encoder_->GetMutableInputBuffers()[0].Write<float>(
           input_image_data));
+  auto& encoder_outputs = vision_encoder_->GetMutableOutputBuffers();
+  if (encoder_outputs[0].IsWebGpuMemory()) {
+    // For WebGPU memory, we need to create a new output buffer to hold the
+    // data, otherwise we will get failed to lock TensorBuffer error on the
+    // second call to `Encode`. See b/457483190
+    LITERT_ASSIGN_OR_RETURN(
+        encoder_outputs,
+        vision_encoder_->GetCompiledModel().CreateOutputBuffers(
+            /*signature_index=*/0));
+  }
 
   LITERT_RETURN_IF_ERROR(vision_encoder_->GetCompiledModel().Run(
-      /*input_buffers=*/absl::MakeSpan(vision_encoder_->GetInputBuffers()),
-      /*output_buffers=*/absl::MakeSpan(vision_encoder_->GetOutputBuffers())));
+      /*input_buffers=*/vision_encoder_->GetInputBuffers(),
+      /*output_buffers=*/encoder_outputs));
 
   LITERT_RETURN_IF_ERROR(vision_adapter_->GetCompiledModel().Run(
-      /*input_buffers=*/absl::MakeSpan(vision_encoder_->GetOutputBuffers()),
-      /*output_buffers=*/absl::MakeSpan(output_tensor_buffers)));
+      /*input_buffers=*/encoder_outputs,
+      /*output_buffers=*/output_tensor_buffers));
 
   return ExecutorVisionData(std::move(output_tensor_buffers[0]),
                             /*per_layer_embeddings=*/std::nullopt);
