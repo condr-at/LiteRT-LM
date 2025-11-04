@@ -163,7 +163,6 @@ sequence_batch_size: 16
 supported_lora_ranks: vector of 2 elements: [4, 16]
 max_top_k: 40
 enable_decode_logits: 1
-enable_external_embeddings: 0
 )";
   EXPECT_EQ(oss.str(), expected_output);
 }
@@ -189,7 +188,6 @@ sequence_batch_size: 16
 supported_lora_ranks: vector of 2 elements: [4, 16]
 max_top_k: 40
 enable_decode_logits: 1
-enable_external_embeddings: 0
 
 max_tokens: 1024
 activation_data_type: FLOAT16
@@ -234,7 +232,6 @@ sequence_batch_size: 16
 supported_lora_ranks: vector of 2 elements: [4, 16]
 max_top_k: 40
 enable_decode_logits: 1
-enable_external_embeddings: 0
 
 max_tokens: 1024
 activation_data_type: FLOAT16
