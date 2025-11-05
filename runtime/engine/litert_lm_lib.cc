@@ -42,6 +42,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/match.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/str_format.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
@@ -435,6 +436,63 @@ void RunScoreText(litert::lm::Engine* llm, litert::lm::Engine::Session* session,
   }
 }
 
+void LogBenchmarkInfo(const litert::lm::BenchmarkInfo& benchmark_info,
+                      const LiteRtLmSettings& settings) {
+  if (!settings.log_sink_file.has_value()) {
+    ABSL_LOG(INFO) << benchmark_info;
+  } else {
+    ABSL_LOG(INFO) << absl::StrFormat(
+        "Benchmark flags: "
+        "benchmark_prefill_tokens=%d,benchmark_decode_tokens=%d,backend=%s",
+        benchmark_info.GetBenchmarkParams().num_prefill_tokens(),
+        benchmark_info.GetBenchmarkParams().num_decode_tokens(),
+        settings.backend);
+    for (const auto& phase : benchmark_info.GetInitPhases()) {
+      ABSL_LOG(INFO) << absl::StrFormat(
+          "%s: %.2f ms", phase.first, absl::ToDoubleMilliseconds(phase.second));
+    }
+    ABSL_LOG(INFO) << absl::StrFormat("Time to first token: %.2f s",
+                                      benchmark_info.GetTimeToFirstToken());
+    for (int i = 0; i < benchmark_info.GetTotalPrefillTurns(); ++i) {
+      ABSL_LOG(INFO) << absl::StrFormat(
+          "Prefill speed turn %d: %.2f tk/s", i,
+          benchmark_info.GetPrefillTokensPerSec(0));
+      ABSL_LOG(INFO) << absl::StrFormat(
+          "Decode speed turn %d: %.2f tk/s", i,
+          benchmark_info.GetDecodeTokensPerSec(0));
+    }
+  }
+}
+
+void LogMemoryUsage(const LiteRtLmSettings& settings, float peak_mem_mb,
+                    float peak_private_mb) {
+  if (!settings.log_sink_file.has_value()) {
+    ABSL_LOG(INFO) << "Peak system ram usage: " << peak_mem_mb << "MB.";
+    ABSL_LOG(INFO) << "Memory usage: "
+                   << tflite::profiling::memory::GetMemoryUsage();
+    ABSL_LOG(INFO) << "Peak private footprint: " << peak_private_mb << "MB.";
+  } else {
+    ABSL_LOG(INFO) << absl::StrFormat("Peak system ram usage: %.2f MB",
+                                      peak_private_mb);
+    ABSL_LOG(INFO) << absl::StrFormat("Peak private footprint: %.2f MB",
+                                      peak_private_mb);
+    auto memory_usage = tflite::profiling::memory::GetMemoryUsage();
+    if (memory_usage.IsSupported()) {
+      ABSL_LOG(INFO) << absl::StrFormat("Physical footprint: %.2f MB",
+                                        memory_usage.mem_footprint_kb / 1000.0);
+      ABSL_LOG(INFO) << absl::StrFormat(
+          "Total non-mmapped heap size: %.2f MB",
+          memory_usage.total_allocated_bytes / 1000.0 / 1000.0);
+      ABSL_LOG(INFO) << absl::StrFormat(
+          "In-use heap size: %.2f MB",
+          memory_usage.in_use_allocated_bytes / 1000.0 / 1000.0);
+      ABSL_LOG(INFO) << absl::StrFormat(
+          "Private footprint: %.2f MB",
+          memory_usage.private_footprint_bytes / 1000.0 / 1000.0);
+    }
+  }
+}
+
 }  // namespace
 
 absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
@@ -495,7 +553,9 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
   if (settings.benchmark) {
     auto benchmark_info = conversation ? conversation->GetBenchmarkInfo()
                                        : session->GetBenchmarkInfo();
-    ABSL_LOG(INFO) << *benchmark_info;
+    if (benchmark_info.ok()) {
+      LogBenchmarkInfo(*benchmark_info, settings);
+    }
   }
 
   // Manually resetting the session to ensure that memory usage from
@@ -511,10 +571,7 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
       peak_mem_mb = mem_monitor->GetPeakMemUsageInMB();
       peak_private_mb = mem_monitor->GetPeakPrivateFootprintInMB();
     }
-    ABSL_LOG(INFO) << "Peak system ram usage: " << peak_mem_mb << "MB.";
-    ABSL_LOG(INFO) << "Memory usage: "
-                   << tflite::profiling::memory::GetMemoryUsage();
-    ABSL_LOG(INFO) << "Peak private footprint: " << peak_private_mb << "MB.";
+    LogMemoryUsage(settings, peak_mem_mb, peak_private_mb);
   }
 
   if (log_sink) {
