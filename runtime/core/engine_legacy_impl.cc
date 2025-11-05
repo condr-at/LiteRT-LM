@@ -28,6 +28,7 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
+#include "third_party/odml/infra/genai/inference/executor/gpu_artisan_audio_executor.h"
 #include "third_party/odml/infra/genai/inference/executor/litert_executor_utils.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_gpu_artisan_executor.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_litert_opencl_executor.h"
@@ -282,15 +283,22 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
 
   std::unique_ptr<AudioExecutor> audio_executor;
   if (engine_settings.GetAudioExecutorSettings().has_value()) {
+    const auto& backend =
+        engine_settings.GetAudioExecutorSettings()->GetBackend();
     ASSIGN_OR_RETURN(
         auto audio_executor_settings,
         AudioExecutorSettings::CreateDefault(
             engine_settings.GetMainExecutorSettings().GetModelAssets(),
             engine_settings.GetMainExecutorSettings().GetMaxNumTokens(),
-            engine_settings.GetAudioExecutorSettings()->GetBackend()));
-
-    ASSIGN_OR_RETURN(audio_executor, AudioLiteRtCompiledModelExecutor::Create(
-                                         audio_executor_settings, lrt_env));
+            backend));
+    if (backend == Backend::GPU_ARTISAN) {
+      ASSIGN_OR_RETURN(audio_executor,
+                       oi::GpuArtisanAudioExecutor::Create(
+                           audio_executor_settings));
+    } else {
+      ASSIGN_OR_RETURN(audio_executor, AudioLiteRtCompiledModelExecutor::Create(
+                                           audio_executor_settings, lrt_env));
+    }
   }
 
   if (benchmark_info.has_value()) {
