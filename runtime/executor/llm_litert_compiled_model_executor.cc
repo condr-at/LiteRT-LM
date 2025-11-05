@@ -34,11 +34,13 @@
 #include "absl/strings/str_join.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
-#include "litert/cc/litert_common.h"  // from @litert
+#include "litert/c/litert_common.h"  // from @litert
+#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_compiled_model.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_expected.h"  // from @litert
+#include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_options.h"  // from @litert
@@ -56,6 +58,7 @@
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/executor/llm_executor_processed_tokens.h"
 #include "runtime/executor/llm_executor_settings.h"
+#include "runtime/executor/llm_litert_compiled_model_cache_utils.h"
 #include "runtime/util/convert_tensor_buffer.h"
 #include "runtime/util/file_util.h"
 #include "runtime/util/lora_util.h"
@@ -75,23 +78,7 @@ using ::litert::TensorBuffer;
 // interpreter.
 constexpr absl::string_view kPrefillSignatureRunner = "prefill";
 constexpr absl::string_view kDecodeSignatureRunner = "decode";
-
-absl::Status GetCacheRootNames(std::vector<absl::string_view> input_names,
-                               std::string& k_root_name,
-                               std::string& v_root_name) {
-  for (auto input_name : input_names) {
-    if (input_name == "kv_cache_k_0") {
-      k_root_name = "kv_cache_k_";
-      v_root_name = "kv_cache_v_";
-      return absl::OkStatus();
-    } else if (input_name == "k_cache_0") {
-      k_root_name = "k_cache_";
-      v_root_name = "v_cache_";
-      return absl::OkStatus();
-    }
-  }
-  return absl::FailedPreconditionError("No KV cache inputs found.");
-}
+constexpr int kDynamicDimValue = -1;
 
 bool IsCalculationPrecisionF16() { return true; }
 
@@ -235,6 +222,123 @@ void LogTensor(TensorBuffer& tensor, size_t num_values_to_log,
   ABSL_LOG(ERROR) << debug << ": Failed to log logits.";
 }
 
+absl::StatusOr<int> GetDynamicDimIndex(const Model& model,
+                                       absl::string_view signature,
+                                       absl::string_view tensor_name) {
+  LITERT_ASSIGN_OR_RETURN(const SimpleSignature& sig,
+                          model.FindSignature(signature));
+  LITERT_ASSIGN_OR_RETURN(const SimpleTensor& tensor,
+                          sig.InputTensor(tensor_name));
+  LITERT_ASSIGN_OR_RETURN(const RankedTensorType ranked_tensor_type,
+                          tensor.RankedTensorType());
+  auto dimensions = ranked_tensor_type.Layout().Dimensions();
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (dimensions[i] == kDynamicDimValue) {
+      return i;
+    }
+  }
+  return absl::InvalidArgumentError("No dynamic dimension found.");
+}
+
+absl::StatusOr<bool> HasDynamicDim(const Model& model,
+                                   absl::string_view signature,
+                                   absl::string_view tensor_name) {
+  LITERT_ASSIGN_OR_RETURN(const SimpleSignature& sig,
+                          model.FindSignature(signature));
+  LITERT_ASSIGN_OR_RETURN(const SimpleTensor& tensor,
+                          sig.InputTensor(tensor_name));
+  LITERT_ASSIGN_OR_RETURN(const RankedTensorType ranked_tensor_type,
+                          tensor.RankedTensorType());
+  auto dimensions = ranked_tensor_type.Layout().Dimensions();
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (dimensions[i] == kDynamicDimValue) {
+      return true;
+    }
+  }
+  return false;
+}
+
+absl::Status ResolveDynamicShape(const Model& model,
+                                 CompiledModel& compiled_model,
+                                 absl::string_view signature,
+                                 absl::string_view tensor_name, int new_value) {
+  LITERT_ASSIGN_OR_RETURN(const SimpleSignature& sig,
+                          model.FindSignature(signature));
+  LITERT_ASSIGN_OR_RETURN(const SimpleTensor& tensor,
+                          sig.InputTensor(tensor_name));
+  LITERT_ASSIGN_OR_RETURN(const RankedTensorType ranked_tensor_type,
+                          tensor.RankedTensorType());
+  auto dimensions = ranked_tensor_type.Layout().Dimensions();
+
+  bool has_dynamic_dim = false;
+  std::vector<int> new_shape;
+  new_shape.reserve(dimensions.size());
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (dimensions[i] == kDynamicDimValue) {
+      has_dynamic_dim = true;
+      new_shape.push_back(new_value);
+    } else {
+      new_shape.push_back(dimensions[i]);
+    }
+  }
+
+  if (has_dynamic_dim) {
+    LITERT_RETURN_IF_ERROR(
+        compiled_model.ResizeInputTensor(signature, tensor_name, new_shape));
+  }
+
+  return absl::OkStatus();
+}
+
+absl::StatusOr<TensorBuffer> ResizeKVCacheTensorBuffer(
+    Environment& env, TensorBuffer& tensor_buffer, int dynamic_dim_index,
+    int num_entries_to_insert) {
+  LITERT_ASSIGN_OR_RETURN(const RankedTensorType& tensor_type,
+                          tensor_buffer.TensorType());
+  RET_CHECK(!tensor_type.Layout().HasStrides());
+  auto dimensions = tensor_type.Layout().Dimensions();
+  std::vector<int> new_dimensions;
+  new_dimensions.reserve(dimensions.size());
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (i == dynamic_dim_index) {
+      new_dimensions.push_back(dimensions[i] + num_entries_to_insert);
+    } else {
+      new_dimensions.push_back(dimensions[i]);
+    }
+  }
+
+  LITERT_ASSIGN_OR_RETURN(LiteRtTensorBufferType buffer_type,
+                          tensor_buffer.BufferType());
+  Layout new_layout(Dimensions(new_dimensions.begin(), new_dimensions.end()));
+  auto new_out_type =
+      RankedTensorType(tensor_type.ElementType(), std::move(new_layout));
+  LITERT_ASSIGN_OR_RETURN(size_t new_size, new_out_type.Bytes());
+
+  LITERT_ASSIGN_OR_RETURN(TensorBuffer new_tensor_buffer,
+                          TensorBuffer::CreateManaged(env.Get(), buffer_type,
+                                                      new_out_type, new_size));
+
+  LITERT_ASSIGN_OR_RETURN(auto tensor_buffer_lock_and_addr,
+                          TensorBufferScopedLock::Create(
+                              tensor_buffer, TensorBuffer::LockMode::kRead));
+  auto* tensor_buffer_ptr =
+      static_cast<uint8_t*>(tensor_buffer_lock_and_addr.second);
+  LITERT_ASSIGN_OR_RETURN(
+      auto new_tensor_buffer_lock_and_addr,
+      TensorBufferScopedLock::Create(new_tensor_buffer,
+                                     TensorBuffer::LockMode::kWrite));
+  auto* new_tensor_buffer_ptr =
+      static_cast<uint8_t*>(new_tensor_buffer_lock_and_addr.second);
+  std::optional<size_t> element_size = GetByteWidth(tensor_type.ElementType());
+  RET_CHECK(element_size.has_value());
+
+  RETURN_IF_ERROR(ExpandBuffer(tensor_buffer_ptr, dimensions,
+                               new_tensor_buffer_ptr, new_dimensions,
+                               element_size.value()));
+
+  return new_tensor_buffer;
+}
+
 absl::Status CopyBuffer(const TensorBuffer& buffers_from,
                         TensorBuffer& buffers_to) {
   // TODO: b/452977992: For GPU, we could use a shader to copy the buffer. If we
@@ -255,98 +359,22 @@ absl::Status CopyBuffer(const TensorBuffer& buffers_from,
 
 }  // namespace
 
-absl::Status LlmLiteRtCompiledModelExecutor::Prefill(
-    const ExecutorInputs& inputs, const ExecutorPrefillParams& params) {
-
-  // For now, we reduce the input and processed tokens for prefill only with
-  // the first input and processed tokens. This should be updated if user select
-  // the decode output candidate.
-  constexpr int kTokenIndexToReduce = 0;
-  if (ran_decode_) {
-    ran_decode_ = false;
-    if (output_batch_size_ > 1) {
-      LITERT_RETURN_IF_ERROR(
-          processed_tokens_.ReduceTokenCandidates(kTokenIndexToReduce));
-      LITERT_RETURN_IF_ERROR(
-          CopyKvCacheBuffers(output_batch_size_, kTokenIndexToReduce,
-                             *input_kv_cache_buffers_, kv_cache_buffers_1_));
-      input_kv_cache_buffers_ = &kv_cache_buffers_1_;
-      output_kv_cache_buffers_ = &kv_cache_buffers_2_;
-    }
-  }
-
-  LITERT_ASSIGN_OR_RETURN(auto tensor_type,
-                          (*inputs.GetTextTokenIdsPtr())->TensorType());
-  // Accept batch size 1 or output_batch_size_ though prefill handles only the
-  // first batch element.
-  int32_t input_batch_size = tensor_type.Layout().Dimensions()[0];
-  if (input_batch_size != 1) {
-    RET_CHECK_EQ(input_batch_size, output_batch_size_);
-  }
-  RET_CHECK_GT(tensor_type.Layout().Dimensions()[1], 0)
-      << "Prefill token ids must be non-empty.";
-
-  if (embedding_lookup_ != nullptr) {
-    RETURN_IF_ERROR(embedding_lookup_->UpdateMultiModalEmbeddings(inputs));
-  }
-
-  LITERT_ASSIGN_OR_RETURN(auto ids, ReferTensorBufferAsSpan<int32_t>(
-                                        *(*inputs.GetTextTokenIdsPtr())));
-  // Reduce the input ids only with one user selected.
-  auto input_length = ids.size() / input_batch_size;
-  ids = ids.subspan(kTokenIndexToReduce * input_length, input_length);
-  ASSIGN_OR_RETURN(auto work_groups, GetOptimizedPrefillWorkGroups(
-                                         prefill_signature_map_, ids.size()));
-  for (const auto& [prefill_signature, prefill_length] : work_groups) {
-    // Keep track of the signatures that have already had their buffers
-    // created only create them once.
-    if (!prefill_input_buffers_.contains(prefill_signature)) {
-      RETURN_IF_ERROR(CreatePrefillInputBuffers(prefill_signature));
-    }
-    RETURN_IF_ERROR(PrefillInternal(prefill_signature,
-                                    ids.subspan(/*pos=*/0, prefill_length)));
-    ids = ids.subspan(/*pos=*/prefill_length);
-  }
-  RET_CHECK_EQ(ids.size(), 0).SetCode(absl::StatusCode::kInternal)
-      << "Work groups not covering the entire prefill input.";
-
-  // If requested, wait for prefill to complete, for example, by benchmark.
-  if (params.GetWaitForCompletion()) {
-    // A workaround to sync with backend especially for GPU backends is to do
-    // read-lock a small decode buffer, input_positions which most likely
-    // consists only of one value.
-    if (!signatures_.input_positions.empty() &&
-        decode_input_buffers_.contains(signatures_.input_positions)) {
-      ABSL_LOG(INFO) << "Waiting for prefill to complete.";
-      auto lock = ::litert::TensorBufferScopedLock::Create(
-          decode_input_buffers_[signatures_.input_positions],
-          TensorBuffer::LockMode::kRead);
-      if (!lock) {
-        ABSL_LOG(ERROR) << "Failed to lock decode input_positions as a "
-                        << "workaround to sync with backend.";
-      }
-    } else {
-      ABSL_LOG(WARNING) << "Ignore waiting for prefill to complete.";
-    }
-  }
-
-  if (embedding_lookup_ != nullptr) {
-    RETURN_IF_ERROR(embedding_lookup_->CleanupMultiModalEmbeddings());
-  }
-
-  return absl::OkStatus();
-}
-
-absl::Status LlmLiteRtCompiledModelExecutor::CreatePrefillInputBuffers(
-    absl::string_view prefill_signature) {
-  auto& curr_prefill_input_buffers = prefill_input_buffers_[prefill_signature];
+absl::Status LlmLiteRtCompiledModelExecutorBase::CreatePrefillInputBuffers(
+    absl::string_view prefill_signature, int sequence_length,
+    int context_length,
+    absl::flat_hash_map<absl::string_view, TensorBuffer>&
+        prefill_input_buffers) {
+  auto dyn_shape_resolver = [&](absl::string_view tensor_name) -> absl::Status {
+    return ResolveDynamicShape(model_, compiled_model_, prefill_signature,
+                               tensor_name, sequence_length);
+  };
   // Create input_token, positions and attn_mask buffers after determining
   // the prefill length.
   if (!signatures_.input_tokens.empty()) {
+    RETURN_IF_ERROR(dyn_shape_resolver(signatures_.input_tokens));
     auto tokens_buffer = compiled_model_.CreateInputBuffer(
         prefill_signature, signatures_.input_tokens);
-    curr_prefill_input_buffers[signatures_.input_tokens] =
-        std::move(*tokens_buffer);
+    prefill_input_buffers[signatures_.input_tokens] = std::move(*tokens_buffer);
   } else {
     // If input_tokens is empty, we must have input_embeddings.
     if (!signatures_.input_embeddings.has_value()) {
@@ -358,9 +386,10 @@ absl::Status LlmLiteRtCompiledModelExecutor::CreatePrefillInputBuffers(
           "Input embeddings required by signature but embedding lookup "
           "model is not initialized.");
     }
+    RETURN_IF_ERROR(dyn_shape_resolver(signatures_.input_embeddings.value()));
     auto embeddings_buffer = compiled_model_.CreateInputBuffer(
         prefill_signature, signatures_.input_embeddings.value());
-    curr_prefill_input_buffers[signatures_.input_embeddings.value()] =
+    prefill_input_buffers[signatures_.input_embeddings.value()] =
         std::move(*embeddings_buffer);
 
     // We may have per layer embedding as well.
@@ -370,28 +399,39 @@ absl::Status LlmLiteRtCompiledModelExecutor::CreatePrefillInputBuffers(
             "Input per layer embeddings required by signature but "
             "embedding lookup model is not initialized.");
       }
+      RETURN_IF_ERROR(
+          dyn_shape_resolver(signatures_.input_per_layer_embeddings.value()));
       auto per_layer_embeddings_buffer = compiled_model_.CreateInputBuffer(
           prefill_signature, signatures_.input_per_layer_embeddings.value());
-      curr_prefill_input_buffers[signatures_.input_per_layer_embeddings
-                                     .value()] =
+      prefill_input_buffers[signatures_.input_per_layer_embeddings.value()] =
           std::move(*per_layer_embeddings_buffer);
     }
   }
+  RETURN_IF_ERROR(dyn_shape_resolver(signatures_.input_positions));
   auto positions_buffer = compiled_model_.CreateInputBuffer(
       prefill_signature, signatures_.input_positions);
-  curr_prefill_input_buffers[signatures_.input_positions] =
+  prefill_input_buffers[signatures_.input_positions] =
       std::move(*positions_buffer);
 
   if (signatures_.input_attn_mask.has_value()) {
+    ASSIGN_OR_RETURN(bool is_attn_dyn,
+                     HasDynamicDim(model_, prefill_signature,
+                                   signatures_.input_attn_mask.value()));
+    if (is_attn_dyn) {
+      std::vector<int> new_shape = {1, 1, sequence_length, context_length};
+      LITERT_RETURN_IF_ERROR(compiled_model_.ResizeInputTensor(
+          prefill_signature, signatures_.input_attn_mask.value(), new_shape));
+    }
+
     auto attn_mask_buffer = compiled_model_.CreateInputBuffer(
         prefill_signature, signatures_.input_attn_mask.value());
-    curr_prefill_input_buffers[signatures_.input_attn_mask.value()] =
+    prefill_input_buffers[signatures_.input_attn_mask.value()] =
         std::move(*attn_mask_buffer);
   }
   return absl::OkStatus();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::FillInputBufferWithToken(
+absl::Status LlmLiteRtCompiledModelExecutorBase::FillInputBufferWithToken(
     const std::vector<std::shared_ptr<TokenData>>& unprocessed_token,
     ::litert::TensorBuffer& input_buffer, bool is_per_layer_embedding) {
   if (unprocessed_token.empty()) {
@@ -431,14 +471,16 @@ absl::Status LlmLiteRtCompiledModelExecutor::FillInputBufferWithToken(
   return absl::OkStatus();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
-    absl::string_view prefill_signature, Span<const int> ids) {
+absl::Status LlmLiteRtCompiledModelExecutorBase::PrefillInternal(
+    absl::string_view prefill_signature,
+    absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>&
+        prefill_input_buffers,
+    Span<const int> ids) {
 
-  auto& curr_prefill_input_buffers = prefill_input_buffers_[prefill_signature];
   {
     // Fill the input buffers with scoped locks.
     auto& prefill_input_pos =
-        curr_prefill_input_buffers[signatures_.input_positions];
+        prefill_input_buffers[signatures_.input_positions];
     LITERT_ASSIGN_OR_RETURN(auto prefill_input_pos_size,
                             prefill_input_pos.PackedSize());
     LITERT_ASSIGN_OR_RETURN(
@@ -451,7 +493,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
     memset(prefill_input_pos_ptr, 0, prefill_input_pos_size);
     if (signatures_.input_attn_mask.has_value()) {
       RETURN_IF_ERROR(InitializeAttentionMask(
-          curr_prefill_input_buffers[signatures_.input_attn_mask.value()],
+          prefill_input_buffers[signatures_.input_attn_mask.value()],
           IsCalculationPrecisionF16()));
     }
     // TODO(b/425396146): Add the unit tests for checking the prefill length.
@@ -481,16 +523,16 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
       if (use_token_as_lookup) {
         RETURN_IF_ERROR(FillInputBufferWithToken(
             pending_input_token,
-            curr_prefill_input_buffers[signatures_.input_tokens]));
+            prefill_input_buffers[signatures_.input_tokens]));
       } else {
         RETURN_IF_ERROR(FillInputBufferWithToken(
             pending_input_token,
-            curr_prefill_input_buffers[signatures_.input_embeddings.value()]));
+            prefill_input_buffers[signatures_.input_embeddings.value()]));
         if (use_per_layer_embedding) {
           RETURN_IF_ERROR(FillInputBufferWithToken(
               pending_input_token,
-              curr_prefill_input_buffers[signatures_.input_per_layer_embeddings
-                                             .value()],
+              prefill_input_buffers[signatures_.input_per_layer_embeddings
+                                        .value()],
               /*is_per_layer_embedding=*/true));
         }
       }
@@ -509,7 +551,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
 
     if (use_token_as_lookup) {
       auto& prefill_input_buffer =
-          curr_prefill_input_buffers[signatures_.input_tokens];
+          prefill_input_buffers[signatures_.input_tokens];
       LITERT_ASSIGN_OR_RETURN(
           auto prefill_input_lock_and_addr,
           ::litert::TensorBufferScopedLock::Create(
@@ -535,7 +577,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
       // no need to create input_embeddings_ptr because TensorBuffer locking and
       // filling is handled by the embedding lookup.
       TensorBuffer* prefill_input_embeddings_buffer =
-          &(curr_prefill_input_buffers[signatures_.input_embeddings.value()]);
+          &(prefill_input_buffers[signatures_.input_embeddings.value()]);
       RETURN_IF_ERROR(embedding_lookup_->LookupPrefill(
           processed_input_tokens, prefill_input_embeddings_buffer,
           /*offset=*/input_idx));
@@ -543,8 +585,8 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
       // We may have per layer embedding as well.
       if (signatures_.input_per_layer_embeddings) {
         TensorBuffer* prefill_input_per_layer_embeddings_buffer =
-            &(curr_prefill_input_buffers[signatures_.input_per_layer_embeddings
-                                             .value()]);
+            &(prefill_input_buffers[signatures_.input_per_layer_embeddings
+                                        .value()]);
         RETURN_IF_ERROR(per_layer_embedding_lookup_->LookupPrefill(
             processed_input_tokens, prefill_input_per_layer_embeddings_buffer,
             /*offset=*/input_idx));
@@ -552,7 +594,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
     }
     if (signatures_.input_attn_mask.has_value()) {
       RETURN_IF_ERROR(FillAttentionMask(
-          curr_prefill_input_buffers[signatures_.input_attn_mask.value()],
+          prefill_input_buffers[signatures_.input_attn_mask.value()],
           start_step,
           /*steps=*/prefill_length + input_idx));
     }
@@ -578,32 +620,31 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrefillInternal(
     current_step_++;
   }
 
-  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
-      prefill_input_buffers;
-  for (const auto& [input_name, input_buffer] : curr_prefill_input_buffers) {
+  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer> input_buffers;
+  for (const auto& [input_name, input_buffer] : prefill_input_buffers) {
     LITERT_ASSIGN_OR_RETURN(auto input_buffer_dup, input_buffer.Duplicate());
-    prefill_input_buffers[input_name] = std::move(input_buffer_dup);
+    input_buffers[input_name] = std::move(input_buffer_dup);
   }
   for (const auto& [input_name, input_buffer] : *input_kv_cache_buffers_) {
     LITERT_ASSIGN_OR_RETURN(auto input_buffer_dup, input_buffer.Duplicate());
-    prefill_input_buffers[input_name] = std::move(input_buffer_dup);
+    input_buffers[input_name] = std::move(input_buffer_dup);
   }
-  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
-      prefill_output_buffers;
+  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer> output_buffers;
   for (const auto& [output_name, output_buffer] : *output_kv_cache_buffers_) {
     LITERT_ASSIGN_OR_RETURN(auto output_buffer_dup, output_buffer.Duplicate());
-    prefill_output_buffers[output_name] = std::move(output_buffer_dup);
+    output_buffers[output_name] = std::move(output_buffer_dup);
   }
 
-  LITERT_RETURN_IF_ERROR(compiled_model_.Run(
-      prefill_signature, prefill_input_buffers, prefill_output_buffers));
+  LITERT_RETURN_IF_ERROR(
+      compiled_model_.Run(prefill_signature, input_buffers, output_buffers));
 
   std::swap(input_kv_cache_buffers_, output_kv_cache_buffers_);
   return absl::OkStatus();
 }
 
 absl::StatusOr<ProcessedTokens::StepAndToken>
-LlmLiteRtCompiledModelExecutor::GetTokenToDecode(const ExecutorInputs& inputs) {
+LlmLiteRtCompiledModelExecutorBase::GetTokenToDecode(
+    const ExecutorInputs& inputs) {
   if (inputs.GetTextDataPtr().ok()) {
     auto input_tensor_size = (*inputs.GetTextTokenIdsPtr())->PackedSize();
     if (input_tensor_size && *input_tensor_size != 0) {
@@ -646,7 +687,8 @@ LlmLiteRtCompiledModelExecutor::GetTokenToDecode(const ExecutorInputs& inputs) {
   return processed_tokens_.GetNextUnprocessedToken();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::ConsumePendingOrAddProcessedToken(
+absl::Status
+LlmLiteRtCompiledModelExecutorBase::ConsumePendingOrAddProcessedToken(
     const std::vector<std::shared_ptr<TokenData>>& token) {
   auto status = processed_tokens_.MarkPendingInputTokenAsProcessed();
   if (status.ok() || status.code() != absl::StatusCode::kNotFound) {
@@ -664,7 +706,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::ConsumePendingOrAddProcessedToken(
   return absl::OkStatus();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::DecodeInternal(
+absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
     int step, const std::vector<std::shared_ptr<TokenData>>& token,
     TensorBuffer& output_logits) {
   const bool use_token_as_lookup = !signatures_.input_tokens.empty();
@@ -755,7 +797,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::DecodeInternal(
   return absl::OkStatus();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::PrepareFirstDecode() {
+absl::Status LlmLiteRtCompiledModelExecutorBase::PrepareFirstDecode() {
   if (ran_decode_) {
     return absl::OkStatus();
   }
@@ -781,12 +823,12 @@ absl::Status LlmLiteRtCompiledModelExecutor::PrepareFirstDecode() {
   return absl::OkStatus();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::Decode(
+absl::Status LlmLiteRtCompiledModelExecutorBase::Decode(
     ::litert::TensorBuffer& output_tokens) {
   return Decode(output_tokens, ExecutorDecodeParams());
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::Decode(
+absl::Status LlmLiteRtCompiledModelExecutorBase::Decode(
     ::litert::TensorBuffer& output_tokens,
     const ExecutorDecodeParams& decode_params) {
 
@@ -834,7 +876,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::Decode(
   return absl::OkStatus();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::Decode(
+absl::Status LlmLiteRtCompiledModelExecutorBase::Decode(
     const ExecutorInputs& inputs, ::litert::TensorBuffer& output_logits) {
   RETURN_IF_ERROR(PrepareFirstDecode());
   ASSIGN_OR_RETURN(auto step_and_token, GetTokenToDecode(inputs));
@@ -846,12 +888,12 @@ absl::Status LlmLiteRtCompiledModelExecutor::Decode(
 }
 
 absl::StatusOr<::litert::TensorBuffer>
-LlmLiteRtCompiledModelExecutor::DecodeLogits(const ExecutorInputs& inputs) {
+LlmLiteRtCompiledModelExecutorBase::DecodeLogits(const ExecutorInputs& inputs) {
   return DecodeLogits(inputs, ExecutorDecodeParams());
 }
 
 absl::StatusOr<::litert::TensorBuffer>
-LlmLiteRtCompiledModelExecutor::DecodeLogits(
+LlmLiteRtCompiledModelExecutorBase::DecodeLogits(
     const ExecutorInputs& inputs, const ExecutorDecodeParams& decode_params) {
   LITERT_ASSIGN_OR_RETURN(
       auto output_logits,
@@ -914,7 +956,7 @@ LlmLiteRtCompiledModelExecutor::DecodeLogits(
   return output_logits;
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::InitializeSampler() {
+absl::Status LlmLiteRtCompiledModelExecutorBase::InitializeSampler() {
   if (sampler_ != nullptr) {
     return absl::OkStatus();
   }
@@ -934,7 +976,7 @@ absl::Status LlmLiteRtCompiledModelExecutor::InitializeSampler() {
   return absl::OkStatus();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::SampleLogits(
+absl::Status LlmLiteRtCompiledModelExecutorBase::SampleLogits(
     const TensorBuffer& logits, TensorBuffer& ids_tensor) {
   if (sampler_ == nullptr) {
     RETURN_IF_ERROR(InitializeSampler());
@@ -945,14 +987,14 @@ absl::Status LlmLiteRtCompiledModelExecutor::SampleLogits(
   return absl::OkStatus();
 }
 
-absl::Status LlmLiteRtCompiledModelExecutor::Reset() {
+absl::Status LlmLiteRtCompiledModelExecutorBase::Reset() {
   current_step_ = 0;
   RETURN_IF_ERROR(processed_tokens_.RollBackToStep(0));
   sampler_.reset();
   return absl::OkStatus();
 }
 
-absl::StatusOr<int> LlmLiteRtCompiledModelExecutor::GetVocabSize() {
+absl::StatusOr<int> LlmLiteRtCompiledModelExecutorBase::GetVocabSize() {
   if (!decode_output_buffers_.contains(signatures_.output_logits)) {
     return absl::NotFoundError("Output logits info not found.");
   }
@@ -964,15 +1006,105 @@ absl::StatusOr<int> LlmLiteRtCompiledModelExecutor::GetVocabSize() {
   return logits_tensor_type.Layout().Dimensions()[2];
 }
 
+/* ===========================================================================*/
+/* LlmLiteRtCompiledModelExecutorStatic */
+/* ===========================================================================*/
+
+absl::Status LlmLiteRtCompiledModelExecutorStatic::Prefill(
+    const ExecutorInputs& inputs, const ExecutorPrefillParams& params) {
+
+  // For now, we reduce the input and processed tokens for prefill only with
+  // the first input and processed tokens. This should be updated if user select
+  // the decode output candidate.
+  constexpr int kTokenIndexToReduce = 0;
+  if (ran_decode_) {
+    ran_decode_ = false;
+    if (output_batch_size_ > 1) {
+      LITERT_RETURN_IF_ERROR(
+          processed_tokens_.ReduceTokenCandidates(kTokenIndexToReduce));
+      LITERT_RETURN_IF_ERROR(
+          CopyKvCacheBuffers(output_batch_size_, kTokenIndexToReduce,
+                             *input_kv_cache_buffers_, kv_cache_buffers_1_));
+      input_kv_cache_buffers_ = &kv_cache_buffers_1_;
+      output_kv_cache_buffers_ = &kv_cache_buffers_2_;
+    }
+  }
+
+  LITERT_ASSIGN_OR_RETURN(auto tensor_type,
+                          (*inputs.GetTextTokenIdsPtr())->TensorType());
+  // Accept batch size 1 or output_batch_size_ though prefill handles only the
+  // first batch element.
+  int32_t input_batch_size = tensor_type.Layout().Dimensions()[0];
+  if (input_batch_size != 1) {
+    RET_CHECK_EQ(input_batch_size, output_batch_size_);
+  }
+  RET_CHECK_GT(tensor_type.Layout().Dimensions()[1], 0)
+      << "Prefill token ids must be non-empty.";
+
+  if (embedding_lookup_ != nullptr) {
+    RETURN_IF_ERROR(embedding_lookup_->UpdateMultiModalEmbeddings(inputs));
+  }
+
+  LITERT_ASSIGN_OR_RETURN(auto ids, ReferTensorBufferAsSpan<int32_t>(
+                                        *(*inputs.GetTextTokenIdsPtr())));
+  // Reduce the input ids only with one user selected.
+  auto input_length = ids.size() / input_batch_size;
+  ids = ids.subspan(kTokenIndexToReduce * input_length, input_length);
+  ASSIGN_OR_RETURN(auto work_groups, GetOptimizedPrefillWorkGroups(
+                                         prefill_signature_map_, ids.size()));
+  for (const auto& [prefill_signature, prefill_length] : work_groups) {
+    // Keep track of the signatures that have already had their buffers
+    // created only create them once.
+    if (!prefill_input_buffers_.contains(prefill_signature)) {
+      prefill_input_buffers_[prefill_signature] = {};
+      RETURN_IF_ERROR(CreatePrefillInputBuffers(
+          prefill_signature, prefill_length, prefill_length,
+          prefill_input_buffers_[prefill_signature]));
+    }
+    RETURN_IF_ERROR(PrefillInternal(prefill_signature,
+                                    prefill_input_buffers_[prefill_signature],
+                                    ids.subspan(/*pos=*/0, prefill_length)));
+    ids = ids.subspan(/*pos=*/prefill_length);
+  }
+  RET_CHECK_EQ(ids.size(), 0).SetCode(absl::StatusCode::kInternal)
+      << "Work groups not covering the entire prefill input.";
+
+  // If requested, wait for prefill to complete, for example, by benchmark.
+  if (params.GetWaitForCompletion()) {
+    // A workaround to sync with backend especially for GPU backends is to do
+    // read-lock a small decode buffer, input_positions which most likely
+    // consists only of one value.
+    if (!signatures_.input_positions.empty() &&
+        decode_input_buffers_.contains(signatures_.input_positions)) {
+      ABSL_LOG(INFO) << "Waiting for prefill to complete.";
+      auto lock = ::litert::TensorBufferScopedLock::Create(
+          decode_input_buffers_[signatures_.input_positions],
+          TensorBuffer::LockMode::kRead);
+      if (!lock) {
+        ABSL_LOG(ERROR) << "Failed to lock decode input_positions as a "
+                        << "workaround to sync with backend.";
+      }
+    } else {
+      ABSL_LOG(WARNING) << "Ignore waiting for prefill to complete.";
+    }
+  }
+
+  if (embedding_lookup_ != nullptr) {
+    RETURN_IF_ERROR(embedding_lookup_->CleanupMultiModalEmbeddings());
+  }
+
+  return absl::OkStatus();
+}
+
 // static
-// Creates a LlmLiteRtCompiledModelExecutor from a LiteRt model.
-absl::StatusOr<std::unique_ptr<LlmLiteRtCompiledModelExecutor>>
-LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
-                                       Environment& lrt_env,
-                                       ModelResources& resources) {
+// Creates a LlmLiteRtCompiledModelExecutorStatic from a LiteRt model.
+absl::StatusOr<std::unique_ptr<LlmLiteRtCompiledModelExecutorStatic>>
+LlmLiteRtCompiledModelExecutorStatic::Create(
+    LlmExecutorSettings executor_settings, Environment& lrt_env,
+    ModelResources& resources) {
   ASSIGN_OR_RETURN(auto litert_model,
                    resources.GetTFLiteModel(ModelType::kTfLitePrefillDecode));
-  // For the LlmLiteRtCompiledModelExecutor, ML_DRIFT backend is used by
+  // For the LlmLiteRtCompiledModelExecutorStatic, ML_DRIFT backend is used by
   // default.
   // TODO(b/405424188): - Add support for NPU backends.
   auto compilation_options = ::litert::Options::Create();
@@ -1107,9 +1239,9 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
                           litert_model->FindSignature(prefill_signature_key));
   std::string kv_cache_k_root_name;
   std::string kv_cache_v_root_name;
-  RETURN_IF_ERROR(GetCacheRootNames(prefill_signature.InputNames(),
-                                    kv_cache_k_root_name,
-                                    kv_cache_v_root_name));
+  RETURN_IF_ERROR(GetKVCacheRootNames(prefill_signature.InputNames(),
+                                      kv_cache_k_root_name,
+                                      kv_cache_v_root_name));
   LITERT_ASSIGN_OR_RETURN(auto decode_signature,
                           litert_model->FindSignature(kDecodeSignatureRunner));
   ASSIGN_OR_RETURN(
@@ -1239,7 +1371,7 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
   std::unique_ptr<EmbeddingLookupManager> per_layer_embedding_lookup;
   RETURN_IF_ERROR(InitializeEmbeddingLookups(resources, embedding_lookup,
                                              per_layer_embedding_lookup));
-  return absl::WrapUnique(new LlmLiteRtCompiledModelExecutor(
+  return absl::WrapUnique(new LlmLiteRtCompiledModelExecutorStatic(
       std::move(executor_settings), lrt_env, litert_model,
       std::move(compiled_model), std::move(decode_input_buffers),
       std::move(decode_output_buffers), std::move(input_kv_cache_buffers),
@@ -1247,8 +1379,290 @@ LlmLiteRtCompiledModelExecutor::Create(LlmExecutorSettings executor_settings,
       std::move(decode_input_kv_cache_buffers),
       std::move(decode_output_kv_cache_buffers), std::move(prefill_runner_set),
       signatures, batch_size, std::move(weight_cache_path),
-      std::string(prefill_signature_key), std::move(embedding_lookup),
-      std::move(per_layer_embedding_lookup), activation_data_type));
+      std::move(embedding_lookup), std::move(per_layer_embedding_lookup),
+      activation_data_type));
+}
+
+/* ===========================================================================*/
+/* LlmLiteRtCompiledModelExecutorDynamic */
+/* ===========================================================================*/
+
+absl::Status LlmLiteRtCompiledModelExecutorDynamic::Prefill(
+    const ExecutorInputs& inputs, const ExecutorPrefillParams& params) {
+  LITERT_ASSIGN_OR_RETURN(auto tensor_type,
+                          (*inputs.GetTextTokenIdsPtr())->TensorType());
+  // Only accept batch size 1 for now.
+  RET_CHECK_EQ(tensor_type.Layout().Dimensions()[0], 1);
+  RET_CHECK_GT(tensor_type.Layout().Dimensions()[1], 0)
+      << "Prefill token ids must be non-empty.";
+  LITERT_ASSIGN_OR_RETURN(auto ids, ReferTensorBufferAsSpan<int32_t>(
+                                        *(*inputs.GetTextTokenIdsPtr())));
+
+  // Check if have a pending input token. Note that 'internal_start_step' is
+  // always equal to the number of processed tokens plus 1.
+  ProcessedTokens::StepAndToken step_and_token =
+      processed_tokens_.GetNextUnprocessedToken();
+  bool has_pending_input_token = !step_and_token.token.empty();
+  int prefill_length = has_pending_input_token ? ids.size() : ids.size() - 1;
+  // If there is no pending input token and no input token to prefill, we can
+  // return early by storing the token as a pending input token.
+  if (!has_pending_input_token && prefill_length == 0) {
+    RETURN_IF_ERROR(processed_tokens_.AddPendingInputToken(
+        {std::make_shared<TokenData>(ids[0])}));
+    return absl::OkStatus();
+  }
+
+  int kv_length = 0;
+  if (kv_cache_buffers_1_.empty()) {
+    kv_length = prefill_length;
+    // First time prefilling, allocate KV cache buffers.
+    for (const auto& k_cache_input_name : key_cache_input_names_) {
+      RETURN_IF_ERROR(ResolveDynamicShape(model_, compiled_model_, "prefill",
+                                          k_cache_input_name, prefill_length));
+      LITERT_ASSIGN_OR_RETURN(
+          auto input_buffer,
+          compiled_model_.CreateInputBuffer("prefill", k_cache_input_name));
+      kv_cache_buffers_1_[k_cache_input_name] = std::move(input_buffer);
+    }
+    for (const auto& v_cache_input_name : value_cache_input_names_) {
+      RETURN_IF_ERROR(ResolveDynamicShape(model_, compiled_model_, "prefill",
+                                          v_cache_input_name, prefill_length));
+      LITERT_ASSIGN_OR_RETURN(
+          auto input_buffer,
+          compiled_model_.CreateInputBuffer("prefill", v_cache_input_name));
+      kv_cache_buffers_1_[v_cache_input_name] = std::move(input_buffer);
+    }
+  } else {
+    {
+      RET_CHECK(!kv_cache_buffers_1_.empty());
+      const TensorBuffer& key_buffer =
+          kv_cache_buffers_1_[key_cache_input_names_[0]];
+      LITERT_ASSIGN_OR_RETURN(const RankedTensorType& key_buffer_tensor_type,
+                              key_buffer.TensorType());
+      kv_length =
+          key_buffer_tensor_type.Layout().Dimensions()[key_dynamic_dim_index_];
+    }
+
+    int free_kv_entries = kv_length - step_and_token.step;
+    if (prefill_length > free_kv_entries) {
+      int new_kv_seq_len = kv_length + prefill_length;
+      int entries_to_add = new_kv_seq_len - kv_length;
+      for (const auto& k_cache_input_name : key_cache_input_names_) {
+        RETURN_IF_ERROR(ResolveDynamicShape(model_, compiled_model_, "prefill",
+                                            k_cache_input_name,
+                                            new_kv_seq_len));
+        ASSIGN_OR_RETURN(kv_cache_buffers_1_[k_cache_input_name],
+                         ResizeKVCacheTensorBuffer(
+                             env_, kv_cache_buffers_1_[k_cache_input_name],
+                             key_dynamic_dim_index_, entries_to_add));
+      }
+      for (const auto& v_cache_input_name : value_cache_input_names_) {
+        RETURN_IF_ERROR(ResolveDynamicShape(model_, compiled_model_, "prefill",
+                                            v_cache_input_name,
+                                            new_kv_seq_len));
+        ASSIGN_OR_RETURN(kv_cache_buffers_1_[v_cache_input_name],
+                         ResizeKVCacheTensorBuffer(
+                             env_, kv_cache_buffers_1_[v_cache_input_name],
+                             value_dynamic_dim_index_, entries_to_add));
+      }
+      kv_length = new_kv_seq_len;
+    }
+  }
+
+  absl::flat_hash_map<absl::string_view, TensorBuffer> prefill_input_buffers;
+  RETURN_IF_ERROR(CreatePrefillInputBuffers("prefill", prefill_length,
+                                            kv_length, prefill_input_buffers));
+
+  input_kv_cache_buffers_ = &kv_cache_buffers_1_;
+  output_kv_cache_buffers_ = &kv_cache_buffers_1_;
+
+  RETURN_IF_ERROR(PrefillInternal("prefill", prefill_input_buffers, ids));
+
+  return absl::OkStatus();
+}
+
+absl::Status LlmLiteRtCompiledModelExecutorDynamic::DecodeInternal(
+    int step, const std::vector<std::shared_ptr<TokenData>>& token,
+    TensorBuffer& output_logits) {
+  int current_kv_len = 0;
+  {
+    RET_CHECK(!kv_cache_buffers_1_.empty());
+    const TensorBuffer& key_buffer =
+        kv_cache_buffers_1_[key_cache_input_names_[0]];
+    LITERT_ASSIGN_OR_RETURN(const RankedTensorType& key_buffer_tensor_type,
+                            key_buffer.TensorType());
+    current_kv_len =
+        key_buffer_tensor_type.Layout().Dimensions()[key_dynamic_dim_index_];
+  }
+
+  if (current_kv_len <= step) {
+    int entries_to_add = kv_increament_size_;
+    int new_kv_len = current_kv_len + entries_to_add;
+    for (const auto& k_cache_input_name : key_cache_input_names_) {
+      RETURN_IF_ERROR(ResolveDynamicShape(model_, compiled_model_, "decode",
+                                          k_cache_input_name, new_kv_len));
+      ASSIGN_OR_RETURN(kv_cache_buffers_1_[k_cache_input_name],
+                       ResizeKVCacheTensorBuffer(
+                           env_, kv_cache_buffers_1_[k_cache_input_name],
+                           key_dynamic_dim_index_, entries_to_add));
+    }
+    for (const auto& v_cache_input_name : value_cache_input_names_) {
+      RETURN_IF_ERROR(ResolveDynamicShape(model_, compiled_model_, "decode",
+                                          v_cache_input_name, new_kv_len));
+      ASSIGN_OR_RETURN(kv_cache_buffers_1_[v_cache_input_name],
+                       ResizeKVCacheTensorBuffer(
+                           env_, kv_cache_buffers_1_[v_cache_input_name],
+                           value_dynamic_dim_index_, entries_to_add));
+    }
+    current_kv_len = new_kv_len;
+  }
+
+  RETURN_IF_ERROR(ResolveDynamicShape(model_, compiled_model_, "decode",
+                                      signatures_.input_attn_mask.value(),
+                                      current_kv_len));
+  LITERT_ASSIGN_OR_RETURN(
+      decode_input_buffers_[signatures_.input_attn_mask.value()],
+      compiled_model_.CreateInputBuffer("decode",
+                                        signatures_.input_attn_mask.value()));
+
+  return LlmLiteRtCompiledModelExecutorBase::DecodeInternal(step, token,
+                                                            output_logits);
+}
+
+// static
+// Creates a LlmLiteRtCompiledModelExecutorDynamic from a LiteRt model.
+absl::StatusOr<std::unique_ptr<LlmLiteRtCompiledModelExecutorDynamic>>
+LlmLiteRtCompiledModelExecutorDynamic::Create(
+    LlmExecutorSettings executor_settings, Environment& lrt_env,
+    ModelResources& resources) {
+  ASSIGN_OR_RETURN(auto litert_model,
+                   resources.GetTFLiteModel(ModelType::kTfLitePrefillDecode));
+  auto compilation_options = ::litert::Options::Create();
+  std::string weight_cache_path = executor_settings.GetCacheDir();
+  const Backend backend = executor_settings.GetBackend();
+  RET_CHECK_EQ(backend, Backend::CPU)
+      << "LlmLiteRtCompiledModelExecutorDynamic only supports CPU backend.";
+  uint32_t kv_increament_size = 0;
+  {
+    Expected<CpuOptions> cpu_compilation_options = CpuOptions::Create();
+    ASSIGN_OR_RETURN(const auto& cpu_config,
+                     executor_settings.GetBackendConfig<CpuConfig>());
+    kv_increament_size = cpu_config.kv_increment_size;
+    cpu_compilation_options->SetNumThreads(cpu_config.number_of_threads);
+    auto weight_cache_file =
+        executor_settings.GetWeightCacheFile(".xnnpack_cache");
+    if (weight_cache_file.ok()) {
+      if (std::holds_alternative<std::string>(*weight_cache_file)) {
+        weight_cache_path = std::get<std::string>(*weight_cache_file);
+        cpu_compilation_options->SetXNNPackWeightCachePath(
+            weight_cache_path.c_str());
+      } else {
+        auto scoped_cache_file =
+            std::get<std::shared_ptr<ScopedFile>>(*weight_cache_file);
+        ASSIGN_OR_RETURN(auto duplicated, scoped_cache_file->Duplicate());
+        ASSIGN_OR_RETURN(int fd, duplicated.Release());
+        cpu_compilation_options->SetXNNPackWeightCacheFileDescriptor(fd);
+      }
+    }
+    RET_CHECK_GT(kv_increament_size, 0)
+        << "KV increment size must be greater than 0.";
+    LITERT_ASSIGN_OR_RETURN(const uint32_t default_xnnpack_flags,
+                            cpu_compilation_options->GetXNNPackFlags());
+    cpu_compilation_options->SetXNNPackFlags(
+        default_xnnpack_flags |
+        TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS);
+    LITERT_ASSIGN_OR_RETURN(auto runtime_options, RuntimeOptions::Create());
+    runtime_options.SetShloCompositeInlining(true);
+    compilation_options->AddOpaqueOptions(std::move(runtime_options));
+    compilation_options->AddOpaqueOptions(std::move(*cpu_compilation_options));
+    compilation_options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu);
+  }
+
+  LITERT_ASSIGN_OR_RETURN(
+      auto compiled_model,
+      CompiledModel::Create(lrt_env, *litert_model,
+                            std::move(*compilation_options)));
+
+  absl::flat_hash_map<absl::string_view, TensorBuffer> decode_input_buffers;
+  absl::flat_hash_map<absl::string_view, TensorBuffer> decode_output_buffers;
+
+  LITERT_ASSIGN_OR_RETURN(auto decode_signature,
+                          litert_model->FindSignature(kDecodeSignatureRunner));
+  std::string kv_cache_k_root_name;
+  std::string kv_cache_v_root_name;
+  RETURN_IF_ERROR(GetKVCacheRootNames(decode_signature.InputNames(),
+                                      kv_cache_k_root_name,
+                                      kv_cache_v_root_name));
+  ASSIGN_OR_RETURN(
+      ModelSignatures signatures,
+      GetModelSignaturesFromInputOutputNames(decode_signature.InputNames(),
+                                             decode_signature.OutputNames()));
+
+  std::vector<std::string> key_cache_input_names;
+  std::vector<std::string> value_cache_input_names;
+  for (auto input_name : decode_signature.InputNames()) {
+    bool is_key_cache_input =
+        absl::StartsWith(input_name, kv_cache_k_root_name);
+    if (is_key_cache_input) {
+      key_cache_input_names.push_back(std::string(input_name));
+    }
+
+    bool is_value_cache_input =
+        absl::StartsWith(input_name, kv_cache_v_root_name);
+    if (is_value_cache_input) {
+      value_cache_input_names.push_back(std::string(input_name));
+    }
+
+    bool is_kv_cache_input = is_key_cache_input || is_value_cache_input;
+    bool is_attn_mask_input =
+        signatures.input_attn_mask.has_value() &&
+        absl::StartsWith(input_name, signatures.input_attn_mask.value());
+    if (!is_kv_cache_input && !is_attn_mask_input) {
+      LITERT_ASSIGN_OR_RETURN(
+          auto input_buffer,
+          compiled_model.CreateInputBuffer(kDecodeSignatureRunner, input_name));
+      decode_input_buffers[input_name] = std::move(input_buffer);
+    }
+  }
+  for (auto output_name : decode_signature.OutputNames()) {
+    if (!absl::StartsWith(output_name, kv_cache_k_root_name) &&
+        !absl::StartsWith(output_name, kv_cache_v_root_name)) {
+      LITERT_ASSIGN_OR_RETURN(auto output_buffer,
+                              compiled_model.CreateOutputBuffer(
+                                  kDecodeSignatureRunner, output_name));
+      decode_output_buffers[output_name] = std::move(output_buffer);
+    }
+  }
+
+  ASSIGN_OR_RETURN(
+      int k_dynamic_dim,
+      GetDynamicDimIndex(*litert_model, "prefill", key_cache_input_names[0]));
+  ASSIGN_OR_RETURN(
+      int v_dynamic_dim,
+      GetDynamicDimIndex(*litert_model, "prefill", value_cache_input_names[0]));
+
+  LITERT_ASSIGN_OR_RETURN(
+      auto output_logits_buffer,
+      decode_output_buffers[signatures.output_logits].Duplicate());
+  LITERT_ASSIGN_OR_RETURN(auto output_logits_buffer_tensor_type,
+                          output_logits_buffer.TensorType());
+  RET_CHECK(output_logits_buffer_tensor_type.Layout().Dimensions().size() == 3)
+      << "Output logits must be (batch, seq, vocab)";
+  int batch_size = output_logits_buffer_tensor_type.Layout().Dimensions()[0];
+  RET_CHECK_EQ(batch_size, 1) << "Only support batch size 1 for now.";
+  std::unique_ptr<EmbeddingLookupManager> embedding_lookup;
+  std::unique_ptr<EmbeddingLookupManager> per_layer_embedding_lookup;
+  RETURN_IF_ERROR(InitializeEmbeddingLookups(resources, embedding_lookup,
+                                             per_layer_embedding_lookup));
+
+  return absl::WrapUnique(new LlmLiteRtCompiledModelExecutorDynamic(
+      std::move(executor_settings), lrt_env, litert_model,
+      std::move(compiled_model), std::move(decode_input_buffers),
+      std::move(decode_output_buffers), k_dynamic_dim, v_dynamic_dim,
+      kv_increament_size, std::move(key_cache_input_names),
+      std::move(value_cache_input_names), signatures, batch_size,
+      std::move(weight_cache_path), std::move(embedding_lookup),
+      std::move(per_layer_embedding_lookup)));
 }
 
 }  // namespace litert::lm

@@ -25,7 +25,7 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/util/scoped_file.h"
-#include "runtime/util/test_utils.h"  // NOLINT
+#include "runtime/util/test_utils.h"  // IWYU pragma: keep
 
 namespace litert::lm {
 namespace {
@@ -182,7 +182,8 @@ TEST(LlmExecutorConfigTest, LlmExecutorSettings) {
   std::stringstream oss;
   oss << (*settings);
   const std::string expected_output = R"(backend: GPU_ARTISAN
-backend_config: num_output_candidates: 1
+backend_config:
+num_output_candidates: 1
 wait_for_weight_uploads: 1
 num_decode_steps_per_sync: 3
 sequence_batch_size: 16
@@ -227,7 +228,8 @@ TEST(LlmExecutorConfigTest, LlmExecutorSettingsWithAdvancedSettings) {
   std::stringstream oss;
   oss << (*settings);
   const std::string expected_output = R"(backend: GPU_ARTISAN
-backend_config: num_output_candidates: 1
+backend_config:
+num_output_candidates: 1
 wait_for_weight_uploads: 1
 num_decode_steps_per_sync: 3
 sequence_batch_size: 16

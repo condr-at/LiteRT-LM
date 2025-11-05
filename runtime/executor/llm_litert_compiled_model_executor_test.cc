@@ -42,30 +42,32 @@
 #include "runtime/components/constrained_decoding/constrained_decoder.h"
 #include "runtime/components/constrained_decoding/fake_constraint.h"
 #include "runtime/components/model_resources.h"
+#include "runtime/components/model_resources_litert_lm.h"
 #include "runtime/components/model_resources_task.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/util/convert_tensor_buffer.h"
+#include "runtime/util/litert_lm_loader.h"
 #include "runtime/util/model_asset_bundle_resources.h"
 #include "runtime/util/scoped_file.h"
+#include "runtime/util/status_macros.h"
 #include "runtime/util/test_utils.h"  // IWYU pragma: keep
 
 namespace litert::lm {
 namespace {
+
+using ::testing::status::StatusIs;
+
+constexpr char kTestStaticModelPath[] =
+    "litert_lm/runtime/testdata/test_lm.task";
+
 const int kMaxNumTokens = 32;
 const int kNumThreads = 4;
 
-using ::litert::lm::Backend;
-using ::litert::lm::LlmExecutorSettings;
-using ::litert::lm::LlmLiteRtCompiledModelExecutor;
-using ::litert::lm::ModelAssetBundleResources;
-using ::litert::lm::ModelAssets;
-using ::litert::lm::ModelResourcesTask;
-
-absl::StatusOr<std::unique_ptr<ModelResources>> CreateExecutorModelResources(
-    absl::string_view model_path) {
+absl::StatusOr<std::unique_ptr<ModelResources>>
+CreateExecutorModelResourcesTask(absl::string_view model_path) {
   auto scoped_file = ScopedFile::Open(model_path);
   auto resources = ModelAssetBundleResources::Create(
       /*tag=*/"", std::move(*scoped_file));
@@ -73,16 +75,23 @@ absl::StatusOr<std::unique_ptr<ModelResources>> CreateExecutorModelResources(
   return model_resources;
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest, CreateExecutorTest_WithoutCache) {
+absl::StatusOr<std::unique_ptr<ModelResources>>
+CreateExecutorModelResourcesLitertLm(absl::string_view model_path) {
+  ASSIGN_OR_RETURN(auto scoped_file, ScopedFile::Open(model_path));
+  return ModelResourcesLitertLm::Create(
+      std::make_unique<LitertLmLoader>(std::move(scoped_file)));
+}
+
+TEST(LlmLiteRtCompiledModelExecutorStaticTest,
+     CreateExecutorTest_WithoutCache) {
   auto model_path =
-      std::filesystem::path(::testing::SrcDir()) /
-      "litert_lm/runtime/testdata/test_lm.task";
+      std::filesystem::path(::testing::SrcDir()) / kTestStaticModelPath;
   ASSERT_OK_AND_ASSIGN(auto model_resources,
-                       CreateExecutorModelResources(model_path.string()));
-  auto model_assets = ModelAssets::Create(model_path.string());
-  ASSERT_OK(model_assets);
+                       CreateExecutorModelResourcesTask(model_path.string()));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(model_path.string()));
   auto executor_settings =
-      LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
+      LlmExecutorSettings::CreateDefault(model_assets, Backend::CPU);
   executor_settings->SetCacheDir(":nocache");
   executor_settings->SetMaxNumTokens(kMaxNumTokens);
   ::litert::lm::CpuConfig config;
@@ -90,22 +99,21 @@ TEST(LlmLiteRTCompiledModelExecutorTest, CreateExecutorTest_WithoutCache) {
   executor_settings->SetBackendConfig(config);
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto env, Environment::Create(std::vector<Environment::Option>()));
-  auto executor = LlmLiteRtCompiledModelExecutor::Create(*executor_settings,
-                                                         env, *model_resources);
+  auto executor = LlmLiteRtCompiledModelExecutorStatic::Create(
+      *executor_settings, env, *model_resources);
   ASSERT_OK(executor);
   ASSERT_NE(*executor, nullptr);
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest, PrefillTest) {
+TEST(LlmLiteRtCompiledModelExecutorStaticTest, PrefillTest) {
   auto model_path =
-      std::filesystem::path(::testing::SrcDir()) /
-      "litert_lm/runtime/testdata/test_lm.task";
+      std::filesystem::path(::testing::SrcDir()) / kTestStaticModelPath;
   ASSERT_OK_AND_ASSIGN(auto model_resources,
-                       CreateExecutorModelResources(model_path.string()));
-  auto model_assets = ModelAssets::Create(model_path.string());
-  ASSERT_OK(model_assets);
+                       CreateExecutorModelResourcesTask(model_path.string()));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(model_path.string()));
   auto executor_settings =
-      LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
+      LlmExecutorSettings::CreateDefault(model_assets, Backend::CPU);
   executor_settings->SetCacheDir(":nocache");
   executor_settings->SetMaxNumTokens(kMaxNumTokens);
   ::litert::lm::CpuConfig config;
@@ -114,10 +122,9 @@ TEST(LlmLiteRTCompiledModelExecutorTest, PrefillTest) {
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto env, Environment::Create(std::vector<Environment::Option>()));
   ASSERT_OK_AND_ASSIGN(auto executor,
-                       LlmLiteRtCompiledModelExecutor::Create(
+                       LlmLiteRtCompiledModelExecutorStatic::Create(
                            *executor_settings, env, *model_resources));
   ASSERT_NE(executor, nullptr);
-
 
   ExecutorInputs inputs;
   // Create a tensor buffer with 3 elements but only the first two elements
@@ -135,16 +142,15 @@ TEST(LlmLiteRTCompiledModelExecutorTest, PrefillTest) {
   EXPECT_EQ(current_step, 3);
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest, DecodeTest) {
+TEST(LlmLiteRtCompiledModelExecutorStaticTest, DecodeTest) {
   auto model_path =
-      std::filesystem::path(::testing::SrcDir()) /
-      "litert_lm/runtime/testdata/test_lm.task";
+      std::filesystem::path(::testing::SrcDir()) / kTestStaticModelPath;
   ASSERT_OK_AND_ASSIGN(auto model_resources,
-                       CreateExecutorModelResources(model_path.string()));
-  auto model_assets = ModelAssets::Create(model_path.string());
-  ASSERT_OK(model_assets);
+                       CreateExecutorModelResourcesTask(model_path.string()));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(model_path.string()));
   auto executor_settings =
-      LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
+      LlmExecutorSettings::CreateDefault(model_assets, Backend::CPU);
   executor_settings->SetCacheDir(":nocache");
   executor_settings->SetMaxNumTokens(kMaxNumTokens);
   ::litert::lm::CpuConfig config;
@@ -153,10 +159,9 @@ TEST(LlmLiteRTCompiledModelExecutorTest, DecodeTest) {
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto env, Environment::Create(std::vector<Environment::Option>()));
   ASSERT_OK_AND_ASSIGN(auto executor,
-                       LlmLiteRtCompiledModelExecutor::Create(
+                       LlmLiteRtCompiledModelExecutorStatic::Create(
                            *executor_settings, env, *model_resources));
   ASSERT_NE(executor, nullptr);
-
 
   ExecutorInputs inputs;
   // Create a tensor buffer with 3 elements but only the first two elements
@@ -198,16 +203,15 @@ TEST(LlmLiteRTCompiledModelExecutorTest, DecodeTest) {
   }
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest, ConstrainedDecodeTest) {
+TEST(LlmLiteRtCompiledModelExecutorStaticTest, ConstrainedDecodeTest) {
   auto model_path =
-      std::filesystem::path(::testing::SrcDir()) /
-      "litert_lm/runtime/testdata/test_lm.task";
+      std::filesystem::path(::testing::SrcDir()) / kTestStaticModelPath;
   ASSERT_OK_AND_ASSIGN(auto model_resources,
-                       CreateExecutorModelResources(model_path.string()));
-  auto model_assets = ModelAssets::Create(model_path.string());
-  ASSERT_OK(model_assets);
+                       CreateExecutorModelResourcesTask(model_path.string()));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(model_path.string()));
   auto executor_settings =
-      LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
+      LlmExecutorSettings::CreateDefault(model_assets, Backend::CPU);
   executor_settings->SetCacheDir(":nocache");
   executor_settings->SetMaxNumTokens(kMaxNumTokens);
   ::litert::lm::CpuConfig config;
@@ -216,10 +220,9 @@ TEST(LlmLiteRTCompiledModelExecutorTest, ConstrainedDecodeTest) {
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto env, Environment::Create(std::vector<Environment::Option>()));
   ASSERT_OK_AND_ASSIGN(auto executor,
-                       LlmLiteRtCompiledModelExecutor::Create(
+                       LlmLiteRtCompiledModelExecutorStatic::Create(
                            *executor_settings, env, *model_resources));
   ASSERT_NE(executor, nullptr);
-
 
   ExecutorInputs inputs;
   // Create a tensor buffer with 3 elements but only the first two elements
@@ -239,7 +242,6 @@ TEST(LlmLiteRTCompiledModelExecutorTest, ConstrainedDecodeTest) {
 
   LITERT_ASSERT_OK_AND_ASSIGN(auto output_tokens,
                               CreateTensorBuffer<int>({1, 1}));
-
 
   ExecutorDecodeParams params;
 
@@ -269,16 +271,15 @@ TEST(LlmLiteRTCompiledModelExecutorTest, ConstrainedDecodeTest) {
   }
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest, DecodeLogitsTest) {
+TEST(LlmLiteRtCompiledModelExecutorStaticTest, DecodeLogitsTest) {
   auto model_path =
-      std::filesystem::path(::testing::SrcDir()) /
-      "litert_lm/runtime/testdata/test_lm.task";
+      std::filesystem::path(::testing::SrcDir()) / kTestStaticModelPath;
   ASSERT_OK_AND_ASSIGN(auto model_resources,
-                       CreateExecutorModelResources(model_path.string()));
-  auto model_assets = ModelAssets::Create(model_path.string());
-  ASSERT_OK(model_assets);
+                       CreateExecutorModelResourcesTask(model_path.string()));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(model_path.string()));
   auto executor_settings =
-      LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
+      LlmExecutorSettings::CreateDefault(model_assets, Backend::CPU);
   executor_settings->SetCacheDir(":nocache");
   executor_settings->SetMaxNumTokens(kMaxNumTokens);
   ::litert::lm::CpuConfig config;
@@ -287,10 +288,9 @@ TEST(LlmLiteRTCompiledModelExecutorTest, DecodeLogitsTest) {
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto env, Environment::Create(std::vector<Environment::Option>()));
   ASSERT_OK_AND_ASSIGN(auto executor,
-                       LlmLiteRtCompiledModelExecutor::Create(
+                       LlmLiteRtCompiledModelExecutorStatic::Create(
                            *executor_settings, env, *model_resources));
   ASSERT_NE(executor, nullptr);
-
 
   ExecutorInputs inputs;
   // Create a tensor buffer with 3 elements but only the first two elements
@@ -322,7 +322,7 @@ TEST(LlmLiteRTCompiledModelExecutorTest, DecodeLogitsTest) {
   }
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest, CreateExecutorTest_WithCache) {
+TEST(LlmLiteRtCompiledModelExecutorStaticTest, CreateExecutorTest_WithCache) {
   auto cache_path = std::filesystem::path(::testing::TempDir()) /
                     absl::StrCat("cache-", std::rand());
   std::filesystem::remove_all(cache_path);
@@ -331,14 +331,13 @@ TEST(LlmLiteRTCompiledModelExecutorTest, CreateExecutorTest_WithCache) {
   };
 
   auto model_path =
-      std::filesystem::path(::testing::SrcDir()) /
-      "litert_lm/runtime/testdata/test_lm.task";
+      std::filesystem::path(::testing::SrcDir()) / kTestStaticModelPath;
   ASSERT_OK_AND_ASSIGN(auto model_resources,
-                       CreateExecutorModelResources(model_path.string()));
-  auto model_assets = ModelAssets::Create(model_path.string());
-  ASSERT_OK(model_assets);
+                       CreateExecutorModelResourcesTask(model_path.string()));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(model_path.string()));
   auto executor_settings =
-      LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
+      LlmExecutorSettings::CreateDefault(model_assets, Backend::CPU);
   executor_settings->SetCacheDir(cache_path.string());
   executor_settings->SetMaxNumTokens(kMaxNumTokens);
   ::litert::lm::CpuConfig config;
@@ -346,13 +345,13 @@ TEST(LlmLiteRTCompiledModelExecutorTest, CreateExecutorTest_WithCache) {
   executor_settings->SetBackendConfig(config);
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto env, Environment::Create(std::vector<Environment::Option>()));
-  auto executor = LlmLiteRtCompiledModelExecutor::Create(*executor_settings,
-                                                         env, *model_resources);
+  auto executor = LlmLiteRtCompiledModelExecutorStatic::Create(
+      *executor_settings, env, *model_resources);
   ASSERT_OK(executor);
   ASSERT_NE(*executor, nullptr);
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest,
+TEST(LlmLiteRtCompiledModelExecutorStaticTest,
      CreateExecutorTest_WithFileDescriptorCache) {
   auto cache_path = std::filesystem::path(::testing::TempDir()) /
                     absl::StrCat("cache-", std::rand(), ".cache");
@@ -370,14 +369,13 @@ TEST(LlmLiteRTCompiledModelExecutorTest,
       std::make_shared<ScopedFile>(std::move(scoped_cache_file));
 
   auto model_path =
-      std::filesystem::path(::testing::SrcDir()) /
-      "litert_lm/runtime/testdata/test_lm.task";
+      std::filesystem::path(::testing::SrcDir()) / kTestStaticModelPath;
   ASSERT_OK_AND_ASSIGN(auto model_resources,
-                       CreateExecutorModelResources(model_path.string()));
-  auto model_assets = ModelAssets::Create(model_path.string());
-  ASSERT_OK(model_assets);
+                       CreateExecutorModelResourcesTask(model_path.string()));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(model_path.string()));
   auto executor_settings =
-      LlmExecutorSettings::CreateDefault(*model_assets, Backend::CPU);
+      LlmExecutorSettings::CreateDefault(model_assets, Backend::CPU);
   executor_settings->SetScopedCacheFile(shared_scoped_cache_file);
   executor_settings->SetMaxNumTokens(kMaxNumTokens);
   ::litert::lm::CpuConfig config;
@@ -385,8 +383,8 @@ TEST(LlmLiteRTCompiledModelExecutorTest,
   executor_settings->SetBackendConfig(config);
   LITERT_ASSERT_OK_AND_ASSIGN(
       auto env, Environment::Create(std::vector<Environment::Option>()));
-  auto executor = LlmLiteRtCompiledModelExecutor::Create(*executor_settings,
-                                                         env, *model_resources);
+  auto executor = LlmLiteRtCompiledModelExecutorStatic::Create(
+      *executor_settings, env, *model_resources);
   ASSERT_OK(executor);
   ASSERT_NE(*executor, nullptr);
 }
@@ -432,7 +430,7 @@ class TfLiteModelResources : public ModelResources {
   Model model_;
 };
 
-TEST(LlmLiteRTCompiledModelExecutorTest, MultipleOutput_Decode) {
+TEST(LlmLiteRtCompiledModelExecutorStaticTest, MultipleOutput_Decode) {
   const std::filesystem::path model_path =
       std::filesystem::path(::testing::SrcDir()) /
       "litert_lm/runtime/testdata/magic_test_decode_batch.tflite";
@@ -443,7 +441,7 @@ TEST(LlmLiteRTCompiledModelExecutorTest, MultipleOutput_Decode) {
   auto env = Environment::Create(std::vector<Environment::Option>());
   EXPECT_TRUE(env);
   TfLiteModelResources model_resources(*model_assets);
-  auto executor = LlmLiteRtCompiledModelExecutor::Create(
+  auto executor = LlmLiteRtCompiledModelExecutorStatic::Create(
       std::move(*executor_settings), *env, model_resources);
   EXPECT_OK(executor);
   EXPECT_TRUE(*executor);
@@ -510,7 +508,7 @@ TEST(LlmLiteRTCompiledModelExecutorTest, MultipleOutput_Decode) {
   EXPECT_EQ(step_and_token.token.size(), 1);
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest,
+TEST(LlmLiteRtCompiledModelExecutorStaticTest,
      MultipleOutput_DecodeLogits_EmptyInputs) {
   const std::filesystem::path model_path =
       std::filesystem::path(::testing::SrcDir()) /
@@ -522,7 +520,7 @@ TEST(LlmLiteRTCompiledModelExecutorTest,
   auto env = Environment::Create(std::vector<Environment::Option>());
   EXPECT_TRUE(env);
   TfLiteModelResources model_resources(*model_assets);
-  auto executor = LlmLiteRtCompiledModelExecutor::Create(
+  auto executor = LlmLiteRtCompiledModelExecutorStatic::Create(
       std::move(*executor_settings), *env, model_resources);
   EXPECT_OK(executor);
   EXPECT_TRUE(*executor);
@@ -605,7 +603,7 @@ TEST(LlmLiteRTCompiledModelExecutorTest,
   EXPECT_EQ(step_and_token.token.size(), 1);
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest,
+TEST(LlmLiteRtCompiledModelExecutorStaticTest,
      MultipleOutput_DecodeLogits_ValidInputs) {
   const std::filesystem::path model_path =
       std::filesystem::path(::testing::SrcDir()) /
@@ -617,7 +615,7 @@ TEST(LlmLiteRTCompiledModelExecutorTest,
   auto env = Environment::Create(std::vector<Environment::Option>());
   EXPECT_TRUE(env);
   TfLiteModelResources model_resources(*model_assets);
-  auto executor = LlmLiteRtCompiledModelExecutor::Create(
+  auto executor = LlmLiteRtCompiledModelExecutorStatic::Create(
       std::move(*executor_settings), *env, model_resources);
   EXPECT_OK(executor);
   EXPECT_TRUE(*executor);
@@ -694,7 +692,8 @@ TEST(LlmLiteRTCompiledModelExecutorTest,
   EXPECT_EQ(step_and_token.token.size(), 1);
 }
 
-TEST(LlmLiteRTCompiledModelExecutorTest, MultipleOutput_BatchSizeMismatch) {
+TEST(LlmLiteRtCompiledModelExecutorStaticTest,
+     MultipleOutput_BatchSizeMismatch) {
   const std::filesystem::path model_path =
       std::filesystem::path(::testing::SrcDir()) /
       "litert_lm/runtime/testdata/magic_test_decode_batch.tflite";
@@ -705,7 +704,7 @@ TEST(LlmLiteRTCompiledModelExecutorTest, MultipleOutput_BatchSizeMismatch) {
   auto env = Environment::Create(std::vector<Environment::Option>());
   EXPECT_TRUE(env);
   TfLiteModelResources model_resources(*model_assets);
-  auto executor = LlmLiteRtCompiledModelExecutor::Create(
+  auto executor = LlmLiteRtCompiledModelExecutorStatic::Create(
       std::move(*executor_settings), *env, model_resources);
   EXPECT_OK(executor);
   EXPECT_TRUE(*executor);
@@ -733,7 +732,7 @@ TEST(LlmLiteRTCompiledModelExecutorTest, MultipleOutput_BatchSizeMismatch) {
   auto output_tokens = CreateTensorBuffer<int>({5});
   EXPECT_TRUE(output_tokens);
   EXPECT_THAT((*executor)->Decode(*output_tokens),
-              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

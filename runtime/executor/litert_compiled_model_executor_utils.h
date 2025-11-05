@@ -77,6 +77,16 @@ absl::StatusOr<ModelSignatures> GetModelSignaturesFromInputOutputNames(
     const std::vector<absl::string_view>& input_names,
     const std::vector<absl::string_view>& output_names, bool strict = true);
 
+// Returns the cache root names from the input names.
+// The cache root names are the names of the inputs that are used to store the
+// KV cache. The root names are the names without the index suffix.
+// For example, if the input names are ["kv_cache_k_0", "kv_cache_v_0"], then
+// the k_root_name will be "kv_cache_k_" and the v_root_name will be
+// "kv_cache_v_".
+absl::Status GetKVCacheRootNames(std::vector<absl::string_view> input_names,
+                                 std::string& k_root_name,
+                                 std::string& v_root_name);
+
 // Gets a set of prefill signature runners from the interpreter.
 // The signature runners are sorted by the input tokens dimension.
 // signature_name_base is the prefix of the prefill signature names, e.g.

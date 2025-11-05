@@ -44,7 +44,7 @@
 #include "runtime/executor/litert_compiled_model_executor_utils.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_settings.h"
-#include "runtime/executor/llm_litert_compiled_model_executor.h"
+#include "runtime/executor/llm_litert_compiled_model_executor_factory.h"
 #include "runtime/executor/magic_number_configs_helper.h"
 #include "runtime/executor/vision_executor.h"
 #include "runtime/executor/vision_executor_settings.h"
@@ -244,9 +244,9 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
        Backend::GPU)) {
     const auto& main_executor_settings =
         engine_settings.GetMainExecutorSettings();
-    ASSIGN_OR_RETURN(executor,
-                     LlmLiteRtCompiledModelExecutor::Create(
-                         main_executor_settings, env, *model_resources));
+    ASSIGN_OR_RETURN(
+        executor, CreateLlmLiteRtCompiledModelExecutor(main_executor_settings,
+                                                       env, *model_resources));
   } else {
 #if defined(LITERT_DISABLE_NPU)
     return absl::InvalidArgumentError(

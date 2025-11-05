@@ -337,7 +337,7 @@ absl::StatusOr<Responses> DecodeLoop(
   if (benchmark_info.has_value()) {
     // Initialize sampler early if the executor supports it.
     auto* compiled_model_executor =
-        dynamic_cast<LlmLiteRtCompiledModelExecutor*>(&executor);
+        dynamic_cast<LlmLiteRtCompiledModelExecutorBase*>(&executor);
     if (compiled_model_executor != nullptr) {
       compiled_model_executor->InitializeSampler().IgnoreError();
     }
