@@ -28,6 +28,7 @@
 #include "runtime/executor/audio_executor_settings.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_settings.h"
+#include "runtime/executor/vision_executor_settings.h"
 #include "runtime/proto/engine.pb.h"
 #include "runtime/proto/llm_metadata.pb.h"
 #include "runtime/proto/llm_model_type.pb.h"
@@ -94,10 +95,11 @@ class EngineSettings {
   // Returns the mutable LlmExecutorSettings.
   LlmExecutorSettings& GetMutableMainExecutorSettings();
 
-  // Returns the LlmExecutorSettings for the vision model.
-  const std::optional<LlmExecutorSettings>& GetVisionExecutorSettings() const;
-  // Returns the mutable LlmExecutorSettings for the vision model.
-  std::optional<LlmExecutorSettings>& GetMutableVisionExecutorSettings();
+  // Returns the VisionExecutorSettings for the vision model.
+  const std::optional<VisionExecutorSettings>& GetVisionExecutorSettings()
+      const;
+  // Returns the mutable VisionExecutorSettings for the vision model.
+  std::optional<VisionExecutorSettings>& GetMutableVisionExecutorSettings();
 
   // Returns the AudioExecutorSettings for the audio model.
   const std::optional<AudioExecutorSettings>& GetAudioExecutorSettings() const;
@@ -122,7 +124,7 @@ class EngineSettings {
  private:
   explicit EngineSettings(
       LlmExecutorSettings executor_settings,
-      std::optional<LlmExecutorSettings> vision_executor_settings,
+      std::optional<VisionExecutorSettings> vision_executor_settings,
       std::optional<AudioExecutorSettings> audio_executor_settings,
       std::optional<proto::BenchmarkParams> benchmark_params = std::nullopt);
 
@@ -130,7 +132,7 @@ class EngineSettings {
   LlmExecutorSettings main_executor_settings_;
 
   // Settings for the vision executor.
-  std::optional<LlmExecutorSettings> vision_executor_settings_;
+  std::optional<VisionExecutorSettings> vision_executor_settings_;
 
   // Settings for the audio executor.
   std::optional<AudioExecutorSettings> audio_executor_settings_;

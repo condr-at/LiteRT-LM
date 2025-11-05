@@ -264,26 +264,17 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
   std::unique_ptr<VisionExecutor> vision_executor;
   if (engine_settings.GetVisionExecutorSettings().has_value()) {
     ASSIGN_OR_RETURN(
-        auto vision_executor_settings,
-        VisionExecutorSettings::CreateDefault(
-            engine_settings.GetMainExecutorSettings().GetModelAssets(),
-            /*encoder_backend=*/
-            engine_settings.GetVisionExecutorSettings()->GetBackend(),
-            /*adapter_backend=*/Backend::CPU));
-    ASSIGN_OR_RETURN(vision_executor, VisionLiteRtCompiledModelExecutor::Create(
-                                          vision_executor_settings, env));
+        vision_executor,
+        VisionLiteRtCompiledModelExecutor::Create(
+            engine_settings.GetMutableVisionExecutorSettings().value(), env));
   }
 
   std::unique_ptr<AudioExecutor> audio_executor;
   if (engine_settings.GetAudioExecutorSettings().has_value()) {
     ASSIGN_OR_RETURN(
-        auto audio_executor_settings,
-        AudioExecutorSettings::CreateDefault(
-            engine_settings.GetMainExecutorSettings().GetModelAssets(),
-            engine_settings.GetMainExecutorSettings().GetMaxNumTokens(),
-            engine_settings.GetAudioExecutorSettings()->GetBackend()));
-    ASSIGN_OR_RETURN(audio_executor, AudioLiteRtCompiledModelExecutor::Create(
-                                         audio_executor_settings, env));
+        audio_executor,
+        AudioLiteRtCompiledModelExecutor::Create(
+            engine_settings.GetAudioExecutorSettings().value(), env));
   }
 
   if (benchmark_info.has_value()) {

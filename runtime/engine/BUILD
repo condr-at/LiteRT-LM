@@ -252,6 +252,7 @@ cc_library(
         "//runtime/executor:audio_executor_settings",
         "//runtime/executor:executor_settings_base",
         "//runtime/executor:llm_executor_settings",
+        "//runtime/executor:vision_executor_settings",
         "//runtime/proto:engine_cc_proto",
         "//runtime/proto:llm_metadata_cc_proto",
         "//runtime/proto:llm_model_type_cc_proto",

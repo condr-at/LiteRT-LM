@@ -33,6 +33,7 @@
 #include "runtime/executor/audio_executor_settings.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_settings.h"
+#include "runtime/executor/vision_executor_settings.h"
 #include "runtime/proto/engine.pb.h"
 #include "runtime/proto/llm_metadata.pb.h"
 #include "runtime/proto/llm_model_type.pb.h"
@@ -107,11 +108,14 @@ absl::StatusOr<EngineSettings> EngineSettings::CreateDefault(
   ASSIGN_OR_RETURN(  // NOLINT
       auto executor_settings,
       LlmExecutorSettings::CreateDefault(model_assets, backend));
-  std::optional<LlmExecutorSettings> vision_executor_settings;
+  std::optional<VisionExecutorSettings> vision_executor_settings;
   if (vision_backend.has_value()) {
-    ASSIGN_OR_RETURN(vision_executor_settings,
-                     LlmExecutorSettings::CreateDefault(
-                         model_assets, vision_backend.value()));
+    ASSIGN_OR_RETURN(
+        vision_executor_settings,
+        VisionExecutorSettings::CreateDefault(
+            model_assets, /*encoder_backend=*/vision_backend.value(),
+            // Vision adapter can only run on CPU.
+            /*adapter_backend=*/Backend::CPU));
   }
   std::optional<AudioExecutorSettings> audio_executor_settings;
   if (audio_backend.has_value()) {
@@ -255,7 +259,7 @@ absl::Status EngineSettings::MaybeUpdateAndValidate(
 
 EngineSettings::EngineSettings(
     LlmExecutorSettings executor_settings,
-    std::optional<LlmExecutorSettings> vision_executor_settings,
+    std::optional<VisionExecutorSettings> vision_executor_settings,
     std::optional<AudioExecutorSettings> audio_executor_settings,
     std::optional<proto::BenchmarkParams> benchmark_params)
     : main_executor_settings_(std::move(executor_settings)),
@@ -271,12 +275,12 @@ LlmExecutorSettings& EngineSettings::GetMutableMainExecutorSettings() {
   return main_executor_settings_;
 }
 
-const std::optional<LlmExecutorSettings>&
+const std::optional<VisionExecutorSettings>&
 EngineSettings::GetVisionExecutorSettings() const {
   return vision_executor_settings_;
 }
 
-std::optional<LlmExecutorSettings>&
+std::optional<VisionExecutorSettings>&
 EngineSettings::GetMutableVisionExecutorSettings() {
   return vision_executor_settings_;
 }

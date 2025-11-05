@@ -42,7 +42,8 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
   // Creates a VisionLiteRtCompiledModelExecutor from the given
   // VisionExecutorSettings.
   static absl::StatusOr<std::unique_ptr<VisionLiteRtCompiledModelExecutor>>
-  Create(VisionExecutorSettings& vision_executor_settings, Environment& env);
+  Create(const VisionExecutorSettings& vision_executor_settings,
+         Environment& env);
 
   // Encodes the input image tensor into vision embeddings.
   // Args:
@@ -73,7 +74,7 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
     //   if failed.
     static absl::StatusOr<std::unique_ptr<VisionEncoder>> Create(
         Environment& env, const Model* absl_nonnull model,
-        VisionExecutorSettings& vision_executor_settings);
+        const VisionExecutorSettings& vision_executor_settings);
 
     // Initialize the VisionEncoder, which will create the input and output
     // buffers for the vision encoder model.
@@ -110,7 +111,7 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
 
    private:
     VisionEncoder(Environment& env, const Model* absl_nonnull model,
-                  VisionExecutorSettings& vision_executor_settings)
+                  const VisionExecutorSettings& vision_executor_settings)
         : env_(env),
           vision_executor_settings_(vision_executor_settings),
           model_(*model) {
@@ -184,7 +185,7 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
   };
 
   explicit VisionLiteRtCompiledModelExecutor(
-      VisionExecutorSettings& vision_executor_settings, Environment& env,
+      const VisionExecutorSettings& vision_executor_settings, Environment& env,
       std::unique_ptr<ModelResources> resources,
       std::unique_ptr<VisionEncoder> vision_encoder,
       std::unique_ptr<VisionAdapter> vision_adapter,

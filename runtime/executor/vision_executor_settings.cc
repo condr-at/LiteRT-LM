@@ -14,6 +14,8 @@
 
 #include "runtime/executor/vision_executor_settings.h"
 
+#include <ostream>
+
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
@@ -42,6 +44,7 @@ absl::Status VisionExecutorSettings::SetEncoderBackend(Backend backend) {
         absl::StrCat("Unsupported encoder backend: ", backend));
   }
   encoder_backend_ = backend;
+  RETURN_IF_ERROR(SetBackend(encoder_backend_));
   return absl::OkStatus();
 }
 
@@ -56,6 +59,15 @@ absl::Status VisionExecutorSettings::SetAdapterBackend(Backend backend) {
   }
   adapter_backend_ = backend;
   return absl::OkStatus();
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const VisionExecutorSettings& settings) {
+  os << "VisionExecutorSettings: " << std::endl;
+  os << "  ModelAssets: " << settings.GetModelAssets() << std::endl;
+  os << "  EncoderBackend: " << settings.GetEncoderBackend() << std::endl;
+  os << "  AdapterBackend: " << settings.GetAdapterBackend() << std::endl;
+  return os;
 }
 
 }  // namespace litert::lm

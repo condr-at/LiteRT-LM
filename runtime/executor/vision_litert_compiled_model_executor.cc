@@ -56,7 +56,7 @@ absl::StatusOr<
     std::unique_ptr<VisionLiteRtCompiledModelExecutor::VisionEncoder>>
 VisionLiteRtCompiledModelExecutor::VisionEncoder::Create(
     Environment& env, const Model* absl_nonnull model,
-    VisionExecutorSettings& vision_executor_settings) {
+    const VisionExecutorSettings& vision_executor_settings) {
   auto handler = std::unique_ptr<VisionEncoder>(
       new VisionEncoder(env, model, vision_executor_settings));
   RETURN_IF_ERROR(handler->Initialize());
@@ -218,7 +218,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionAdapter::Initialize() {
 
 absl::StatusOr<std::unique_ptr<VisionLiteRtCompiledModelExecutor>>
 litert::lm::VisionLiteRtCompiledModelExecutor::Create(
-    VisionExecutorSettings& vision_executor_settings, Environment& env) {
+    const VisionExecutorSettings& vision_executor_settings, Environment& env) {
   LITERT_ASSIGN_OR_RETURN(auto resources,
                           BuildLiteRtCompiledModelResources(
                               vision_executor_settings.GetModelAssets()));

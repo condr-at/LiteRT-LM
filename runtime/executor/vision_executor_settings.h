@@ -15,6 +15,8 @@
 #ifndef THIRD_PARTY_ODML_LITERT_LM_RUNTIME_EXECUTOR_VISION_EXECUTOR_SETTINGS_H_
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_EXECUTOR_VISION_EXECUTOR_SETTINGS_H_
 
+#include <ostream>
+
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/executor/executor_settings_base.h"
@@ -54,6 +56,9 @@ class VisionExecutorSettings : public ExecutorSettingsBase {
   // The backend to use for the vision adapter model.
   Backend adapter_backend_;
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const VisionExecutorSettings& settings);
 
 }  // namespace litert::lm
 
