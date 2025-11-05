@@ -142,6 +142,23 @@ absl::StatusOr<ModelSignatures> GetModelSignaturesFromInputOutputNames(
   return model_signatures;
 }
 
+absl::Status GetKVCacheRootNames(std::vector<absl::string_view> input_names,
+                                 std::string& k_root_name,
+                                 std::string& v_root_name) {
+  for (auto input_name : input_names) {
+    if (input_name == "kv_cache_k_0") {
+      k_root_name = "kv_cache_k_";
+      v_root_name = "kv_cache_v_";
+      return absl::OkStatus();
+    } else if (input_name == "k_cache_0") {
+      k_root_name = "k_cache_";
+      v_root_name = "v_cache_";
+      return absl::OkStatus();
+    }
+  }
+  return absl::FailedPreconditionError("No KV cache inputs found.");
+}
+
 absl::StatusOr<SortedPrefillSignatureMap> GetPrefillRunnerSetFromModel(
     const ::litert::Model& model, absl::string_view signature_name_base,
     absl::string_view input_positions_name) {

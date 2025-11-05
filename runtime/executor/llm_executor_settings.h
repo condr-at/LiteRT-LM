@@ -89,6 +89,11 @@ struct GpuConfig {
 std::ostream& operator<<(std::ostream& os, const GpuConfig& config);
 
 struct CpuConfig {
+  // The increment size of the kv-cache. This is used by dynamically exported
+  // models. Each time during decode, the kv-cache size is increased by this
+  // size.
+  uint32_t kv_increment_size = 16;
+
   // Number of threads. The default value is 4.
   uint32_t number_of_threads = 4;
 };

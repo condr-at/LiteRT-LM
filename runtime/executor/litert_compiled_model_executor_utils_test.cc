@@ -17,6 +17,7 @@
 #include <filesystem>  // NOLINT: Required for path manipulation.
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -28,13 +29,13 @@
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_ranked_tensor_type.h"  // from @litert
-#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 #include "litert/test/matchers.h"  // from @litert
 #include "runtime/components/model_resources.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/util/scoped_file.h"
-#include "runtime/util/test_utils.h"  // NOLINT
+#include "runtime/util/test_utils.h"  // IWYU pragma: keep
 
 namespace litert::lm {
 namespace {
@@ -129,6 +130,32 @@ TEST(LlmLiteRTCompiledModelExecutorUtilsTest,
   std::vector<absl::string_view> input_names = {"unknown_input"};
   std::vector<absl::string_view> output_names = {"logits"};
   EXPECT_THAT(GetModelSignaturesFromInputOutputNames(input_names, output_names),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST(LlmLiteRTCompiledModelExecutorUtilsTest, GetKVCacheRootNames_KvCache) {
+  std::vector<absl::string_view> input_names = {"kv_cache_k_0", "kv_cache_v_0"};
+  std::string k_root_name;
+  std::string v_root_name;
+  ASSERT_OK(GetKVCacheRootNames(input_names, k_root_name, v_root_name));
+  EXPECT_EQ(k_root_name, "kv_cache_k_");
+  EXPECT_EQ(v_root_name, "kv_cache_v_");
+}
+
+TEST(LlmLiteRTCompiledModelExecutorUtilsTest, GetKVCacheRootNames_KCache) {
+  std::vector<absl::string_view> input_names = {"k_cache_0", "v_cache_0"};
+  std::string k_root_name;
+  std::string v_root_name;
+  ASSERT_OK(GetKVCacheRootNames(input_names, k_root_name, v_root_name));
+  EXPECT_EQ(k_root_name, "k_cache_");
+  EXPECT_EQ(v_root_name, "v_cache_");
+}
+
+TEST(LlmLiteRTCompiledModelExecutorUtilsTest, GetKVCacheRootNames_NotFound) {
+  std::vector<absl::string_view> input_names = {"other_input"};
+  std::string k_root_name;
+  std::string v_root_name;
+  EXPECT_THAT(GetKVCacheRootNames(input_names, k_root_name, v_root_name),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 

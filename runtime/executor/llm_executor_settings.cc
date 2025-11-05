@@ -50,6 +50,7 @@ std::ostream& operator<<(std::ostream& os, const GpuConfig& config) {
 }
 
 std::ostream& operator<<(std::ostream& os, const CpuConfig& config) {
+  os << "kv_increment_size: " << config.kv_increment_size << "\n";
   os << "number_of_threads: " << config.number_of_threads << "\n";
   return os;
 }
@@ -73,7 +74,7 @@ std::ostream& operator<<(std::ostream& os, const LlmExecutorSettings& config) {
   os << "backend: " << config.GetBackend() << "\n";
   std::visit(
       [&os](const auto& backend_config) {
-        os << "backend_config: " << backend_config << "\n";
+        os << "backend_config:\n" << backend_config << "\n";
       },
       config.backend_config_);
   os << "max_tokens: " << config.GetMaxNumTokens() << "\n";
@@ -100,6 +101,7 @@ absl::StatusOr<LlmExecutorSettings> LlmExecutorSettings::CreateDefault(
   LlmExecutorSettings settings(std::move(model_assets));
   if (backend == Backend::CPU) {
     CpuConfig config;
+    config.kv_increment_size = 16;
     config.number_of_threads = 4;
     settings.SetBackendConfig(config);
   } else if (backend == Backend::GPU) {
