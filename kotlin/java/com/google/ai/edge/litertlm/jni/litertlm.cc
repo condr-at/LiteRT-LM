@@ -221,6 +221,10 @@ SamplerParameters CreateSamplerParamsFromJni(JNIEnv* env,
 
 extern "C" {
 
+JNIEXPORT void JNICALL
+Java_com_google_ai_edge_litertlm_NativeLibraryLoader_nativeCheckLoaded(
+    JNIEnv* env, jclass thiz) {}
+
 JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(
     JNIEnv* env, jclass thiz, jstring model_path, jstring backend,
     jstring vision_backend, jstring audio_backend, jint max_num_tokens,

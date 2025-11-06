@@ -12,29 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-DEPS = [
-    "@com_google_absl//absl/functional:any_invocable",
-    "@com_google_absl//absl/log:absl_log",
-    "@com_google_absl//absl/status",
-    "@com_google_absl//absl/status:statusor",
-    "@nlohmann_json//:json",
-    "//runtime/conversation",
-    "//runtime/conversation:io_types",
-    "//runtime/core:engine_impl",  # buildcleaner: keep
-    "//runtime/engine:engine_interface",
-    "//runtime/engine:engine_settings",
-    "//runtime/engine:io_types",
-    "//runtime/executor:executor_settings_base",
-    "//runtime/proto:sampler_params_cc_proto",
-]
+# [Google-internal load of `cc_binary`]
+# [Google-internal load of `cc_library`]
+
+package(
+    default_visibility = ["//kotlin:__subpackages__"],
+)
 
 cc_binary(
-    name = "jni",
+    name = "litertlm_jni",
     srcs = ["litertlm.cc"],
     linkshared = 1,
-    tags = ["manual"],  # avoid building without android flags in CI
-    visibility = ["//android/java/com/google/ai/edge/litertlm:__pkg__"],
-    deps = DEPS + select({
+    deps = [
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@nlohmann_json//:json",
+        "//runtime/conversation",
+        "//runtime/conversation:io_types",
+        "//runtime/core:engine_impl",  # buildcleaner: keep
+        "//runtime/engine:engine_interface",
+        "//runtime/engine:engine_settings",
+        "//runtime/engine:io_types",
+        "//runtime/executor:executor_settings_base",
+        "//runtime/proto:sampler_params_cc_proto",
+    ] + select({
         "@platforms//os:android": [],
         "//conditions:default": ["@rules_java//toolchains:jni"],
     }),

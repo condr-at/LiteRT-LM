@@ -19,7 +19,7 @@ package com.google.ai.edge.litertlm
 internal object LiteRtLmJni {
 
   init {
-    System.loadLibrary("litertlm_jni")
+    NativeLibraryLoader.load()
   }
 
   /**
