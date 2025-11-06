@@ -149,7 +149,7 @@ import com.google.ai.edge.litertlm.Message
 
 val userMessage = Message.of("What is the capital of France?")
 val modelMessage = conversation.sendMessage(userMessage)
-print((response.contents[0] as Content.Text).text)
+print((modelMessage.contents[0] as Content.Text).text)
 ```
 
 **Asynchronous Example:**
