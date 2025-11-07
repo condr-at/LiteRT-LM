@@ -283,7 +283,7 @@ absl::Status Conversation::SendMessageAsync(
       };
 
   absl::AnyInvocable<void()> cancel_callback = [this]() {
-    absl::MutexLock lock(&this->history_mutex_);  // NOLINT
+    absl::MutexLock lock(this->history_mutex_);  // NOLINT
     this->history_.pop_back();
   };
 
