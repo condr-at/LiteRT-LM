@@ -40,8 +40,11 @@ internal object NativeLibraryLoader {
       return
     }
 
+    // For simplicity, the native library extension is ".so" instead of the default ".dylib" on
+    // MacOS since it is the the default cc_binary output for MacOS.
+    val jniLibName = System.mapLibraryName(JNI_LIBNAME).replace(".dylib", ".so")
+
     // 2. Try extracting from JAR (generic path). (e.g., for bazel)
-    val jniLibName = System.mapLibraryName(JNI_LIBNAME)
     val genericResourcePath = "com/google/ai/edge/litertlm/jni/$jniLibName"
     if (tryExtractAndLoad(genericResourcePath, jniLibName)) {
       log("Loaded $JNI_LIBNAME from JAR: $genericResourcePath")

@@ -18,7 +18,7 @@ load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library")
 kt_jvm_library(
     name = "litertlm-jvm",
     srcs = glob(["*.kt"]),
-    resources  = ["//kotlin/java/com/google/ai/edge/litertlm/jni:litertlm_jni"],
+    resources = ["//kotlin/java/com/google/ai/edge/litertlm/jni:litertlm_jni"],
     resource_strip_prefix = "kotlin/java",
     deps = [
         "@rules_kotlin//kotlin/compiler:kotlin-reflect",
