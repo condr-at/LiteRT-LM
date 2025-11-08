@@ -162,7 +162,7 @@ TEST_F(TasksTest, PrefillSucceed) {
   EXPECT_EQ(task_response->GetTaskState(), TaskState::kDone);
 }
 
-TEST_F(TasksTest, Decode) {
+TEST_F(TasksTest, DecodeSucceed) {
   std::optional<BenchmarkInfo> benchmark_info;
   constexpr int kNumOutputCandidates = 1;
   StopTokenDetector stop_token_detector(kNumOutputCandidates);
@@ -567,11 +567,12 @@ TEST_F(TasksCustomSamplingTest, DecodeCustomSampling) {
                          {0, 0}});
 
   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback = nullptr;
-  auto task_responses = Tasks::Decode(
-      executor, *tokenizer_, stop_token_detector,
-      /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-      /*constraint=*/nullptr, &decoded_ids.Value(), /*callback=*/callback,
-      /*cancelled=*/nullptr);
+  auto task_responses =
+      Tasks::Decode(executor, *tokenizer_, stop_token_detector,
+                    /*num_output_candidates=*/2, benchmark_info, sampler.get(),
+                    /*constraint=*/nullptr, std::move(decoded_ids.Value()),
+                    /*callback=*/callback,
+                    /*cancelled=*/nullptr);
   EXPECT_OK(task_responses);
   EXPECT_EQ(task_responses->GetTaskState(), TaskState::kDone);
   EXPECT_EQ(task_responses->GetTexts().size(), 2);
@@ -628,7 +629,7 @@ TEST_F(TasksCustomSamplingTest, DecodeCustomSamplingWithConstrainedDecoding) {
   auto task_responses = Tasks::Decode(
       executor, *tokenizer_, stop_token_detector,
       /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-      constraint.get(), &decoded_ids.Value(), /*callback=*/callback,
+      constraint.get(), std::move(decoded_ids.Value()), /*callback=*/callback,
       /*cancelled=*/nullptr);
 
   EXPECT_OK(task_responses);
@@ -642,6 +643,8 @@ TEST_F(TasksCustomSamplingTest, DecodeCustomSamplingWithConstrainedDecoding) {
 
 TEST_F(TasksCustomSamplingTest, ScoreCustomSamplingSingleBatch) {
   auto decoded_ids = CreateTensorBuffer<int>(/*dimensions=*/{1, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   StopTokenDetector stop_token_detector(/*batch_size=*/1);
   auto status = stop_token_detector.AddStopTokenSequence(/*stop_sequence=*/{0});
   ASSERT_OK(status);
@@ -653,7 +656,7 @@ TEST_F(TasksCustomSamplingTest, ScoreCustomSamplingSingleBatch) {
 
   auto responses = Tasks::Score(executor, *tokenizer_,
                                 std::vector<absl::string_view>{"Hello World!"},
-                                1.0f, *decoded_ids);
+                                1.0f, std::move(decoded_ids.Value()));
   ASSERT_OK(responses);
   // Expect a single output candidate.
   EXPECT_EQ(responses->GetScores().size(), 1);
@@ -666,6 +669,8 @@ TEST_F(TasksCustomSamplingTest, ScoreCustomSamplingSingleBatch) {
 
 TEST_F(TasksCustomSamplingTest, ScoreCustomSamplingMultiBatch) {
   auto decoded_ids = CreateTensorBuffer<int>(/*dimensions=*/{2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   StopTokenDetector stop_token_detector(/*batch_size=*/2);
   auto status = stop_token_detector.AddStopTokenSequence(/*stop_sequence=*/{0});
   ASSERT_OK(status);
@@ -682,7 +687,7 @@ TEST_F(TasksCustomSamplingTest, ScoreCustomSamplingMultiBatch) {
   auto task_responses = Tasks::Score(
       executor, *tokenizer_,
       std::vector<absl::string_view>{"How's it going?", "Hello World!"}, 1.0f,
-      *decoded_ids);
+      std::move(decoded_ids.Value()));
 
   ASSERT_OK(task_responses);
   EXPECT_EQ(task_responses->GetTaskState(), TaskState::kDone);
@@ -721,11 +726,12 @@ TEST_F(TasksCustomSamplingTest, DecodeCustomSamplingReachMaxNumTokens) {
   StopTokenDetector stop_token_detector(2);
   EXPECT_OK(stop_token_detector.AddStopTokenSequence({0}));
   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback = nullptr;
-  auto task_responses = Tasks::Decode(
-      executor, *tokenizer_, stop_token_detector,
-      /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-      /*constraint=*/nullptr, &decoded_ids.Value(), /*callback=*/callback,
-      /*cancelled=*/nullptr);
+  auto task_responses =
+      Tasks::Decode(executor, *tokenizer_, stop_token_detector,
+                    /*num_output_candidates=*/2, benchmark_info, sampler.get(),
+                    /*constraint=*/nullptr, std::move(decoded_ids.Value()),
+                    /*callback=*/callback,
+                    /*cancelled=*/nullptr);
   EXPECT_OK(task_responses);
   EXPECT_EQ(task_responses->GetTaskState(), TaskState::kMaxNumTokensReached);
   EXPECT_EQ(task_responses->GetTexts().size(), 2);
@@ -775,11 +781,12 @@ TEST_F(TasksCustomSamplingTest, DecodeCustomSamplingStreaming) {
   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback =
       CreateTestCallback(responses, status, done);
 
-  absl::StatusOr<Responses> task_responses = Tasks::Decode(
-      executor, *tokenizer_, stop_token_detector,
-      /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-      /*constraint=*/nullptr, &decoded_ids.Value(), /*callback=*/callback,
-      /*cancelled=*/nullptr);
+  absl::StatusOr<Responses> task_responses =
+      Tasks::Decode(executor, *tokenizer_, stop_token_detector,
+                    /*num_output_candidates=*/2, benchmark_info, sampler.get(),
+                    /*constraint=*/nullptr, std::move(decoded_ids.Value()),
+                    /*callback=*/callback,
+                    /*cancelled=*/nullptr);
 
   EXPECT_OK(task_responses);
   EXPECT_EQ(task_responses->GetTaskState(), TaskState::kDone);
@@ -826,11 +833,12 @@ TEST_F(TasksCustomSamplingTest,
   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback =
       CreateTestCallback(responses, status, done);
 
-  absl::StatusOr<Responses> task_responses = Tasks::Decode(
-      executor, *tokenizer_, stop_token_detector,
-      /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-      /*constraint=*/nullptr, &decoded_ids.Value(), /*callback=*/callback,
-      /*cancelled=*/nullptr);
+  absl::StatusOr<Responses> task_responses =
+      Tasks::Decode(executor, *tokenizer_, stop_token_detector,
+                    /*num_output_candidates=*/2, benchmark_info, sampler.get(),
+                    /*constraint=*/nullptr, std::move(decoded_ids.Value()),
+                    /*callback=*/callback,
+                    /*cancelled=*/nullptr);
   callback(task_responses);
 
   EXPECT_OK(task_responses);
@@ -880,11 +888,12 @@ TEST_F(TasksCustomSamplingTest, DecodeComplexStopTokenDetector) {
 
   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback = nullptr;
 
-  auto task_responses = Tasks::Decode(
-      executor, *tokenizer_, stop_token_detector,
-      /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-      /*constraint=*/nullptr, &decoded_ids.Value(), /*callback=*/callback,
-      /*cancelled=*/nullptr);
+  auto task_responses =
+      Tasks::Decode(executor, *tokenizer_, stop_token_detector,
+                    /*num_output_candidates=*/2, benchmark_info, sampler.get(),
+                    /*constraint=*/nullptr, std::move(decoded_ids.Value()),
+                    /*callback=*/callback,
+                    /*cancelled=*/nullptr);
 
   EXPECT_OK(task_responses);
   // Expect two output candidates.
@@ -952,8 +961,8 @@ TEST_F(TasksCustomSamplingTest, DecodeCustomSamplingStreamingWithCancellation) {
     task_responses = Tasks::Decode(
         delayed_executor, *tokenizer_, stop_token_detector,
         /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-        /*constraint=*/nullptr, &decoded_ids.Value(), /*callback=*/callback,
-        &cancelled);
+        /*constraint=*/nullptr, std::move(decoded_ids.Value()),
+        /*callback=*/callback, &cancelled);
     callback(task_responses);
   }));
 
@@ -1009,12 +1018,12 @@ TEST_F(TasksCustomSamplingTest,
   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback =
       CreateTestCallback(responses, callback_status, done);
 
-  absl::StatusOr<Responses> task_responses =
-      Tasks::Decode(executor, *tokenizer_, stop_token_detector,
-                    /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-                    /*constraint=*/constraint.get(), &decoded_ids.Value(),
-                    /*callback=*/callback,
-                    /*cancelled=*/nullptr);
+  absl::StatusOr<Responses> task_responses = Tasks::Decode(
+      executor, *tokenizer_, stop_token_detector,
+      /*num_output_candidates=*/2, benchmark_info, sampler.get(),
+      /*constraint=*/constraint.get(), std::move(decoded_ids.Value()),
+      /*callback=*/callback,
+      /*cancelled=*/nullptr);
   callback(task_responses);
 
   EXPECT_OK(task_responses);
@@ -1082,11 +1091,12 @@ TEST_F(TasksCustomSamplingTest, DecodeStopTokenAndBPEDetector) {
   EXPECT_TRUE(decoded_ids.HasValue());
   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback = nullptr;
 
-  absl::StatusOr<Responses> task_responses = Tasks::Decode(
-      executor, *tokenizer, stop_token_detector,
-      /*num_output_candidates=*/2, benchmark_info, sampler.get(),
-      /*constraint=*/nullptr, &decoded_ids.Value(), /*callback=*/callback,
-      /*cancelled=*/nullptr);
+  absl::StatusOr<Responses> task_responses =
+      Tasks::Decode(executor, *tokenizer, stop_token_detector,
+                    /*num_output_candidates=*/2, benchmark_info, sampler.get(),
+                    /*constraint=*/nullptr, std::move(decoded_ids.Value()),
+                    /*callback=*/callback,
+                    /*cancelled=*/nullptr);
 
   EXPECT_OK(task_responses);
   EXPECT_EQ(task_responses->GetTexts().size(), 2);

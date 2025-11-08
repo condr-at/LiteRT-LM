@@ -22,6 +22,7 @@
 #include <optional>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
@@ -94,7 +95,7 @@ absl::Status DecodeStreaming(
 absl::StatusOr<Responses> DecodeCustomSampling(
     LlmExecutor& executor, Tokenizer& tokenizer,
     const StopTokenDetector& stop_token_detector, int num_output_candidates,
-    Sampler& sampler, litert::TensorBuffer& decoded_ids, Constraint* constraint,
+    Sampler& sampler, litert::TensorBuffer decoded_ids, Constraint* constraint,
     std::optional<BenchmarkInfo>& benchmark_info,
     std::atomic<bool>* cancelled = nullptr);
 
@@ -107,7 +108,7 @@ absl::StatusOr<Responses> DecodeCustomSampling(
 absl::Status DecodeCustomSamplingStreaming(
     LlmExecutor& executor, Tokenizer& tokenizer,
     const StopTokenDetector& stop_token_detector, int num_output_candidates,
-    Sampler& sampler, litert::TensorBuffer& decoded_ids, Constraint* constraint,
+    Sampler& sampler, litert::TensorBuffer decoded_ids, Constraint* constraint,
     std::optional<BenchmarkInfo>& benchmark_info,
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
     std::atomic<bool>* cancelled = nullptr);
@@ -123,7 +124,7 @@ absl::Status DecodeCustomSamplingStreaming(
 absl::StatusOr<Responses> ScoreCustomSampling(
     LlmExecutor& executor, Tokenizer& tokenizer,
     const std::vector<absl::string_view>& target_text, float temperature,
-    litert::TensorBuffer& decoded_ids);
+    litert::TensorBuffer decoded_ids);
 }  // namespace litert::lm
 
 #endif  // THIRD_PARTY_ODML_LITERT_LM_RUNTIME_ENGINE_PIPELINE_H_

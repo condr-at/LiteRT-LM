@@ -15,8 +15,6 @@
 #include "runtime/core/session_basic.h"
 
 #include <atomic>
-#include <cstddef>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -435,14 +433,17 @@ absl::StatusOr<Responses> SessionBasic::DecodeInternal(
   } else {
     std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
                                  last_prefill_token_id_);
-    auto decoded_ids_buffer = CopyToTensorBuffer<int>(
-        decoded_ids, {session_config_.GetNumOutputCandidates(), 1});
-    ASSIGN_OR_RETURN(auto responses,
-                     DecodeCustomSampling(
-                         executor_, tokenizer_, stop_token_detector_,
-                         session_config_.GetNumOutputCandidates(), *sampler_,
-                         *decoded_ids_buffer, decode_config.GetConstraint(),
-                         benchmark_info_, &cancelled_));
+    LITERT_ASSIGN_OR_RETURN(
+        auto decoded_ids_buffer,
+        CopyToTensorBuffer<int>(decoded_ids,
+                                {session_config_.GetNumOutputCandidates(), 1}));
+    ASSIGN_OR_RETURN(
+        auto responses,
+        DecodeCustomSampling(executor_, tokenizer_, stop_token_detector_,
+                             session_config_.GetNumOutputCandidates(),
+                             *sampler_, std::move(decoded_ids_buffer),
+                             decode_config.GetConstraint(), benchmark_info_,
+                             &cancelled_));
     return responses;
   }
 }
@@ -458,13 +459,16 @@ absl::Status SessionBasic::DecodeInternalStreaming(
   } else {
     std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
                                  last_prefill_token_id_);
-    auto decoded_ids_buffer = CopyToTensorBuffer<int>(
-        decoded_ids, {session_config_.GetNumOutputCandidates(), 1});
+    LITERT_ASSIGN_OR_RETURN(
+        auto decoded_ids_buffer,
+        CopyToTensorBuffer<int>(decoded_ids,
+                                {session_config_.GetNumOutputCandidates(), 1}));
+
     RETURN_IF_ERROR(DecodeCustomSamplingStreaming(
         executor_, tokenizer_, stop_token_detector_,
         session_config_.GetNumOutputCandidates(), *sampler_,
-        *decoded_ids_buffer, decode_config.GetConstraint(), benchmark_info_,
-        std::move(callback), &cancelled_));
+        std::move(decoded_ids_buffer), decode_config.GetConstraint(),
+        benchmark_info_, std::move(callback), &cancelled_));
   }
   return absl::OkStatus();
 }
@@ -529,8 +533,10 @@ absl::StatusOr<Responses> SessionBasic::RunTextScoring(
                                last_prefill_token_id_);
   // Remove the last token from the decoded ids, since the last prefill token
   // is used as the query during decoding of the model.
-  auto decoded_ids_buffer = CopyToTensorBuffer<int>(
-      decoded_ids, {session_config_.GetNumOutputCandidates(), 1});
+  LITERT_ASSIGN_OR_RETURN(
+      auto decoded_ids_buffer,
+      CopyToTensorBuffer<int>(decoded_ids,
+                              {session_config_.GetNumOutputCandidates(), 1}));
   // TODO(b/435040163): Handle the temperature. Should it be calculated from
   // the sampler or the sampler parameters? For now, hardcode it to 1.0f for
   // testing.
@@ -539,9 +545,11 @@ absl::StatusOr<Responses> SessionBasic::RunTextScoring(
   // Scheduled on the worker thread pool to ensure serialized execution with
   // other engine operations as the function waits for completion.
   RETURN_IF_ERROR(worker_thread_pool_.Schedule(
-      [this, &score, &target_text, &decoded_ids_buffer, &temperature]() {
+      [this, &score, &target_text,
+       decoded_ids_buffer = std::move(decoded_ids_buffer),
+       &temperature]() mutable {
         score = ScoreCustomSampling(executor_, tokenizer_, target_text,
-                                    temperature, *decoded_ids_buffer);
+                                    temperature, std::move(decoded_ids_buffer));
       }));
   RETURN_IF_ERROR(worker_thread_pool_.WaitUntilDone(Engine::kDefaultTimeout));
   return score;

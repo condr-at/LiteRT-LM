@@ -128,13 +128,13 @@ class DecodeOneStep {
   // For external sampling, `decoded_ids` must be provided and will be updated.
   // For internal sampling, `decoded_ids` is ignored.
   absl::StatusOr<bool> Run(
-      std::optional<litert::TensorBuffer*> decoded_ids = std::nullopt) {
-    ASSIGN_OR_RETURN(litert::TensorBuffer * next_tokens_buffer,
-                     DecodeAndSample(decoded_ids));
+      std::optional<litert::TensorBuffer> decoded_ids = std::nullopt) {
+    ASSIGN_OR_RETURN(litert::TensorBuffer next_tokens_buffer,
+                     DecodeAndSample(std::move(decoded_ids)));
 
     // Post-processing the next tokens.
     ASSIGN_OR_RETURN(auto token_ids,
-                     tokenizer_.TensorBufferToTokenIds(*next_tokens_buffer));
+                     tokenizer_.TensorBufferToTokenIds(next_tokens_buffer));
 
     // Merge BPE partial token ids with the next token ids if any.
     ASSIGN_OR_RETURN(
@@ -142,9 +142,8 @@ class DecodeOneStep {
 
     // Regardless of BPE, we always process the next tokens to detect stop
     // tokens.
-    LITERT_ASSIGN_OR_RETURN(
-        auto next_tokens_span,
-        ReferTensorBufferAsSpan<int>(*next_tokens_buffer));
+    LITERT_ASSIGN_OR_RETURN(auto next_tokens_span,
+                            ReferTensorBufferAsSpan<int>(next_tokens_buffer));
     RETURN_IF_ERROR(stop_token_detector_.ProcessTokens(next_tokens_span));
 
     auto decoded_result =
@@ -198,7 +197,7 @@ class DecodeOneStep {
   // Returns: A vector of log likelihoods for the sampled ids.
   absl::StatusOr<std::vector<float>> RunScoreStep(
       const float temperature, const std::vector<int>& step_input_ids,
-      litert::TensorBuffer& decoded_ids) {
+      litert::TensorBuffer decoded_ids) {
     LITERT_ASSIGN_OR_RETURN(auto duplicate_decoded_ids,
                             decoded_ids.Duplicate());
     const ExecutorInputs inputs(
@@ -234,22 +233,21 @@ class DecodeOneStep {
   // Runs the core decoding and sampling step, for either internal or external
   // sampling. Returns a pointer to the tensor buffer containing the next token
   // IDs.
-  absl::StatusOr<litert::TensorBuffer*> DecodeAndSample(
-      std::optional<litert::TensorBuffer*> decoded_ids) {
+  absl::StatusOr<litert::TensorBuffer> DecodeAndSample(
+      std::optional<litert::TensorBuffer> decoded_ids) {
     if (sampler_) {  // External sampling path
       if (!decoded_ids) {
         return absl::InternalError(
             "decoded_ids must be provided for external sampling.");
       }
       LITERT_ASSIGN_OR_RETURN(auto duplicate_decoded_ids,
-                              decoded_ids.value()->Duplicate());
+                              decoded_ids->Duplicate());
       ExecutorInputs inputs(ExecutorTextData(std::move(duplicate_decoded_ids)),
                             std::nullopt, std::nullopt);
       // Update constraint state based on the current token id before the
       // decode.
       if (constrained_decoder_) {
-        LITERT_ASSIGN_OR_RETURN(auto last_token_ids,
-                                decoded_ids.value()->Duplicate());
+        LITERT_ASSIGN_OR_RETURN(auto last_token_ids, decoded_ids->Duplicate());
         RETURN_IF_ERROR(
             constrained_decoder_->UpdateConstraintState(last_token_ids));
       }
@@ -272,12 +270,12 @@ class DecodeOneStep {
         RETURN_IF_ERROR(benchmark_info_->TimeMarkDelta("sampling"));
       }
       RETURN_IF_ERROR(sampler_.value()->SampleToIdAndScoreBuffer(
-          output_logits, *decoded_ids.value(), &scores_tensor_));
+          output_logits, decoded_ids.value(), &scores_tensor_));
       if (benchmark_info_.has_value()) {
         RETURN_IF_ERROR(benchmark_info_->TimeMarkDelta("sampling"));
       }
 
-      return decoded_ids.value();
+      return std::move(decoded_ids.value());
     } else {  // Internal sampling path
       // Benchmark executor_decode_and_sample section.
       if (benchmark_info_.has_value()) {
@@ -295,7 +293,9 @@ class DecodeOneStep {
         RETURN_IF_ERROR(
             benchmark_info_->TimeMarkDelta("executor_decode_and_sample"));
       }
-      return &output_tokens_;
+      LITERT_ASSIGN_OR_RETURN(auto cloned_output_tokens,
+                              output_tokens_.Duplicate());
+      return std::move(cloned_output_tokens);
     }
   }
 
@@ -362,7 +362,7 @@ absl::StatusOr<Responses> Decode(
     const StopTokenDetector& stop_token_detector, int num_output_candidates,
     std::optional<BenchmarkInfo>& benchmark_info,
     std::optional<Sampler*> sampler, Constraint* constraint,
-    std::optional<litert::TensorBuffer*> decoded_ids,
+    std::optional<litert::TensorBuffer> decoded_ids,
     absl::AnyInvocable<void(absl::StatusOr<Responses>)>& callback,
     std::atomic<bool>* cancelled) {
   const bool is_streaming = callback != nullptr;
@@ -404,7 +404,12 @@ absl::StatusOr<Responses> Decode(
       }
       return absl::CancelledError("Process cancelled.");
     }
-    absl::StatusOr<bool> all_done = run_one_step.Run(decoded_ids);
+    std::optional<litert::TensorBuffer> decoded_ids_to_use = std::nullopt;
+    if (decoded_ids.has_value()) {
+      LITERT_ASSIGN_OR_RETURN(decoded_ids_to_use, decoded_ids->Duplicate());
+    }
+    absl::StatusOr<bool> all_done =
+        run_one_step.Run(std::move(decoded_ids_to_use));
     if (!all_done.ok()) {
       return all_done.status();
     }
@@ -464,7 +469,7 @@ absl::StatusOr<Responses> Decode(
     // must run one prefill to add the stop token as pending token in the LLM
     // Executor when stop condition is met.
     LITERT_ASSIGN_OR_RETURN(auto duplicated_decoded_ids,
-                                 decoded_ids.value()->Duplicate());
+                            decoded_ids->Duplicate());
     ExecutorInputs inputs;
     inputs.SetTextData(ExecutorTextData(std::move(duplicated_decoded_ids)));
     std::optional<BenchmarkInfo> unused_benchmark_info;
@@ -502,7 +507,7 @@ absl::StatusOr<Responses> Decode(
 absl::StatusOr<Responses> Score(
     LlmExecutor& executor, Tokenizer& tokenizer,
     const std::vector<absl::string_view>& target_texts, const float temperature,
-    litert::TensorBuffer& decoded_ids) {
+    litert::TensorBuffer decoded_ids) {
   const int num_output_candidates = target_texts.size();
   const int max_num_tokens = TryGetMaxNumTokens(executor);
   std::optional<BenchmarkInfo> benchmark_info;
@@ -548,10 +553,11 @@ absl::StatusOr<Responses> Score(
         decoded_ids_for_each_target_in_batch[j] = 0;
       }
     }
-    ASSIGN_OR_RETURN(
-        std::vector<float> step_log_likelihoods,
-        run_one_step.RunScoreStep(
-            temperature, decoded_ids_for_each_target_in_batch, decoded_ids));
+    LITERT_ASSIGN_OR_RETURN(auto decoded_ids_copy, decoded_ids.Duplicate());
+    ASSIGN_OR_RETURN(std::vector<float> step_log_likelihoods,
+                     run_one_step.RunScoreStep(
+                         temperature, decoded_ids_for_each_target_in_batch,
+                         std::move(decoded_ids_copy)));
     for (int j = 0; j < num_output_candidates; ++j) {
       const int size_of_jth_target = ids_for_each_target_in_batch[j].size();
       // Only add the log likelihood of the non-padded tokens to the score.

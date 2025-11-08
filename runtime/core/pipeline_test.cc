@@ -483,6 +483,8 @@ TEST_F(PipelineCustomSamplingTest, DecodeCustomSampling) {
   std::unique_ptr<TopPSampler> sampler = std::move(sampler_or.value());
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   std::optional<BenchmarkInfo> benchmark_info;
   StopTokenDetector stop_token_detector(2);
   EXPECT_OK(stop_token_detector.AddStopTokenSequence({0}));
@@ -504,10 +506,10 @@ TEST_F(PipelineCustomSamplingTest, DecodeCustomSampling) {
                          {2294, 0},
                          {0, 0}});
 
-  auto responses =
-      DecodeCustomSampling(executor, *tokenizer_, stop_token_detector,
-                           /*num_output_candidates=*/2, *sampler, *decoded_ids,
-                           /*constraint=*/nullptr, benchmark_info);
+  auto responses = DecodeCustomSampling(
+      executor, *tokenizer_, stop_token_detector,
+      /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
+      /*constraint=*/nullptr, benchmark_info);
   EXPECT_OK(responses);
   EXPECT_EQ(responses->GetTexts().size(), 2);
   // First candidate: " How's it going?!".
@@ -554,15 +556,17 @@ TEST_F(PipelineCustomSamplingTest,
   );
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   // Populate with the last pre-filled token.
   decoded_ids->Write<int>({224, 224});
   std::optional<BenchmarkInfo> benchmark_info;
   StopTokenDetector stop_token_detector(2);
   EXPECT_OK(stop_token_detector.AddStopTokenSequence({0}));
-  auto responses =
-      DecodeCustomSampling(executor, *tokenizer_, stop_token_detector,
-                           /*num_output_candidates=*/2, *sampler, *decoded_ids,
-                           /*constraint=*/constraint.get(), benchmark_info);
+  auto responses = DecodeCustomSampling(
+      executor, *tokenizer_, stop_token_detector,
+      /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
+      /*constraint=*/constraint.get(), benchmark_info);
   EXPECT_OK(responses);
   EXPECT_EQ(responses->GetTexts().size(), 2);
   // First candidate: " How's it".
@@ -573,6 +577,8 @@ TEST_F(PipelineCustomSamplingTest,
 
 TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingSingleBatch) {
   auto decoded_ids = CreateTensorBuffer<int>(/*dimensions=*/{1, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   StopTokenDetector stop_token_detector(/*batch_size=*/1);
   auto status = stop_token_detector.AddStopTokenSequence(/*stop_sequence=*/{0});
   ASSERT_OK(status);
@@ -584,7 +590,7 @@ TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingSingleBatch) {
 
   auto responses = ScoreCustomSampling(
       executor, *tokenizer_, std::vector<absl::string_view>{"Hello World!"},
-      1.0f, *decoded_ids);
+      1.0f, std::move(decoded_ids.Value()));
   ASSERT_OK(responses);
   // Expect a single output candidate.
   EXPECT_EQ(responses->GetScores().size(), 1);
@@ -597,6 +603,8 @@ TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingSingleBatch) {
 
 TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingMultiBatch) {
   auto decoded_ids = CreateTensorBuffer<int>(/*dimensions=*/{2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   StopTokenDetector stop_token_detector(/*batch_size=*/2);
   auto status = stop_token_detector.AddStopTokenSequence(/*stop_sequence=*/{0});
   ASSERT_OK(status);
@@ -613,7 +621,7 @@ TEST_F(PipelineCustomSamplingTest, ScoreCustomSamplingMultiBatch) {
   auto responses = ScoreCustomSampling(
       executor, *tokenizer_,
       std::vector<absl::string_view>{"How's it going?", "Hello World!"}, 1.0f,
-      *decoded_ids);
+      std::move(decoded_ids.Value()));
   ASSERT_OK(responses);
   // Expect a single output candidate.
   EXPECT_EQ(responses->GetScores().size(), 2);
@@ -645,13 +653,15 @@ TEST_F(PipelineCustomSamplingTest, DecodeCustomSamplingReachMaxNumTokens) {
   std::unique_ptr<TopPSampler> sampler = std::move(sampler_or.value());
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   std::optional<BenchmarkInfo> benchmark_info;
   StopTokenDetector stop_token_detector(2);
   EXPECT_OK(stop_token_detector.AddStopTokenSequence({0}));
-  auto responses =
-      DecodeCustomSampling(executor, *tokenizer_, stop_token_detector,
-                           /*num_output_candidates=*/2, *sampler, *decoded_ids,
-                           /*constraint=*/nullptr, benchmark_info);
+  auto responses = DecodeCustomSampling(
+      executor, *tokenizer_, stop_token_detector,
+      /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
+      /*constraint=*/nullptr, benchmark_info);
   EXPECT_OK(responses);
   EXPECT_EQ(responses->GetTexts().size(), 2);
   // First candidate truncated at max number of tokens: " How's".
@@ -667,6 +677,8 @@ TEST_F(PipelineCustomSamplingTest, DecodeCustomSamplingStreaming) {
   std::unique_ptr<TopPSampler> sampler = std::move(sampler_or.value());
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   std::optional<BenchmarkInfo> benchmark_info;
 
   StopTokenDetector stop_token_detector(2);
@@ -698,7 +710,7 @@ TEST_F(PipelineCustomSamplingTest, DecodeCustomSamplingStreaming) {
 
   EXPECT_OK(DecodeCustomSamplingStreaming(
       executor, *tokenizer_, stop_token_detector,
-      /*num_output_candidates=*/2, *sampler, *decoded_ids,
+      /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
       /*constraint=*/nullptr, benchmark_info,
       CreateTestCallback(responses, status, done)));
   // First candidate: " How's it going" - ("?!") are stop tokens that is not
@@ -729,6 +741,7 @@ TEST_F(PipelineCustomSamplingTest,
   std::unique_ptr<TopPSampler> sampler = std::move(sampler_or.value());
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
 
   std::optional<BenchmarkInfo> benchmark_info;
 
@@ -740,7 +753,7 @@ TEST_F(PipelineCustomSamplingTest,
   bool done = false;
   EXPECT_OK(DecodeCustomSamplingStreaming(
       executor, *tokenizer_, stop_token_detector,
-      /*num_output_candidates=*/2, *sampler, *decoded_ids,
+      /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
       /*constraint=*/nullptr, benchmark_info,
       CreateTestCallback(responses, status, done)));
   // First candidate truncated at max number of tokens: " How's".
@@ -756,6 +769,8 @@ TEST_F(PipelineCustomSamplingTest, DecodeComplexStopTokenDetector) {
   std::unique_ptr<TopPSampler> sampler = std::move(sampler_or.value());
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   std::optional<BenchmarkInfo> benchmark_info;
   StopTokenDetector stop_token_detector(2);
   // This is only a partial stop token sequence matched for the first batch.
@@ -784,10 +799,10 @@ TEST_F(PipelineCustomSamplingTest, DecodeComplexStopTokenDetector) {
                          {2294, 0},
                          {0, 0}});
 
-  auto responses =
-      DecodeCustomSampling(executor, *tokenizer_, stop_token_detector,
-                           /*num_output_candidates=*/2, *sampler, *decoded_ids,
-                           /*constraint=*/nullptr, benchmark_info);
+  auto responses = DecodeCustomSampling(
+      executor, *tokenizer_, stop_token_detector,
+      /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
+      /*constraint=*/nullptr, benchmark_info);
   EXPECT_OK(responses);
   // Expect two output candidates.
   EXPECT_EQ(responses->GetTexts().size(), 2);
@@ -832,6 +847,7 @@ TEST_F(PipelineCustomSamplingTest,
   std::unique_ptr<TopPSampler> sampler = std::move(sampler_or.value());
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
 
   std::optional<BenchmarkInfo> benchmark_info;
 
@@ -848,7 +864,7 @@ TEST_F(PipelineCustomSamplingTest,
   ASSERT_OK(pool.Schedule([&]() {
     status = DecodeCustomSamplingStreaming(
         delayed_executor, *tokenizer_, stop_token_detector,
-        /*num_output_candidates=*/2, *sampler, *decoded_ids,
+        /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
         /*constraint=*/nullptr, benchmark_info,
         CreateTestCallback(responses, callback_status, done,
                            /*delay_on_next=*/true),
@@ -875,6 +891,8 @@ TEST_F(PipelineCustomSamplingTest,
   std::unique_ptr<TopPSampler> sampler = std::move(sampler_or.value());
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
+  EXPECT_TRUE(decoded_ids.HasValue());
+
   // Populate with the last pre-filled token.
   decoded_ids->Write<int>({2, 2});
   absl::Status callback_status;
@@ -904,7 +922,7 @@ TEST_F(PipelineCustomSamplingTest,
   EXPECT_OK(stop_token_detector.AddStopTokenSequence({0}));
   EXPECT_OK(DecodeCustomSamplingStreaming(
       executor, *tokenizer_, stop_token_detector,
-      /*num_output_candidates=*/2, *sampler, *decoded_ids,
+      /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
       /*constraint=*/constraint.get(), benchmark_info,
       CreateTestCallback(responses, callback_status, done)));
   EXPECT_EQ(responses[0], " Hello World");
@@ -966,10 +984,12 @@ TEST_F(PipelineCustomSamplingTest, DecodeStopTokenAndBPEDetector) {
        {0, 0}});
 
   auto decoded_ids = CreateTensorBuffer<int>({2, 1});
-  auto responses =
-      DecodeCustomSampling(executor, *tokenizer, stop_token_detector,
-                           /*num_output_candidates=*/2, *sampler, *decoded_ids,
-                           /*constraint=*/nullptr, benchmark_info);
+  EXPECT_TRUE(decoded_ids.HasValue());
+
+  auto responses = DecodeCustomSampling(
+      executor, *tokenizer, stop_token_detector,
+      /*num_output_candidates=*/2, *sampler, std::move(decoded_ids.Value()),
+      /*constraint=*/nullptr, benchmark_info);
 
   EXPECT_OK(responses);
   EXPECT_EQ(responses->GetTexts().size(), 2);

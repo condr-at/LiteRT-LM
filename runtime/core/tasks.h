@@ -42,14 +42,14 @@ absl::StatusOr<Responses> Decode(
     const StopTokenDetector& stop_token_detector, int num_output_candidates,
     std::optional<BenchmarkInfo>& benchmark_info,
     std::optional<Sampler*> sampler, Constraint* constraint,
-    std::optional<litert::TensorBuffer*> decoded_ids,
+    std::optional<litert::TensorBuffer> decoded_ids,
     absl::AnyInvocable<void(absl::StatusOr<Responses>)>& callback,
     std::atomic<bool>* cancelled);
 
 absl::StatusOr<Responses> Score(
     LlmExecutor& executor, Tokenizer& tokenizer,
     const std::vector<absl::string_view>& target_texts, float temperature,
-    litert::TensorBuffer& decoded_ids);
+    litert::TensorBuffer decoded_ids);
 
 }  // namespace litert::lm::Tasks
 
