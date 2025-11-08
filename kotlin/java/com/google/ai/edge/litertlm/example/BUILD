@@ -30,10 +30,13 @@ kt_jvm_library(
 # bazel run -c opt //kotlin/java/com/google/ai/edge/litertlm/example:main -- <abs_model_path>
 #
 # To build a standalone binary:
-# bazel run -c opt //kotlin/java/com/google/ai/edge/litertlm/example:main_deploy.jar
+# bazel build -c opt //kotlin/java/com/google/ai/edge/litertlm/example:main_deploy.jar
 # ./bazel-bin/kotlin/java/com/google/ai/edge/litertlm/example/main_deploy.jar -- <abs_model_apth>
 java_binary(
     name = "main",
+    jvm_flags = ["--enable-native-access=ALL-UNNAMED"],  # it is expect to access native code.
     main_class = "com.google.ai.edge.litertlm.example.MainKt",
-    runtime_deps = [":main_lib"],
+    runtime_deps = [
+        ":main_lib",
+    ],
 )
