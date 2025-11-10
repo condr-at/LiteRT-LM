@@ -192,11 +192,9 @@ val imageBytes: ByteArray = // Load image bytes
 val audioBytes: ByteArray = // Load audio bytes
 
 val multiModalMessage = Message.of(
-    listOf(
-        Content.ImageBytes(imageBytes),
-        Content.AudioBytes(audioBytes),
-        Content.Text("Describe this image and audio.")
-    )
+    Content.ImageBytes(imageBytes),
+    Content.AudioBytes(audioBytes),
+    Content.Text("Describe this image and audio."),
 )
 
 conversation.sendMessageAsync(multiModalMessage, callback)

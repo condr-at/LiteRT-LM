@@ -46,9 +46,9 @@ class Message private constructor(val contents: List<Content>) {
       return Message(listOf(Content.Text(text)))
     }
 
-    /** Creates a [Message] from a single [Content]. */
-    fun of(content: Content): Message {
-      return Message(listOf(content))
+    /** Creates a [Message] from the array of [Content]. */
+    fun of(vararg contents: Content): Message {
+      return Message(contents.toList())
     }
 
     /** Creates a [Message] from a list of [Content]. */
