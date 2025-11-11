@@ -1128,7 +1128,11 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
       } else {
         gpu_compilation_options.SetPrecision(GpuOptions::Precision::kFp16);
       }
+#if defined(__APPLE__)
+      gpu_compilation_options.SetPreferTextureWeights(false);
+#else   // !__APPLE__
       gpu_compilation_options.SetPreferTextureWeights(true);
+#endif  // !__APPLE__
       if (weight_cache_path != ":nocache") {
         ASSIGN_OR_RETURN(auto model_path,
                          executor_settings.GetModelAssets().GetPath());
