@@ -24,11 +24,14 @@ cc_binary(
     srcs = ["litertlm.cc"],
     linkshared = 1,
     deps = [
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@nlohmann_json//:json",
+        "@litert//litert/c/internal:litert_logging",
         "//runtime/conversation",
         "//runtime/conversation:io_types",
         "//runtime/core:engine_impl",  # buildcleaner: keep
@@ -37,6 +40,7 @@ cc_binary(
         "//runtime/engine:io_types",
         "//runtime/executor:executor_settings_base",
         "//runtime/proto:sampler_params_cc_proto",
+        "@litert//tflite:minimal_logging",
     ] + select({
         "@platforms//os:android": [],
         "//conditions:default": ["@rules_java//toolchains:jni"],

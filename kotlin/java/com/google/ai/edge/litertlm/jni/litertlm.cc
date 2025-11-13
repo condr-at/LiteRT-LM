@@ -22,11 +22,14 @@
 #include <variant>
 #include <vector>
 
+#include "absl/base/log_severity.h"  // from @com_google_absl
 #include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
+#include "absl/log/globals.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "nlohmann/json_fwd.hpp"  // from @nlohmann_json
+#include "litert/c/internal/litert_logging.h"  // from @litert
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/engine/engine.h"
@@ -34,6 +37,8 @@
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/proto/sampler_params.pb.h"
+#include "tflite/logger.h"  // from @litert
+#include "tflite/minimal_logging.h"  // from @litert
 
 // For Windows, __declspec( dllexport ) is required to export function in .dll.
 // https://learn.microsoft.com/en-us/cpp/cpp/using-dllimport-and-dllexport-in-cpp-classes?view=msvc-170
@@ -266,7 +271,6 @@ SamplerParameters CreateSamplerParamsFromJni(JNIEnv* env,
 
   return sampler_params;
 }
-
 }  // namespace
 
 extern "C" {
@@ -274,6 +278,61 @@ extern "C" {
 LITERTLM_JNIEXPORT void JNICALL
 Java_com_google_ai_edge_litertlm_NativeLibraryLoader_nativeCheckLoaded(
     JNIEnv* env, jclass thiz) {}
+
+LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSetMinLogSeverity)(
+    JNIEnv* env, jclass thiz, jint log_severity) {
+  absl::LogSeverityAtLeast absl_log_severity;
+  LiteRtLogSeverity litert_log_severity;
+  tflite::LogSeverity tflite_log_severity;
+
+  switch (log_severity) {
+    case 0:  // verbose
+      absl_log_severity = absl::LogSeverityAtLeast::kInfo;
+      litert_log_severity = kLiteRtLogSeverityVerbose;
+      tflite_log_severity = tflite::TFLITE_LOG_VERBOSE;
+      break;
+    case 1:  // debug
+      absl_log_severity = absl::LogSeverityAtLeast::kInfo;
+      litert_log_severity = kLiteRtLogSeverityDebug;
+      tflite_log_severity = tflite::TFLITE_LOG_VERBOSE;
+      break;
+    case 2:  // info
+      absl_log_severity = absl::LogSeverityAtLeast::kInfo;
+      litert_log_severity = kLiteRtLogSeverityInfo;
+      tflite_log_severity = tflite::TFLITE_LOG_INFO;
+      break;
+    case 3:  // warning
+      absl_log_severity = absl::LogSeverityAtLeast::kWarning;
+      litert_log_severity = kLiteRtLogSeverityWarning;
+      tflite_log_severity = tflite::TFLITE_LOG_WARNING;
+      break;
+    case 4:  // error
+      absl_log_severity = absl::LogSeverityAtLeast::kError;
+      litert_log_severity = kLiteRtLogSeverityError;
+      tflite_log_severity = tflite::TFLITE_LOG_ERROR;
+      break;
+    case 5:  // fatal
+      absl_log_severity = absl::LogSeverityAtLeast::kFatal;
+      litert_log_severity = kLiteRtLogSeverityError;
+      tflite_log_severity = tflite::TFLITE_LOG_ERROR;
+      break;
+    default:  // infinity
+      absl_log_severity = absl::LogSeverityAtLeast::kInfinity;
+      litert_log_severity = kLiteRtLogSeveritySilent;
+      tflite_log_severity = tflite::TFLITE_LOG_SILENT;
+      break;
+  }
+
+  // Update the absl logging framework, used by LiteRT-LM.
+  absl::SetMinLogLevel(absl_log_severity);
+
+  // Update the logging framework of LiteRT.
+  LiteRtSetMinLoggerSeverity(LiteRtGetDefaultLogger(), litert_log_severity);
+
+  // Update the logging framework of TFLite.
+  tflite::logging_internal::MinimalLogger::SetMinimumLogSeverity(
+      tflite_log_severity);
+}
 
 // __declspec( dllexport )
 LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(

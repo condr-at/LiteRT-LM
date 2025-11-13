@@ -236,4 +236,11 @@ internal object LiteRtLmJni {
      */
     fun onError(statusCode: Int, message: String)
   }
+
+  /**
+   * Sets the minimum log severity for the native LiteRT-LM library.
+   *
+   * @param logSeverity The minimum log level to set. See [LogSeverity].
+   */
+  external fun nativeSetMinLogSeverity(logSeverity: Int)
 }

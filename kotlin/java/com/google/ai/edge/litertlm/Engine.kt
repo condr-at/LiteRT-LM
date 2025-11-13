@@ -140,4 +140,24 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
   private fun checkInitialized() {
     check(isInitialized()) { "Engine is not initialized." }
   }
+
+  companion object {
+    /**
+     * Sets the minimum log serverity for the native libraries. This affects global logging for all
+     * engine instances. If not set, it uses the native libraries' default.
+     */
+    fun setNativeMinLogServerity(level: LogSeverity) {
+      LiteRtLmJni.nativeSetMinLogSeverity(level.severity)
+    }
+  }
+}
+
+enum class LogSeverity(val severity: Int) {
+  VERBOSE(0),
+  DEBUG(1),
+  INFO(2),
+  WARNING(3),
+  ERROR(4),
+  FATAL(5),
+  INFINITY(1000),
 }
