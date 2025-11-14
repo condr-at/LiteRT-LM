@@ -70,9 +70,12 @@ typedef struct {
 //
 // @param model_path The path to the model file.
 // @param backend_str The backend to use (e.g., "cpu", "gpu").
+// @param vision_backend_str The vision backend to use, or NULL if not set.
+// @param audio_backend_str The audio backend to use, or NULL if not set.
 // @return A pointer to the created settings, or NULL on failure.
 LiteRtLmEngineSettings* litert_lm_engine_settings_create(
-    const char* model_path, const char* backend_str);
+    const char* model_path, const char* backend_str,
+    const char* vision_backend_str, const char* audio_backend_str);
 
 // Destroys LiteRT LM Engine Settings.
 //
@@ -85,6 +88,13 @@ void litert_lm_engine_settings_delete(LiteRtLmEngineSettings* settings);
 // @param max_num_tokens The maximum number of tokens.
 void litert_lm_engine_settings_set_max_num_tokens(
     LiteRtLmEngineSettings* settings, int max_num_tokens);
+
+// Sets the cache directory for the engine.
+//
+// @param settings The engine settings.
+// @param cache_dir The cache directory.
+void litert_lm_engine_settings_set_cache_dir(
+  LiteRtLmEngineSettings* settings, const char* cache_dir);
 
 // Enables benchmarking for the engine.
 //

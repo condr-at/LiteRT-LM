@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -128,7 +129,8 @@ struct LiteRtLmJsonResponse {
 extern "C" {
 
 LiteRtLmEngineSettings* litert_lm_engine_settings_create(
-    const char* model_path, const char* backend_str) {
+    const char* model_path, const char* backend_str,
+    const char* vision_backend_str, const char* audio_backend_str) {
   auto model_assets = ModelAssets::Create(model_path);
   if (!model_assets.ok()) {
     ABSL_LOG(ERROR) << "Failed to create model assets: "
@@ -140,8 +142,29 @@ LiteRtLmEngineSettings* litert_lm_engine_settings_create(
     ABSL_LOG(ERROR) << "Failed to parse backend: " << backend.status();
     return nullptr;
   }
-  auto engine_settings =
-      EngineSettings::CreateDefault(*std::move(model_assets), *backend);
+
+  std::optional<litert::lm::Backend> vision_backend;
+  if (vision_backend_str) {
+    auto backend = litert::lm::GetBackendFromString(vision_backend_str);
+    if (!backend.ok()) {
+      ABSL_LOG(ERROR) << "Failed to parse vision backend: " << backend.status();
+      return nullptr;
+    }
+    vision_backend = *backend;
+  }
+
+  std::optional<litert::lm::Backend> audio_backend;
+  if (audio_backend_str) {
+    auto backend = litert::lm::GetBackendFromString(audio_backend_str);
+    if (!backend.ok()) {
+      ABSL_LOG(ERROR) << "Failed to parse audio backend: " << backend.status();
+      return nullptr;
+    }
+    audio_backend = *backend;
+  }
+
+  auto engine_settings = EngineSettings::CreateDefault(
+      *std::move(model_assets), *backend, vision_backend, audio_backend);
   if (!engine_settings.ok()) {
     ABSL_LOG(ERROR) << "Failed to create engine settings: "
                     << engine_settings.status();
@@ -163,6 +186,13 @@ void litert_lm_engine_settings_set_max_num_tokens(
   if (settings && settings->settings) {
     settings->settings->GetMutableMainExecutorSettings().SetMaxNumTokens(
         max_num_tokens);
+  }
+}
+
+void litert_lm_engine_settings_set_cache_dir(
+    LiteRtLmEngineSettings* settings, const char* cache_dir) {
+  if (settings && settings->settings) {
+    settings->settings->GetMutableMainExecutorSettings().SetCacheDir(cache_dir);
   }
 }
 

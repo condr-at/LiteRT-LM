@@ -10,6 +10,13 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/status_matchers.h"  // from @com_google_absl
 #include "absl/synchronization/notification.h"  // from @com_google_absl
+#include "runtime/engine/engine_settings.h"
+#include "runtime/executor/executor_settings_base.h"
+
+struct LiteRtLmEngineSettings {
+  std::unique_ptr<litert::lm::EngineSettings> settings;
+};
+
 
 namespace {
 
@@ -38,12 +45,66 @@ using JsonResponsePtr =
     std::unique_ptr<LiteRtLmJsonResponse,
                     decltype(&litert_lm_json_response_delete)>;
 
+TEST(EngineCTest, CreateSettingsWithNoVisionAndAudioBackend) {
+  const std::string task_path = "test_model_path_1";
+  EngineSettingsPtr settings(
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ nullptr,
+                                       /* audio_backend_str */ nullptr),
+      &litert_lm_engine_settings_delete);
+  ASSERT_NE(settings, nullptr);
+  EXPECT_FALSE(settings->settings->GetVisionExecutorSettings().has_value());
+  EXPECT_FALSE(settings->settings->GetAudioExecutorSettings().has_value());
+}
+
+TEST(EngineCTest, CreateSettingsWithVisionAndAudioBackend) {
+  const std::string task_path = "test_model_path_1";
+  EngineSettingsPtr settings(
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ "gpu",
+                                       /* audio_backend_str */ "cpu"),
+      &litert_lm_engine_settings_delete);
+  ASSERT_NE(settings, nullptr);
+  EXPECT_TRUE(settings->settings->GetVisionExecutorSettings().has_value());
+  EXPECT_TRUE(settings->settings->GetAudioExecutorSettings().has_value());
+  EXPECT_EQ(settings->settings->GetVisionExecutorSettings()->GetBackend(),
+            litert::lm::Backend::GPU);
+  EXPECT_EQ(settings->settings->GetAudioExecutorSettings()->GetBackend(),
+            litert::lm::Backend::CPU);
+}
+
+TEST(EngineCTest, CreateSettingsWithInvalidVisionBackend) {
+  const std::string task_path = "test_model_path_1";
+  EngineSettingsPtr settings(
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ "dummy_backend",
+                                       /* audio_backend_str */ "cpu"),
+      &litert_lm_engine_settings_delete);
+  ASSERT_EQ(settings, nullptr);
+}
+
+TEST(EngineCTest, SetCacheDir) {
+  const std::string task_path = "test_model_path_1";
+  EngineSettingsPtr settings(
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ nullptr,
+                                       /* audio_backend_str */ nullptr),
+      &litert_lm_engine_settings_delete);
+  ASSERT_NE(settings, nullptr);
+  const std::string cache_dir = "test_cache_dir";
+  litert_lm_engine_settings_set_cache_dir(settings.get(), cache_dir.c_str());
+  EXPECT_EQ(settings->settings->GetMainExecutorSettings().GetCacheDir(),
+            cache_dir);
+}
+
 TEST(EngineCTest, GenerateContent) {
   const std::string task_path = GetTestdataPath(
       "litert_lm/runtime/testdata/test_lm_new_metadata.task");
 
   EngineSettingsPtr settings(
-      litert_lm_engine_settings_create(task_path.c_str(), "cpu"),
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ nullptr,
+                                       /* audio_backend_str */ nullptr),
       &litert_lm_engine_settings_delete);
   ASSERT_NE(settings, nullptr);
   litert_lm_engine_settings_set_max_num_tokens(settings.get(), 16);
@@ -78,7 +139,9 @@ TEST(EngineCTest, ConversationSendMessage) {
       "litert_lm/runtime/testdata/test_lm_new_metadata.task");
 
   EngineSettingsPtr settings(
-      litert_lm_engine_settings_create(task_path.c_str(), "cpu"),
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ nullptr,
+                                       /* audio_backend_str */ nullptr),
       &litert_lm_engine_settings_delete);
   ASSERT_NE(settings, nullptr);
   litert_lm_engine_settings_set_max_num_tokens(settings.get(), 16);
@@ -128,7 +191,9 @@ TEST(EngineCTest, GenerateContentStream) {
       "litert_lm/runtime/testdata/test_lm_new_metadata.task");
 
   EngineSettingsPtr settings(
-      litert_lm_engine_settings_create(task_path.c_str(), "cpu"),
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ nullptr,
+                                       /* audio_backend_str */ nullptr),
       &litert_lm_engine_settings_delete);
   ASSERT_NE(settings, nullptr);
   litert_lm_engine_settings_set_max_num_tokens(settings.get(), 16);
@@ -169,7 +234,9 @@ TEST(EngineCTest, ConversationSendMessageStream) {
       "litert_lm/runtime/testdata/test_lm_new_metadata.task");
 
   EngineSettingsPtr settings(
-      litert_lm_engine_settings_create(task_path.c_str(), "cpu"),
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ nullptr,
+                                       /* audio_backend_str */ nullptr),
       &litert_lm_engine_settings_delete);
   ASSERT_NE(settings, nullptr);
   litert_lm_engine_settings_set_max_num_tokens(settings.get(), 16);
@@ -203,7 +270,9 @@ TEST(EngineCTest, Benchmark) {
       "litert_lm/runtime/testdata/test_lm_new_metadata.task";
 
   EngineSettingsPtr settings(
-      litert_lm_engine_settings_create(task_path.c_str(), "cpu"),
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ nullptr,
+                                       /* audio_backend_str */ nullptr),
       &litert_lm_engine_settings_delete);
   ASSERT_NE(settings, nullptr);
   litert_lm_engine_settings_set_max_num_tokens(settings.get(), 16);
