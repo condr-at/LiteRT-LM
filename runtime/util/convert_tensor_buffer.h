@@ -24,6 +24,7 @@
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/cc/litert_common.h"  // from @litert
 #include "litert/cc/litert_element_type.h"  // from @litert
+#include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_expected.h"  // from @litert
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
@@ -61,19 +62,40 @@ struct ElementTypeFor<float> {
   static constexpr ::litert::ElementType kType = ::litert::ElementType::Float32;
 };
 
-// Creates a ::litert::TensorBuffer with the given dimensions and data.
 template <typename T>
 ::litert::Expected<::litert::TensorBuffer> CreateTensorBuffer(
     ::litert::Dimensions&& dimensions,
     ::litert::TensorBufferType buffer_type =
         ::litert::TensorBufferType::kHostMemory) {
+  if (buffer_type != ::litert::TensorBufferType::kHostMemory) {
+    return ::litert::Unexpected(
+        ::litert::Status::kErrorInvalidArgument,
+        "Only host memory buffer is supported. Use CreateTensorBuffer() with "
+        "Environment argument.");
+  }
+  int size = 1;
+  for (int dim : dimensions) {
+    size *= dim;
+  }
+
+  return ::litert::TensorBuffer::CreateManagedHostMemory(
+      ::litert::RankedTensorType(ElementTypeFor<T>::kType,
+                                 ::litert::Layout(std::move(dimensions))),
+      size * sizeof(T));
+}
+
+// Creates a ::litert::TensorBuffer with the given dimensions and data.
+template <typename T>
+::litert::Expected<::litert::TensorBuffer> CreateTensorBuffer(
+    ::litert::Dimensions&& dimensions, ::litert::TensorBufferType buffer_type,
+    ::litert::Environment& env) {
   int size = 1;
   for (int dim : dimensions) {
     size *= dim;
   }
 
   return ::litert::TensorBuffer::CreateManaged(
-      buffer_type,
+      env, buffer_type,
       ::litert::RankedTensorType(ElementTypeFor<T>::kType,
                                  ::litert::Layout(std::move(dimensions))),
       size * sizeof(T));
@@ -142,17 +164,31 @@ template <typename T>
 ::litert::Expected<::litert::TensorBuffer> CopyToTensorBuffer(
     absl::Span<const T> data, ::litert::Dimensions&& dimensions,
     ::litert::TensorBufferType buffer_type =
-        ::litert::TensorBufferType::kHostMemory) {
-  auto output_tensor_buffer = ::litert::TensorBuffer::CreateManaged(
-      buffer_type,
-      ::litert::RankedTensorType(ElementTypeFor<T>::kType,
-                                 ::litert::Layout(std::move(dimensions))),
-      data.size() * sizeof(T));
+        ::litert::TensorBufferType::kHostMemory,
+    ::litert::Environment* env = nullptr) {
+  if (buffer_type != ::litert::TensorBufferType::kHostMemory &&
+      env == nullptr) {
+    return ::litert::Unexpected(
+        ::litert::Status::kErrorInvalidArgument,
+        "Environment is required for non-host memory buffer.");
+  }
+  ::litert::Expected<::litert::TensorBuffer> output_tensor_buffer;
+  if (buffer_type == ::litert::TensorBufferType::kHostMemory) {
+    output_tensor_buffer = ::litert::TensorBuffer::CreateManagedHostMemory(
+        ::litert::RankedTensorType(ElementTypeFor<T>::kType,
+                                   ::litert::Layout(std::move(dimensions))),
+        data.size() * sizeof(T));
+  } else {
+    output_tensor_buffer = ::litert::TensorBuffer::CreateManaged(
+        *env, buffer_type,
+        ::litert::RankedTensorType(ElementTypeFor<T>::kType,
+                                   ::litert::Layout(std::move(dimensions))),
+        data.size() * sizeof(T));
+  }
   if (!output_tensor_buffer.HasValue()) {
     return output_tensor_buffer.Error();
   }
-
-  output_tensor_buffer->Write(data);
+  LITERT_RETURN_IF_ERROR(output_tensor_buffer->Write(data));
   return std::move(*output_tensor_buffer);
 }
 
@@ -161,12 +197,27 @@ template <typename TargetType, typename SourceType>
 ::litert::Expected<::litert::TensorBuffer> ConvertAndCopyToTensorBuffer(
     absl::Span<const SourceType> source, ::litert::Dimensions&& dimensions,
     ::litert::TensorBufferType buffer_type =
-        ::litert::TensorBufferType::kHostMemory) {
-  auto tensor_buffer = ::litert::TensorBuffer::CreateManaged(
-      buffer_type,
-      ::litert::RankedTensorType(ElementTypeFor<TargetType>::kType,
-                                 ::litert::Layout(std::move(dimensions))),
-      source.size() * sizeof(TargetType));
+        ::litert::TensorBufferType::kHostMemory,
+    ::litert::Environment* env = nullptr) {
+  if (buffer_type != ::litert::TensorBufferType::kHostMemory &&
+      env == nullptr) {
+    return ::litert::Unexpected(
+        ::litert::Status::kErrorInvalidArgument,
+        "Environment is required for non-host memory buffer.");
+  }
+  ::litert::Expected<::litert::TensorBuffer> tensor_buffer;
+  if (buffer_type == ::litert::TensorBufferType::kHostMemory) {
+    tensor_buffer = ::litert::TensorBuffer::CreateManagedHostMemory(
+        ::litert::RankedTensorType(ElementTypeFor<TargetType>::kType,
+                                   ::litert::Layout(std::move(dimensions))),
+        source.size() * sizeof(TargetType));
+  } else {
+    tensor_buffer = ::litert::TensorBuffer::CreateManaged(
+        *env, buffer_type,
+        ::litert::RankedTensorType(ElementTypeFor<TargetType>::kType,
+                                   ::litert::Layout(std::move(dimensions))),
+        source.size() * sizeof(TargetType));
+  }
   if (!tensor_buffer.HasValue()) {
     return tensor_buffer.Error();
   }

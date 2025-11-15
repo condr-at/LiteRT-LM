@@ -25,7 +25,6 @@
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_ranked_tensor_type.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
-#include "litert/cc/litert_tensor_buffer_types.h"  // from @litert
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/util/status_macros.h"  // IWYU pragma: keep
 #include "runtime/util/tensor_buffer_util.h"
@@ -82,10 +81,9 @@ absl::StatusOr<T> CombineExecutorDataImpl(std::vector<T>& executor_data) {
   ::litert::RankedTensorType combined_tensor_type(
       first_tensor_type.ElementType(), std::move(combined_layout));
 
-  LITERT_ASSIGN_OR_RETURN(
-      auto combined_tensor_buffer,
-      TensorBuffer::CreateManaged(TensorBufferType::kHostMemory,
-                                  combined_tensor_type, total_packed_size));
+  LITERT_ASSIGN_OR_RETURN(auto combined_tensor_buffer,
+                          TensorBuffer::CreateManagedHostMemory(
+                              combined_tensor_type, total_packed_size));
   LITERT_ASSIGN_OR_RETURN(
       auto combined_embeddings_lock_and_addr,
       ::litert::TensorBufferScopedLock::Create(combined_tensor_buffer,
