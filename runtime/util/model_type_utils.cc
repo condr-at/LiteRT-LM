@@ -80,9 +80,19 @@ absl::StatusOr<proto::LlmModelType> InferLlmModelType(
   proto::LlmModelType model_type;
   model_type.mutable_generic_model();
   for (int token_id : kStartTurnTokenIdsToCheck) {
-    ASSIGN_OR_RETURN(auto start_turn_text,
-                     tokenizer.TokenIdsToText({token_id}));
-    ASSIGN_OR_RETURN(model_type, CreateModelType(start_turn_text, tokenizer));
+    auto start_turn_text = tokenizer.TokenIdsToText({token_id});
+    if (!start_turn_text.ok()) {
+      if (start_turn_text.status().code() == absl::StatusCode::kDataLoss) {
+        // If the error is DataLoss, it means the start turn token id coincides
+        // with the middle of an incomplete BPE sequence by chance used by
+        // HungingFace tokenizer. We should keep searching for the next start
+        // turn token id.
+        continue;
+      } else {
+        return start_turn_text.status();
+      }
+    }
+    ASSIGN_OR_RETURN(model_type, CreateModelType(*start_turn_text, tokenizer));
     // If the model type is not generic, we can stop checking.
     if (model_type.model_type_case() != proto::LlmModelType::kGenericModel) {
       break;
