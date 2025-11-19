@@ -80,10 +80,10 @@ jobs:
             //... \
             //runtime/engine:litert_lm_main
 
-      - name: Check if litert_lm_main doesn't link libLiteRtRuntimeCApi.so
-        # Return exit code 1 if libLiteRtRuntimeCApi.so is required.
+      - name: Check if litert_lm_main doesn't link libLiteRt.so
+        # Return exit code 1 if libLiteRt.so is required.
         run: |
-          ! readelf -d bazel-bin/runtime/engine/litert_lm_main | grep libLiteRtRuntimeCApi.so
+          ! readelf -d bazel-bin/runtime/engine/litert_lm_main | grep libLiteRt.so
 
       - name: Update litert_lm_main prebuilt for Linux if new version tag is pushed.
         if: github.ref_type == 'tag'
@@ -103,7 +103,7 @@ jobs:
             //runtime/engine:litert_lm_main
 
       - name: Check if litert_lm_main has only LiteRt symbols undefined.
-        # Return exit code 1 if libLiteRtRuntimeCApi.so has LiteRt symbols except for LiteRtTopK
+        # Return exit code 1 if libLiteRt.so has LiteRt symbols except for LiteRtTopK
         # and some exceptions listed explictly here.
         # TODO b/453859132: Remove OpaqueOptions.
         run: |
