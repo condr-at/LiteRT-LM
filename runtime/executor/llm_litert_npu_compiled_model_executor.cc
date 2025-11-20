@@ -684,7 +684,25 @@ LlmLiteRtNpuCompiledModelExecutor::CreateLlmInferenceContextWithBufferSharing(
     }
     // Duplicate all kv cache buffers to prefill inputs.
     for (const auto& [key, value] : input_kv_cache_buffers) {
-      LITERT_ASSIGN_OR_RETURN(prefill_input_buffers[key], value.Duplicate());
+      // The last layer kv cache in the prefill signature has float32 elements,
+      // although its not used in the model, CompiledModel will complain about
+      // the mismatched buffer size. So we need to correct the buffer size here,
+      // by creating a new buffer with the correct size.
+      LITERT_ASSIGN_OR_RETURN(
+          auto input_tensor_type,
+          llm_compiled_model.GetInputTensorType(kPrefillSignature, key));
+      LITERT_ASSIGN_OR_RETURN(auto input_tensor_size,
+                              input_tensor_type.Bytes());
+      LITERT_ASSIGN_OR_RETURN(auto input_buffer_size, value.Size());
+      if (input_tensor_size != input_buffer_size) {
+        LITERT_ASSIGN_OR_RETURN(
+            auto corrected_input_buffer,
+            llm_compiled_model.CreateInputBuffer(kPrefillSignature, key));
+        LITERT_ASSIGN_OR_RETURN(prefill_input_buffers[key],
+                                corrected_input_buffer.Duplicate());
+      } else {
+        LITERT_ASSIGN_OR_RETURN(prefill_input_buffers[key], value.Duplicate());
+      }
     }
   }
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
@@ -1416,8 +1434,7 @@ litert::Expected<litert::Options> CreateLiteRtOptions() {
   options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
   LITERT_ASSIGN_OR_RETURN(auto qnn_opts,
                           ::litert::qualcomm::QualcommOptions::Create());
-  qnn_opts.SetLogLevel(
-      ::litert::qualcomm::QualcommOptions::LogLevel::kOff);
+  qnn_opts.SetLogLevel(::litert::qualcomm::QualcommOptions::LogLevel::kOff);
   qnn_opts.SetHtpPerformanceMode(
       ::litert::qualcomm::QualcommOptions::HtpPerformanceMode::kBurst);
   options.AddOpaqueOptions(std::move(qnn_opts));
