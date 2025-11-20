@@ -25,7 +25,6 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/components/constrained_decoding/constraint.h"
-#include "runtime/components/constrained_decoding/constraint_provider.h"
 #include "runtime/components/preprocessor/audio_preprocessor.h"
 #include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/tokenizer.h"
@@ -73,12 +72,11 @@ class Gemma3DataProcessor
 
  private:
   explicit Gemma3DataProcessor(
-      std::unique_ptr<ConstraintProvider> constraint_provider,
       const Gemma3DataProcessorConfig& config = Gemma3DataProcessorConfig(),
       std::optional<Preface> preface = std::nullopt,
       std::unique_ptr<ImagePreprocessor> image_preprocessor = nullptr,
       std::unique_ptr<AudioPreprocessor> audio_preprocessor = nullptr)
-      : constraint_provider_(std::move(constraint_provider)),
+      :
         config_(config),
         preface_(preface),
         image_preprocessor_(std::move(image_preprocessor)),
@@ -93,7 +91,6 @@ class Gemma3DataProcessor
       const Responses& responses,
       const Gemma3DataProcessorArguments& args) const override;
 
-  std::unique_ptr<ConstraintProvider> constraint_provider_;
   Gemma3DataProcessorConfig config_;
   std::optional<Preface> preface_;
   std::unique_ptr<ImagePreprocessor> image_preprocessor_;

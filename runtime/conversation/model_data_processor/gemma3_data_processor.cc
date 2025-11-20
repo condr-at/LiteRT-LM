@@ -35,7 +35,6 @@
 #include "runtime/components/preprocessor/audio_preprocessor_miniaudio.h"
 #include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/preprocessor/stb_image_preprocessor.h"
-#include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/components/tool_use/parser_utils.h"
 #include "runtime/components/tool_use/python_tool_format_utils.h"
@@ -118,7 +117,6 @@ Gemma3DataProcessor::Create(Gemma3DataProcessorConfig config,
                    AudioPreprocessorMiniAudio::Create(
                        AudioPreprocessorConfig::CreateDefaultUsmConfig()));
   return absl::WrapUnique(new Gemma3DataProcessor(
-      nullptr,
       config, preface, std::make_unique<StbImagePreprocessor>(),
       std::move(audio_preprocessor)));
 }
