@@ -35,12 +35,14 @@
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/components/constrained_decoding/constraint.h"
 #include "runtime/components/sampler.h"
+#include "runtime/components/sampler_factory.h"
 #include "runtime/components/stop_token_detector.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/core/tasks.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/audio_executor.h"
+#include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/executor/vision_executor.h"
@@ -357,7 +359,14 @@ absl::StatusOr<std::unique_ptr<ExecutionManager>> ExecutionManager::Create(
     std::unique_ptr<LlmExecutor> absl_nonnull llm_executor,
     std::unique_ptr<VisionExecutor> vision_executor,
     std::unique_ptr<AudioExecutor> audio_executor,
-    std::unique_ptr<Sampler> sampler, SessionConfig session_config) {
+    SessionConfig session_config) {
+  std::unique_ptr<Sampler> sampler;
+  if (session_config.GetSamplerBackend() == Backend::CPU) {
+    ASSIGN_OR_RETURN(sampler,
+                     CreateSampler(session_config.GetSamplerBackend(),
+                                   session_config.GetNumOutputCandidates(),
+                                   session_config.GetSamplerParams()));
+  }
   return absl::WrapUnique(new ExecutionManager(
       tokenizer, std::move(llm_executor), std::move(vision_executor),
       std::move(audio_executor), std::move(sampler), session_config,

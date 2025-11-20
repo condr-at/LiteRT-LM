@@ -95,7 +95,7 @@ class ExecutionManager {
       std::unique_ptr<LlmExecutor> absl_nonnull llm_executor,
       std::unique_ptr<VisionExecutor> vision_executor,
       std::unique_ptr<AudioExecutor> audio_executor,
-      std::unique_ptr<Sampler> sampler, SessionConfig session_config);
+      SessionConfig session_config);
 
   ~ExecutionManager() = default;
 
@@ -269,7 +269,7 @@ class ExecutionManager {
       const std::vector<InputData>& preprocessed_contents);
 
   // The next unique task ID.
-  std::atomic<TaskId> next_task_id_ = -1;
+  std::atomic<TaskId> next_task_id_ = 0;
 
   // The mutex for protecting the task lookup.
   absl::Mutex task_lookup_mutex_;
