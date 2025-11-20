@@ -181,6 +181,7 @@ class DecodeOneStep {
           scores_span_, ReferTensorBufferAsSpan<float>(scores_tensor_));
     }
 
+    is_first_step_ = false;
     return stop_token_detector_.AllDone();
   }
 
@@ -244,9 +245,10 @@ class DecodeOneStep {
                               decoded_ids->Duplicate());
       ExecutorInputs inputs(ExecutorTextData(std::move(duplicate_decoded_ids)),
                             std::nullopt, std::nullopt);
-      // Update constraint state based on the current token id before the
-      // decode.
-      if (constrained_decoder_) {
+      // Update constraint state only with decode ids.
+      // If this is the first step, last_token_ids comes from prefill, therefore
+      // should be ignored.
+      if (!is_first_step_ && constrained_decoder_) {
         LITERT_ASSIGN_OR_RETURN(auto last_token_ids, decoded_ids->Duplicate());
         RETURN_IF_ERROR(
             constrained_decoder_->UpdateConstraintState(last_token_ids));
@@ -320,6 +322,8 @@ class DecodeOneStep {
   std::vector<std::vector<int>> bpe_partial_token_ids_;
   std::vector<std::queue<std::string>> pending_stop_tokens_;
   std::vector<std::string> result_text_;
+
+  bool is_first_step_ = true;
 };
 
 }  // namespace

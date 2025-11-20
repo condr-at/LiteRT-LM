@@ -424,6 +424,8 @@ cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@litert//litert/test:matchers",
+        "//runtime/components/constrained_decoding:constrained_decoder",
+        "//runtime/components/constrained_decoding:fake_constraint",
         "//runtime/util:convert_tensor_buffer",
         "//runtime/util:test_utils",
     ],

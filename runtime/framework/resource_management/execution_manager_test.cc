@@ -29,6 +29,7 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "litert/test/matchers.h"  // from @litert
+#include "runtime/components/constrained_decoding/fake_constraint.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
@@ -58,6 +59,8 @@ class ExecutionManagerTest : public ::testing::Test {
  protected:
   void SetUp() override {
     tokenizer_ = std::make_unique<MockTokenizer>();
+    // This default behavior is to convert the stop token string to the token
+    // id 6.
     EXPECT_CALL(*tokenizer_, TokenToId).WillRepeatedly(Return(6));
     EXPECT_CALL(*tokenizer_, TokenIdsToText(ElementsAre(4)))
         .WillRepeatedly(Return("4"));
@@ -129,7 +132,7 @@ TEST_F(ExecutionManagerTest, AddPrefillTask) {
   ASSERT_OK(execution_manager_->AddPrefillTask(
       task_id, std::move(inputs), {}, benchmark_info, std::move(callback)));
 
-  EXPECT_OK(execution_manager_->WaitUntilDone(task_id, absl::Seconds(1)));
+  EXPECT_OK(execution_manager_->WaitUntilDone(task_id, absl::Seconds(3)));
 
   EXPECT_THAT(
       task_states,
@@ -146,13 +149,27 @@ TEST_F(ExecutionManagerTest, AddDecodeTask) {
         task_states.push_back(responses->GetTaskState());
       };
 
+  std::vector<InputData> inputs;
+  ASSERT_OK_AND_ASSIGN(auto input_text,
+                       tokenizer_->TokenIdsToTensorBuffer({1, 2, 3}));
+  inputs.push_back(InputText(std::move(input_text)));
   std::optional<BenchmarkInfo> benchmark_info = std::nullopt;
-  ASSERT_OK_AND_ASSIGN(const TaskId task_id,
+  ASSERT_OK_AND_ASSIGN(const TaskId prefill_task_id,
                        execution_manager_->GetNewTaskId());
-  ASSERT_OK(execution_manager_->AddDecodeTask(
-      task_id, {}, 1, nullptr, nullptr, benchmark_info, std::move(callback)));
+  ASSERT_OK(execution_manager_->AddPrefillTask(
+      prefill_task_id, std::move(inputs), {}, benchmark_info,
+      [](absl::StatusOr<Responses> responses) {}));
+  ASSERT_OK(
+      execution_manager_->WaitUntilDone(prefill_task_id, absl::Seconds(3)));
 
-  EXPECT_OK(execution_manager_->WaitUntilDone(task_id, absl::Seconds(1)));
+  ASSERT_OK_AND_ASSIGN(const TaskId decode_task_id,
+                       execution_manager_->GetNewTaskId());
+  ASSERT_OK(execution_manager_->AddDecodeTask(decode_task_id, {}, 1, nullptr,
+                                              nullptr, benchmark_info,
+                                              std::move(callback)));
+
+  EXPECT_OK(
+      execution_manager_->WaitUntilDone(decode_task_id, absl::Seconds(3)));
 
   EXPECT_THAT(
       task_states,
@@ -379,6 +396,45 @@ TEST_F(ExecutionManagerTest, CreateDependentTaskOnFailedTask) {
   EXPECT_OK(execution_manager_->WaitUntilDone(task_b_id, absl::Seconds(1)));
   EXPECT_EQ(task_b_status, absl::OkStatus());
   EXPECT_THAT(task_b_states, ElementsAre(TaskState::kDependentTaskFailed));
+}
+
+TEST_F(ExecutionManagerTest, AddDecodeTaskWithConstraint) {
+  CreateExecutionManager(CreateDefaultFakeLlmExecutor());
+
+  std::vector<InputData> inputs;
+  ASSERT_OK_AND_ASSIGN(auto input_text,
+                       tokenizer_->TokenIdsToTensorBuffer({1, 2, 3}));
+  inputs.push_back(InputText(std::move(input_text)));
+  std::optional<BenchmarkInfo> benchmark_info = std::nullopt;
+  ASSERT_OK_AND_ASSIGN(const TaskId task_a_id,
+                       execution_manager_->GetNewTaskId());
+  ASSERT_OK(execution_manager_->AddPrefillTask(
+      task_a_id, std::move(inputs), {}, benchmark_info,
+      [](absl::StatusOr<Responses> responses) {}));
+
+  ASSERT_OK_AND_ASSIGN(const TaskId task_b_id,
+                       execution_manager_->GetNewTaskId());
+  // Fake constraint that expects "45".
+  std::vector<int> expected_token_ids = {4, 5};
+  auto constraint = FakeConstraint(expected_token_ids, /*vocabulary_size=*/10);
+  auto decode_config = DecodeConfig::CreateDefault();
+  decode_config.SetConstraint(&constraint);
+  std::vector<std::string> response_texts;
+  absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback =
+      [&response_texts](absl::StatusOr<Responses> responses) {
+        ASSERT_OK(responses);
+        if (!responses->GetTexts().empty()) {
+          response_texts.push_back(responses->GetTexts()[0]);
+        }
+      };
+
+  ASSERT_OK(execution_manager_->AddDecodeTask(
+      task_b_id, {task_a_id}, 1, decode_config.GetConstraint(), nullptr,
+      benchmark_info, std::move(callback)));
+
+  EXPECT_OK(execution_manager_->WaitUntilDone(task_b_id, absl::Seconds(3)));
+
+  EXPECT_THAT(response_texts, ElementsAre("4", "5"));
 }
 
 }  // namespace

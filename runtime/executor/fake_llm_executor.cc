@@ -176,6 +176,10 @@ absl::Status FakeLlmExecutor::Decode(
     const ExecutorDecodeParams& decode_params) {
   TryDecodeDelay();
   RETURN_IF_ERROR(decode_status_);
+  if (last_op_ == LastOp::kNone) {
+    return absl::FailedPreconditionError(
+        "Decode called without prior prefill or decode.");
+  }
   if (decode_times_ >= decode_tokens_set_.size()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Decode function has been called more times than the number of "
@@ -191,37 +195,19 @@ absl::Status FakeLlmExecutor::Decode(
                             CreateTensorBuffer<int>({batch_size_, 1}));
     auto last_token_ids_span = ReferTensorBufferAsSpan<int>(last_token_ids);
 
-    switch (last_op_) {
-      case LastOp::kNone:
-        return absl::FailedPreconditionError(
-            "Constraint decoding called without prior prefill or decode.");
-      case LastOp::kPrefill: {
-        if (prefill_times_ == 0) {
-          return absl::InternalError(
-              "LastOp is Prefill but prefill_times_ is 0");
-        }
-        const auto& last_prefill_tokens =
-            prefill_tokens_set_[prefill_times_ - 1];
-        int seq_len = last_prefill_tokens.size() / batch_size_;
-        for (int i = 0; i < batch_size_; ++i) {
-          (*last_token_ids_span)[i] =
-              last_prefill_tokens[i * seq_len + seq_len - 1];
-        }
-        break;
+    if (last_op_ == LastOp::kDecode) {
+      if (decode_times_ == 0) {
+        return absl::InternalError("LastOp is Decode but decode_times_ is 0");
       }
-      case LastOp::kDecode: {
-        if (decode_times_ == 0) {
-          return absl::InternalError("LastOp is Decode but decode_times_ is 0");
-        }
-        const auto& last_decode_tokens = decode_tokens_set_[decode_times_ - 1];
-        for (int i = 0; i < batch_size_; ++i) {
-          (*last_token_ids_span)[i] = last_decode_tokens[i];
-        }
-        break;
+      const auto& last_decode_tokens = decode_tokens_set_[decode_times_ - 1];
+      for (int i = 0; i < batch_size_; ++i) {
+        (*last_token_ids_span)[i] = last_decode_tokens[i];
       }
+      // Update the constraint state with the last token ids.
+      RETURN_IF_ERROR(
+          constraint_decoder->UpdateConstraintState(last_token_ids));
     }
-    // Update the constraint state with the last token ids.
-    RETURN_IF_ERROR(constraint_decoder->UpdateConstraintState(last_token_ids));
+
     LITERT_ASSIGN_OR_RETURN(
         auto output_logits,
         CreateTensorBuffer<float>({batch_size_, 1, vocab_size_}));
@@ -247,6 +233,10 @@ absl::Status FakeLlmExecutor::Decode(const ExecutorInputs& inputs,
                                      ::litert::TensorBuffer& output_logits) {
   TryDecodeDelay();
   RETURN_IF_ERROR(decode_status_);
+  if (last_op_ == LastOp::kNone) {
+    return absl::FailedPreconditionError(
+        "Decode called without prior prefill or decode.");
+  }
   if (decode_times_ >= decode_tokens_set_.size()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Decode function has been called more times than the number of "
@@ -272,6 +262,10 @@ absl::StatusOr<::litert::TensorBuffer> FakeLlmExecutor::DecodeLogits(
     const ExecutorInputs& inputs) {
   TryDecodeDelay();
   RETURN_IF_ERROR(decode_status_);
+  if (last_op_ == LastOp::kNone) {
+    return absl::FailedPreconditionError(
+        "Decode called without prior prefill or decode.");
+  }
   if (decode_times_ >= decode_tokens_set_.size()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Decode function has been called more times than the number of "

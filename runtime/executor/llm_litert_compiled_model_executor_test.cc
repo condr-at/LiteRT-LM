@@ -250,7 +250,7 @@ TEST(LlmLiteRtCompiledModelExecutorStaticTest, ConstrainedDecodeTest) {
 
   ExecutorDecodeParams params;
 
-  auto constraint = FakeConstraint({1, 2, 3}, /*vocabulary_size=*/262144);
+  auto constraint = FakeConstraint({2, 3}, /*vocabulary_size=*/262144);
   ConstrainedDecoder constraint_decoder =
       ConstrainedDecoder(&constraint, /*batch_size=*/1);
   params.SetConstraintDecoder(&constraint_decoder);

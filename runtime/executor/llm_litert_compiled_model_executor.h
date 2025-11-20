@@ -244,6 +244,7 @@ class LlmLiteRtCompiledModelExecutorBase : public LlmExecutor {
   // Output batch size for the sampled ids.
   const int output_batch_size_;
   // Whether decode has been run ever after prefill.
+  // TODO: b/409401231 - Make sure this state is session dependent.
   bool ran_decode_ = false;
 
   // Sampler for sampling logits.

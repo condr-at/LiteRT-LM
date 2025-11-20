@@ -38,8 +38,6 @@ namespace litert::lm {
 // Example usage:
 //   Constraint* constraint = ...;
 //   ConstrainedDecoder decoder(constraint, batch_size);
-//   ...
-//   RETURN_IF_ERROR(decoder.UpdateConstraintState(last_prefilled_tokens));
 //   while (!done) {
 //     TensorBuffer logits = Decode(...);
 //     RETURN_IF_ERROR(decoder.MaskLogits(logits));

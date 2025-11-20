@@ -800,6 +800,7 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::PrepareFirstDecode() {
   if (ran_decode_) {
     return absl::OkStatus();
   }
+  // Mark that we have run decode at least once.
   ran_decode_ = true;
 
   if (output_batch_size_ <= 1) {
@@ -830,8 +831,6 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::Decode(
 absl::Status LlmLiteRtCompiledModelExecutorBase::Decode(
     ::litert::TensorBuffer& output_tokens,
     const ExecutorDecodeParams& decode_params) {
-
-  RETURN_IF_ERROR(PrepareFirstDecode());
 
   ASSIGN_OR_RETURN(auto decoded_logits,
                    DecodeLogits(ExecutorInputs(), decode_params));
@@ -898,6 +897,7 @@ LlmLiteRtCompiledModelExecutorBase::DecodeLogits(
       auto output_logits,
       decode_output_buffers_[signatures_.output_logits].Duplicate());
 
+  bool last_run_is_decode = ran_decode_;
   RETURN_IF_ERROR(PrepareFirstDecode());
   ASSIGN_OR_RETURN(auto step_and_token, GetTokenToDecode(inputs));
   RETURN_IF_ERROR(
@@ -911,9 +911,12 @@ LlmLiteRtCompiledModelExecutorBase::DecodeLogits(
     for (const auto& token : step_and_token.token) {
       current_token_ids.push_back(token->id());
     }
-    // Update constraint state based on the current token id.
-    RETURN_IF_ERROR(decode_params.GetConstraintDecoder()->UpdateConstraintState(
-        absl::MakeSpan(current_token_ids)));
+    // Update constraint state only with decode ids.
+    if (last_run_is_decode) {
+      RETURN_IF_ERROR(
+          decode_params.GetConstraintDecoder()->UpdateConstraintState(
+              absl::MakeSpan(current_token_ids)));
+    }
 
     LITERT_ASSIGN_OR_RETURN(auto output_logits_buffer_type,
                             output_logits.BufferType());

@@ -329,8 +329,8 @@ TEST_F(SessionBasicTest, RunDecodeWithMultipleOutputCandidates) {
 }
 
 TEST_F(SessionBasicTest, RunDecodeWithSamplerAndConstrainedDecoding) {
-  // Fake constraint that expects " How's it".
-  std::vector<int> expected_token_ids = {2, 224, 24, 8, 66, 0};
+  // Fake constraint that expects "'s it".
+  std::vector<int> expected_token_ids = {24, 8, 66, 0};
   auto constraint =
       FakeConstraint(expected_token_ids, /*vocabulary_size=*/2560);
 
@@ -356,8 +356,7 @@ TEST_F(SessionBasicTest, RunDecodeWithSamplerAndConstrainedDecoding) {
                                      // sampler. That is, the last
                                      // sampled tokens at stop condition.
                                      // "How's it going?"
-          /*decode_tokens=*/{
-              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+          /*decode_tokens=*/{{24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
   auto session = SessionBasic::Create(
       executor.get(), tokenizer_.get(), /*vision_executor=*/nullptr,
       /*audio_executor=*/nullptr, session_config,
@@ -371,12 +370,12 @@ TEST_F(SessionBasicTest, RunDecodeWithSamplerAndConstrainedDecoding) {
   ASSERT_OK_AND_ASSIGN(auto responses, (*session)->RunDecode(decode_config));
   // Expect a single output candidate.
   EXPECT_EQ(responses.GetTexts().size(), 1);
-  EXPECT_EQ(responses.GetTexts()[0], " How's it");
+  EXPECT_EQ(responses.GetTexts()[0], "'s it");
 }
 
 TEST_F(SessionBasicTest, RunDecodeWithConstrainedDecodingNoSampler) {
-  // Fake constraint that expects " How's it".
-  std::vector<int> expected_token_ids = {2, 224, 24, 8, 66, 0};
+  // Fake constraint that expects "'s it".
+  std::vector<int> expected_token_ids = {24, 8, 66, 0};
   auto constraint =
       FakeConstraint(expected_token_ids, /*vocabulary_size=*/2560);
 
@@ -390,8 +389,7 @@ TEST_F(SessionBasicTest, RunDecodeWithConstrainedDecodingNoSampler) {
       CreateFakeLlmExecutor(
           /*prefill_tokens=*/{{2, 224}},
           // "How's it going?"
-          /*decode_tokens=*/{
-              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+          /*decode_tokens=*/{{24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
   auto session = SessionBasic::Create(
       executor.get(), tokenizer_.get(), /*vision_executor=*/nullptr,
       /*audio_executor=*/nullptr, session_config,
@@ -405,7 +403,7 @@ TEST_F(SessionBasicTest, RunDecodeWithConstrainedDecodingNoSampler) {
   ASSERT_OK_AND_ASSIGN(auto responses, (*session)->RunDecode(decode_config));
   // Expect a single output candidate.
   EXPECT_EQ(responses.GetTexts().size(), 1);
-  EXPECT_EQ(responses.GetTexts()[0], " How's it");
+  EXPECT_EQ(responses.GetTexts()[0], "'s it");
 }
 
 absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateTestCallback(
@@ -480,8 +478,8 @@ TEST_F(SessionBasicTest, RunDecodeAsync) {
 }
 
 TEST_F(SessionBasicTest, RunDecodeAsyncWithSamplerAndConstrainedDecoding) {
-  // Fake constraint that expects " How's it".
-  std::vector<int> expected_token_ids = {2, 224, 24, 8, 66, 0};
+  // Fake constraint that expects "'s it".
+  std::vector<int> expected_token_ids = {24, 8, 66, 0};
   auto constraint =
       FakeConstraint(expected_token_ids, /*vocabulary_size=*/2560);
 
@@ -507,8 +505,7 @@ TEST_F(SessionBasicTest, RunDecodeAsyncWithSamplerAndConstrainedDecoding) {
                                      // sampler. That is, the last
                                      // sampled tokens at stop condition.
                                      // "How's it going?"
-          /*decode_tokens=*/{
-              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+          /*decode_tokens=*/{{24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
   auto session = SessionBasic::Create(
       executor.get(), tokenizer_.get(), /*vision_executor=*/nullptr,
       /*audio_executor=*/nullptr, session_config,
@@ -530,13 +527,13 @@ TEST_F(SessionBasicTest, RunDecodeAsyncWithSamplerAndConstrainedDecoding) {
 
   done_decode.WaitForNotification();
   EXPECT_OK(status);
-  EXPECT_EQ(texts.size(), 4);
-  EXPECT_THAT(texts, testing::ElementsAre(" How", "'", "s", " it"));
+  EXPECT_EQ(texts.size(), 3);
+  EXPECT_THAT(texts, testing::ElementsAre("'", "s", " it"));
 }
 
 TEST_F(SessionBasicTest, RunDecodeAsyncWithConstrainedDecodingNoSampler) {
-  // Fake constraint that expects " How's it".
-  std::vector<int> expected_token_ids = {2, 224, 24, 8, 66, 0};
+  // Fake constraint that expects "'s it".
+  std::vector<int> expected_token_ids = {24, 8, 66, 0};
   auto constraint =
       FakeConstraint(expected_token_ids, /*vocabulary_size=*/2560);
 
@@ -550,8 +547,7 @@ TEST_F(SessionBasicTest, RunDecodeAsyncWithConstrainedDecodingNoSampler) {
       CreateFakeLlmExecutor(
           /*prefill_tokens=*/{{2, 224}},
           // "How's it going?"
-          /*decode_tokens=*/{
-              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+          /*decode_tokens=*/{{24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
   auto session = SessionBasic::Create(
       executor.get(), tokenizer_.get(), /*vision_executor=*/nullptr,
       /*audio_executor=*/nullptr, session_config,
@@ -573,8 +569,8 @@ TEST_F(SessionBasicTest, RunDecodeAsyncWithConstrainedDecodingNoSampler) {
 
   done_decode.WaitForNotification();
   EXPECT_OK(status);
-  EXPECT_EQ(texts.size(), 4);
-  EXPECT_THAT(texts, testing::ElementsAre(" How", "'", "s", " it"));
+  EXPECT_EQ(texts.size(), 3);
+  EXPECT_THAT(texts, testing::ElementsAre("'", "s", " it"));
 }
 
 TEST_F(SessionBasicTest, RunTextScoringEmptyTargetTextFailure) {
@@ -1782,8 +1778,8 @@ TEST_F(SessionBasicTest,
 
 TEST_F(SessionBasicTest,
        GenerateContentStreamWithSamplerAndConstrainedDecoding) {
-  // Fake constraint that expects " How's it".
-  std::vector<int> expected_token_ids = {2, 224, 24, 8, 66, 0};
+  // Fake constraint that expects "'s it".
+  std::vector<int> expected_token_ids = {24, 8, 66, 0};
   auto constraint =
       FakeConstraint(expected_token_ids, /*vocabulary_size=*/2560);
 
@@ -1809,8 +1805,7 @@ TEST_F(SessionBasicTest,
                                      // sampler. That is, the last
                                      // sampled tokens at stop condition.
                                      // "How's it going?"
-          /*decode_tokens=*/{
-              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+          /*decode_tokens=*/{{24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
   auto session = SessionBasic::Create(
       executor.get(), tokenizer_.get(), /*vision_executor=*/nullptr,
       /*audio_executor=*/nullptr, session_config,
@@ -1830,8 +1825,8 @@ TEST_F(SessionBasicTest,
 
   done_decode.WaitForNotification();
   EXPECT_OK(status);
-  EXPECT_EQ(texts.size(), 4);
-  EXPECT_THAT(texts, testing::ElementsAre(" How", "'", "s", " it"));
+  EXPECT_EQ(texts.size(), 3);
+  EXPECT_THAT(texts, testing::ElementsAre("'", "s", " it"));
 }
 
 }  // namespace
