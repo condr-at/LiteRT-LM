@@ -17,20 +17,20 @@
 
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "third_party/odml/infra/genai/inference/proto/llm_inference_engine.pb.h"
-#include "runtime/executor/llm_executor_settings.h"
+#include "runtime/executor/executor_settings_base.h"
 
 namespace litert::lm {
 
-using ::odml::infra::proto::SessionConfig;
-
 // Convert LLM Engine backend to LiteRT backend. If conversion fails, return
 // the error.
-absl::StatusOr<Backend> ConvertBackend(const SessionConfig::Backend& backend);
+absl::StatusOr<Backend> ConvertBackend(
+    const odml::infra::proto::SessionConfig::Backend& backend);
 
 // Convert LLM Engine ActivationDataType to LiteRT ActivationDataType. If
 // conversion fails, return the error.
 absl::StatusOr<ActivationDataType> ConvertActivationDataType(
-    const SessionConfig::ActivationDataType& activation_data_type);
+    const odml::infra::proto::SessionConfig::ActivationDataType&
+        activation_data_type);
 
 }  // namespace litert::lm
 

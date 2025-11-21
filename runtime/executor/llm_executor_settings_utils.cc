@@ -18,7 +18,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "third_party/odml/infra/genai/inference/proto/llm_inference_engine.pb.h"
-#include "runtime/executor/llm_executor_settings.h"
+#include "runtime/executor/executor_settings_base.h"
 
 namespace litert::lm {
 
