@@ -14,12 +14,16 @@
 
 #include "runtime/executor/executor_settings_base.h"
 
+#include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
+#include "runtime/util/memory_mapped_file.h"
 #include "runtime/util/test_utils.h"  // NOLINT
 
 namespace litert::lm {
@@ -146,6 +150,28 @@ TEST(LlmExecutorConfigTest, ModelAssets) {
 fake_weights_mode: FAKE_WEIGHTS_NONE
 )";
   EXPECT_EQ(oss.str(), expected_output);
+}
+
+TEST(LlmExecutorConfigTest, ModelAssetsMemoryMapped) {
+  const std::string model_content = "some fake model content";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryMappedFile> memory_mapped_file,
+                       InMemoryFile::Create(model_content));
+  MemoryMappedFile* raw_ptr = memory_mapped_file.get();
+  auto model_assets = ModelAssets::Create(std::move(memory_mapped_file));
+  ASSERT_OK(model_assets);
+  EXPECT_TRUE(model_assets->HasMemoryMappedFile());
+  ASSERT_OK_AND_ASSIGN(auto retrieved_mmf, model_assets->GetMemoryMappedFile());
+  EXPECT_EQ(retrieved_mmf.get(), raw_ptr);
+  EXPECT_EQ(retrieved_mmf->length(), model_content.length());
+  EXPECT_EQ(
+      absl::string_view(reinterpret_cast<const char*>(retrieved_mmf->data()),
+                        retrieved_mmf->length()),
+      model_content);
+
+  std::stringstream oss;
+  oss << *model_assets;
+  EXPECT_THAT(oss.str(), testing::HasSubstr("model_file memory mapped file"));
+  EXPECT_THAT(oss.str(), testing::HasSubstr("FAKE_WEIGHTS_NONE"));
 }
 
 }  // namespace

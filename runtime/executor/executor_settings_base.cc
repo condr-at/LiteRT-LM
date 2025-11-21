@@ -26,6 +26,7 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/util/file_util.h"
+#include "runtime/util/memory_mapped_file.h"
 #include "runtime/util/scoped_file.h"
 #include "runtime/util/status_macros.h"  // NOLINT
 
@@ -147,6 +148,12 @@ absl::StatusOr<ModelAssets> ModelAssets::Create(
 
 // static
 absl::StatusOr<ModelAssets> ModelAssets::Create(
+    std::shared_ptr<litert::lm::MemoryMappedFile> model_file) {
+  return ModelAssets(std::move(model_file));
+}
+
+// static
+absl::StatusOr<ModelAssets> ModelAssets::Create(
     std::shared_ptr<litert::lm::ScopedFile> model_file,
     absl::string_view model_path) {
   if (model_file) {
@@ -156,16 +163,20 @@ absl::StatusOr<ModelAssets> ModelAssets::Create(
 }
 
 ModelAssets::ModelAssets(std::shared_ptr<litert::lm::ScopedFile> model_file)
-    : path_or_scoped_file_(std::move(model_file)) {}
+    : path_or_file_(std::move(model_file)) {}
 
 ModelAssets::ModelAssets(absl::string_view model_path)
-    : path_or_scoped_file_(std::string(model_path)) {}
+    : path_or_file_(std::string(model_path)) {}
+
+ModelAssets::ModelAssets(
+    std::shared_ptr<litert::lm::MemoryMappedFile> model_file)
+    : path_or_file_(std::move(model_file)) {}
 
 absl::StatusOr<absl::string_view> ModelAssets::GetPath() const {
-  if (HasScopedFile()) {
-    return absl::InvalidArgumentError("Assets were not created with a path.");
+  if (std::holds_alternative<std::string>(path_or_file_)) {
+    return std::get<std::string>(path_or_file_);
   }
-  return std::get<std::string>(path_or_scoped_file_);
+  return absl::InvalidArgumentError("Assets were not created with a path.");
 }
 
 absl::StatusOr<std::shared_ptr<ScopedFile>> ModelAssets::GetScopedFile() const {
@@ -173,18 +184,30 @@ absl::StatusOr<std::shared_ptr<ScopedFile>> ModelAssets::GetScopedFile() const {
     return absl::InvalidArgumentError(
         "Assets were not created with a scoped file.");
   }
-  return std::get<std::shared_ptr<ScopedFile>>(path_or_scoped_file_);
+  return std::get<std::shared_ptr<ScopedFile>>(path_or_file_);
+}
+
+absl::StatusOr<std::shared_ptr<MemoryMappedFile>>
+ModelAssets::GetMemoryMappedFile() const {
+  if (!HasMemoryMappedFile()) {
+    return absl::InvalidArgumentError(
+        "Assets were not created with a memory mapped file.");
+  }
+  return std::get<std::shared_ptr<MemoryMappedFile>>(path_or_file_);
 }
 
 absl::StatusOr<std::shared_ptr<ScopedFile>> ModelAssets::GetOrCreateScopedFile()
     const {
   if (HasScopedFile()) {
-    return std::get<std::shared_ptr<ScopedFile>>(path_or_scoped_file_);
+    return std::get<std::shared_ptr<ScopedFile>>(path_or_file_);
+  }
+  if (HasMemoryMappedFile()) {
+    return absl::InvalidArgumentError(
+        "Cannot create ScopedFile from MemoryMappedFile.");
   }
 
   ASSIGN_OR_RETURN(  // NOLINT
-      auto scoped_file,
-      ScopedFile::Open(std::get<std::string>(path_or_scoped_file_)));
+      auto scoped_file, ScopedFile::Open(std::get<std::string>(path_or_file_)));
   return std::make_shared<ScopedFile>(std::move(scoped_file));
 }
 
@@ -192,6 +215,9 @@ std::ostream& operator<<(std::ostream& os, const ModelAssets& model_assets) {
   if (model_assets.HasScopedFile()) {
     os << "model_file file descriptor ID: "
        << model_assets.GetScopedFile().value()->file() << "\n";
+  } else if (model_assets.HasMemoryMappedFile()) {
+    os << "model_file memory mapped file: "
+       << model_assets.GetMemoryMappedFile().value()->data() << "\n";
   } else {
     os << "model_path: " << model_assets.GetPath().value() << "\n";
   }

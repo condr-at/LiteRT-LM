@@ -82,6 +82,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//runtime/util:file_util",
         "//runtime/util:litert_status_util",
+        "//runtime/util:memory_mapped_file",
         "//runtime/util:scoped_file",
     ],
 )
@@ -93,6 +94,8 @@ cc_test(
         ":executor_settings_base",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:memory_mapped_file",
         "//runtime/util:test_utils",
     ],
 )
@@ -156,6 +159,7 @@ cc_test(
         "@litert//litert/cc:litert_tensor_buffer_types",
         "@litert//litert/test:matchers",
         "//runtime/components:model_resources",
+        "//runtime/util:memory_mapped_file",
         "//runtime/util:scoped_file",
         "//runtime/util:test_utils",
     ],
