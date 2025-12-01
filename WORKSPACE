@@ -2,27 +2,18 @@
 
 workspace(name = "litert_lm")
 
-# UPDATED = 2025-11-17
-LITERT_REF = "77e71ad3e270d97d0dce52ee497b754344d21f88"
+# UPDATED = 2025-12-01
+LITERT_REF = "97d43909b8c960d3062810036f967baced9a1d4b"
 
-LITERT_SHA256 = "10f514a73979cde1989597449836983924e7bf2441bac13eeda3e71af5ac1f13"
+LITERT_SHA256 = "caf3c7656bd2e79cc242729bfff58198f560946363019e646b22295d127c03e7"
 
-TENSORFLOW_REF = "26600e2deca823b096b8a6bdc344fdab046951ef"
+TENSORFLOW_REF = "c867edf5e14fb7e3488cf7b1e47a3a88cdc8df10"
 
-TENSORFLOW_SHA256 = "eef6cddfd749a6c3fd06681070c712f18a823b86c21b9adb848933f35d4c298a"
+TENSORFLOW_SHA256 = "f7f23f00a705b55a94fd75490b8d4810e13f89ff4b927f679ff8ac6294bb7dc8"
 
 # buildifier: disable=load-on-top
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_jar")
-
-# Newer version (2025-11-05) than the one used by tensorflow (2025-10-30) to fix build errors on
-# Windows. Remove when tensorflow is updated to a newer version.
-http_archive(
-    name = "XNNPACK",
-    sha256 = "3d37fdea0bfc6fe12914b709de71be743483f6568b3174d67ffdabbc60bcf6c5",
-    strip_prefix = "XNNPACK-4d740af8c25f49646bd5d24813503788aa88909a",
-    url = "https://github.com/google/XNNPACK/archive/4d740af8c25f49646bd5d24813503788aa88909a.tar.gz",
-)
 
 http_archive(
     name = "rules_shell",
@@ -303,7 +294,6 @@ http_archive(
         # Replace @//third_party with @litert//third_party in files under third_party/.
         "sed -i -e 's|\"@//third_party/|\"@litert//third_party/|g' third_party/*/*",
     ],
-    patches = ["@//:PATCH.litert"],
     sha256 = LITERT_SHA256,
     strip_prefix = "LiteRT-" + LITERT_REF,
     url = "https://github.com/google-ai-edge/LiteRT/archive/" + LITERT_REF + ".tar.gz",
