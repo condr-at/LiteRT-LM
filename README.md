@@ -204,6 +204,9 @@ device and your development platform.
 > 2. `cp ./prebuilt/<your OS>/<shared libaries> <path to binary directory>/` and
  make sure the prebuilt .so/.dll/.dylib files are in the same directory as
   litert_lm_main binary
+> 3. [Windows only] Download the dxil.dll and dxcompiler.dll from
+ https://github.com/microsoft/DirectXShaderCompiler/releases and saved in the
+ same directory as litert_lm_main binary.
 
 <details>
 <summary><strong>Deploy to Windows</strong></summary>
