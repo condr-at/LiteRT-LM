@@ -56,6 +56,8 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "@antlr4//:cpp",
+        "@nlohmann_json//:json",
+        "//runtime/components/tool_use/proto:tool_call_cc_proto",
     ],
 )
 
