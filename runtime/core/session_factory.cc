@@ -33,7 +33,7 @@
 
 namespace litert::lm {
 
-absl::StatusOr<std::unique_ptr<Engine::Session>> InitializeSession(
+absl::StatusOr<std::unique_ptr<Engine::Session>> InitializeSessionBasic(
     LlmExecutor* executor, Tokenizer* tokenizer,
     VisionExecutor* vision_executor, AudioExecutor* audio_executor,
     const SessionConfig& session_config,

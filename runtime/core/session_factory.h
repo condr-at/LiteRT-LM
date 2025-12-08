@@ -31,13 +31,13 @@
 
 namespace litert::lm {
 
-// Factory method to create and initialize a Engine::Session from the given
-// settings. Note that this function should be updated to take in the
+// Factory method to create and initialize a basic Engine::Session from the
+// given settings. Note that this function should be updated to take in the
 // SessionConfig and be refactored with registry pattern.
 // image_preprocessor and vision_executor are optional and can be nullptr.
 // If image input is used in the session, the vision_executor must be provided.
 // If audio input is used in the session, the audio_executor must be provided.
-absl::StatusOr<std::unique_ptr<Engine::Session>> InitializeSession(
+absl::StatusOr<std::unique_ptr<Engine::Session>> InitializeSessionBasic(
     LlmExecutor* absl_nonnull executor, Tokenizer* absl_nonnull tokenizer,
     VisionExecutor* vision_executor, AudioExecutor* audio_executor,
     const SessionConfig& session_config,

@@ -30,6 +30,11 @@ config_setting(
     values = {"copt": "-DUSE_LEGACY_ENGINE"},
 )
 
+config_setting(
+    name = "use_advanced_legacy_engine",
+    values = {"copt": "-DUSE_ADVANCED_LEGACY_ENGINE"},
+)
+
 cc_library(
     name = "engine_interface",
     hdrs = ["engine.h"],
@@ -121,6 +126,7 @@ cc_library(
         "//runtime/conversation:io_types",
         "//runtime/executor:executor_settings_base",
         "//runtime/executor:llm_executor_settings",
+        "//runtime/proto:sampler_params_cc",
         "//runtime/util:litert_status_util",
         "@com_googlesource_code_re2//:re2",
         "@stb//:stb_image",

@@ -16,9 +16,8 @@
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/base/no_destructor.h"  // from @com_google_absl
+#include "absl/base/nullability.h"  // from @com_google_absl
 #include "absl/log/absl_check.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/log/check.h"  // from @com_google_absl
@@ -28,10 +27,8 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
-#include "third_party/odml/infra/genai/inference/executor/gpu_artisan_audio_executor.h"
 #include "third_party/odml/infra/genai/inference/executor/litert_executor_utils.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_gpu_artisan_executor.h"
-#include "third_party/odml/infra/genai/inference/executor/llm_litert_opencl_executor.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_litert_xnnpack_executor.h"
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
@@ -41,20 +38,16 @@
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
-#include "runtime/executor/audio_executor.h"
 #include "runtime/executor/audio_executor_settings.h"
-#include "runtime/executor/audio_litert_compiled_model_executor.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_settings.h"
-#include "runtime/executor/vision_executor.h"
 #include "runtime/executor/vision_executor_settings.h"
-#include "runtime/executor/vision_litert_compiled_model_executor.h"
-#include "runtime/framework/threadpool.h"
+#include "runtime/framework/resource_management/execution_manager.h"
 #include "runtime/proto/sampler_params.pb.h"
 #include "runtime/util/metadata_util.h"
 #include "runtime/util/model_asset_bundle_resources.h"
-#include "util/task/status_macros.h"
+#include "runtime/util/status_macros.h"  // NOLINT
 
 namespace litert::lm {
 namespace {
@@ -81,11 +74,6 @@ absl::StatusOr<std::unique_ptr<LlmExecutor>> BuildExecutor(
                                    engine_settings.GetMainExecutorSettings(),
                                    model_resources));
   } else if (engine_settings.GetMainExecutorSettings().GetBackend() ==
-             Backend::GPU) {
-    ASSIGN_OR_RETURN(executor, oi::LlmLiteRTOpenClExecutor::Create(
-                                   engine_settings.GetMainExecutorSettings(),
-                                   model_resources));
-  } else if (engine_settings.GetMainExecutorSettings().GetBackend() ==
              Backend::GPU_ARTISAN) {
     if (model_resources.litert_lm_model_resources == nullptr) {
       return absl::InternalError(
@@ -105,21 +93,6 @@ absl::StatusOr<std::unique_ptr<LlmExecutor>> BuildExecutor(
   return std::move(executor);
 }
 
-// Gets the singleton Environment, initializing it on the first call
-// with the provided settings. This ensure we maintain the same LiteRT
-// environment during the whole application lifetime. This is required for GPU
-// LiteRT environment. See b/454383477 for more details.
-absl::StatusOr<Environment&> GetEnvironment() {
-  static absl::NoDestructor<absl::StatusOr<Environment>> kEnvironment(
-      [&]() -> absl::StatusOr<Environment> {
-        LITERT_ASSIGN_OR_RETURN(auto env, Environment::Create({}));
-        return std::move(env);
-      }());
-  if (!kEnvironment->ok()) {
-    return kEnvironment->status();
-  }
-  return **kEnvironment;
-}
 }  // namespace
 
 class EngineImpl : public Engine {
@@ -133,53 +106,37 @@ class EngineImpl : public Engine {
   // Arguments:
   //   engine_settings: The settings for the engine.
   //   model_resources: The model resources, which must outlive the executor.
-  //   executor: The executor for prefilling and decoding.
+  //   execution_manager: The execution manager for all sessions.
+  //   tokenizer: The tokenizer from the task file.
   //   task_tokenizer: The task tokenizer, this is needed for .task and .tflite
   //     tokenizer.
-  //     TODO(hoko): Remove this argument.
-  //   tokenizer: The tokenizer from the task file.
-  //   vision_executor: The vision executor for visual tasks.
-  //   audio_executor: The audio executor for audio tasks.
+  //     TODO(b/466112373): Remove this argument.
   //   benchmark_info: The benchmark info for the engine.
-  //   worker_thread_pool: The thread pool for the engine to execute the works.
   explicit EngineImpl(
       EngineSettings engine_settings,
       std::unique_ptr<oi::ExecutorModelResources> model_resources,
-      std::unique_ptr<LlmExecutor> executor,
-      std::unique_ptr<Tokenizer> task_tokenizer, Tokenizer* tokenizer,
-      std::unique_ptr<VisionExecutor> vision_executor,
-      std::unique_ptr<AudioExecutor> audio_executor,
-      std::optional<BenchmarkInfo> benchmark_info,
-      std::unique_ptr<ThreadPool> worker_thread_pool)
+      std::unique_ptr<ExecutionManager> execution_manager,
+      Tokenizer* absl_nonnull tokenizer,
+      std::unique_ptr<Tokenizer> task_tokenizer,
+      std::optional<BenchmarkInfo> benchmark_info)
       : engine_settings_(std::move(engine_settings)),
         model_resources_(std::move(model_resources)),
-        executor_(std::move(executor)),
+        execution_manager_(std::move(execution_manager)),
+        tokenizer_(std::move(tokenizer)),
         task_tokenizer_(std::move(task_tokenizer)),
-        tokenizer_(tokenizer),
-        vision_executor_(std::move(vision_executor)),
-        audio_executor_(std::move(audio_executor)),
-        stop_token_ids_(),
-        benchmark_info_(std::move(benchmark_info)),
-        worker_thread_pool_(std::move(worker_thread_pool)) {}
+        benchmark_info_(std::move(benchmark_info)) {}
 
   // Method to create the Session.
   absl::StatusOr<std::unique_ptr<Session>> CreateSession(
       const SessionConfig& session_config) const override {
     auto config = session_config;
     RETURN_IF_ERROR(config.MaybeUpdateAndValidate(engine_settings_));
-    // For the TfLite executors, we use the built-in sampling logic instead of
-    // the sampler component. Setting the type to unspecified to disable the
-    // sampler component.
-    config.GetMutableSamplerParams().set_type(
-        proto::SamplerParameters::TYPE_UNSPECIFIED);
-    return InitializeSessionBasic(executor_.get(), tokenizer_,
-                                  vision_executor_.get(), audio_executor_.get(),
-                                  config, benchmark_info_,
-                                  worker_thread_pool_.get());
+    return InitializeSessionAdvanced(execution_manager_.get(), tokenizer_,
+                                     config, benchmark_info_);
   }
 
   absl::Status WaitUntilDone(absl::Duration timeout) override {
-    return worker_thread_pool_->WaitUntilDone(timeout);
+    return execution_manager_->WaitUntilAllDone(timeout);
   }
 
   const EngineSettings& GetEngineSettings() const override {
@@ -193,32 +150,18 @@ class EngineImpl : public Engine {
   // Model resources, which must outlive `executor_`.
   std::unique_ptr<oi::ExecutorModelResources> model_resources_;
 
-  // Executor for all sessions.
-  std::unique_ptr<LlmExecutor> executor_;
+  // Execution manager for all sessions.
+  std::unique_ptr<ExecutionManager> execution_manager_;
 
   // Tokenizer from task file, that is not owned by the model resources.
   // So we keep it here to avoid the model resources being destroyed.
+  Tokenizer* tokenizer_;
+
+  // Task tokenizer, this is needed for .task file's tokenizer.
   std::unique_ptr<Tokenizer> task_tokenizer_;
-
-  // A pointer to the tokenizer, that is either the task_tokenizer_ or the
-  // tokenizer from the litert lm model resources. Set in constructor and it is
-  // used in CreateSession().
-  Tokenizer* tokenizer_ = nullptr;
-
-  // Vision executor for all sessions.
-  std::unique_ptr<VisionExecutor> vision_executor_;
-
-  // Audio executor for all sessions.
-  std::unique_ptr<AudioExecutor> audio_executor_;
-
-  // Default stop token ids for all sessions loaded from the model file.
-  std::vector<std::vector<int>> stop_token_ids_;
 
   // Benchmark info for the engine.
   std::optional<BenchmarkInfo> benchmark_info_;
-
-  // Thread pool for the engine to execute the works.
-  std::unique_ptr<ThreadPool> worker_thread_pool_;
 };
 
 // Method to create Engine.
@@ -244,7 +187,7 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
   std::unique_ptr<Tokenizer> task_tokenizer;
   Tokenizer* tokenizer = nullptr;
   if (model_resources->litert_lm_model_resources == nullptr) {
-    // Handle the .task and .tflite file format.
+    // Handle the .task or .tflite file format.
     ASSIGN_OR_RETURN(auto resources, ModelAssetBundleResources::Create(
                                          /*tag=*/"", scoped_model_file));
     if (benchmark_info.has_value()) {
@@ -279,9 +222,9 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
   ASSIGN_OR_RETURN(auto executor,
                    BuildExecutor(*model_resources, engine_settings));
 
-  ASSIGN_OR_RETURN(auto& lrt_env, GetEnvironment());
+  LITERT_ASSIGN_OR_RETURN(auto litert_env, Environment::Create({}));
 
-  std::unique_ptr<VisionExecutor> vision_executor;
+  std::unique_ptr<VisionExecutorSettings> vision_executor_settings_ptr;
   if (engine_settings.GetVisionExecutorSettings().has_value()) {
     ASSIGN_OR_RETURN(
         auto vision_executor_settings,
@@ -290,11 +233,11 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
             /*encoder_backend=*/
             engine_settings.GetVisionExecutorSettings()->GetBackend(),
             /*adapter_backend=*/Backend::CPU));
-    ASSIGN_OR_RETURN(vision_executor, VisionLiteRtCompiledModelExecutor::Create(
-                                          vision_executor_settings, lrt_env));
+    vision_executor_settings_ptr = std::make_unique<VisionExecutorSettings>(
+        std::move(vision_executor_settings));
   }
 
-  std::unique_ptr<AudioExecutor> audio_executor;
+  std::unique_ptr<AudioExecutorSettings> audio_executor_settings_ptr;
   if (engine_settings.GetAudioExecutorSettings().has_value()) {
     const auto audio_backend =
         engine_settings.GetAudioExecutorSettings()->GetBackend();
@@ -304,28 +247,8 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
             engine_settings.GetMainExecutorSettings().GetModelAssets(),
             engine_settings.GetMainExecutorSettings().GetMaxNumTokens(),
             audio_backend));
-    if (audio_backend == Backend::GPU_ARTISAN) {
-      if (engine_settings.GetMainExecutorSettings().GetBackend() ==
-          Backend::GPU_ARTISAN) {
-        // Both the text decoder and audio encoder are GPU_ARTISAN, assuming
-        // they are bundled together in the same hand-written weight section.
-        ASSIGN_OR_RETURN(
-            audio_executor,
-            oi::GpuArtisanAudioExecutor::Create(
-                audio_executor_settings,
-                *(model_resources->litert_lm_model_resources.get())));
-
-      } else {
-        // Only the audio encoder is GPU_ARTISAN and the text decoder is from
-        // converted model. In which case, the audio encoder hand-written model
-        // is stored in the separate section.
-        ASSIGN_OR_RETURN(audio_executor, oi::GpuArtisanAudioExecutor::Create(
-                                             audio_executor_settings));
-      }
-    } else {
-      ASSIGN_OR_RETURN(audio_executor, AudioLiteRtCompiledModelExecutor::Create(
-                                           audio_executor_settings, lrt_env));
-    }
+    audio_executor_settings_ptr = std::make_unique<AudioExecutorSettings>(
+        std::move(audio_executor_settings));
   }
 
   if (benchmark_info.has_value()) {
@@ -343,15 +266,17 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
   runtime_config.output_heads = 1;
   RETURN_IF_ERROR(executor->UpdateRuntimeConfig(runtime_config));
 
-  // Creating the thread pool of a single thread to execute the works.
-  auto worker_thread_pool =
-      std::make_unique<ThreadPool>(/*name_prefix=*/"engine",
-                                   /*max_num_threads=*/1);
+  ASSIGN_OR_RETURN(auto execution_manager,
+                   ExecutionManager::Create(
+                       tokenizer, std::move(executor),
+                       std::move(vision_executor_settings_ptr),
+                       std::move(audio_executor_settings_ptr),
+                       std::make_unique<Environment>(std::move(litert_env))));
+
   auto llm_impl = std::make_unique<EngineImpl>(
       std::move(engine_settings), std::move(model_resources),
-      std::move(executor), std::move(task_tokenizer), tokenizer,
-      std::move(vision_executor), std::move(audio_executor),
-      std::move(benchmark_info), std::move(worker_thread_pool));
+      std::move(execution_manager), std::move(tokenizer),
+      std::move(task_tokenizer), std::move(benchmark_info));
   return llm_impl;
 };
 

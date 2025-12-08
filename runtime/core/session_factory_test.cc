@@ -55,7 +55,7 @@ class FakeTokenizer : public Tokenizer {
   }
 };
 
-TEST(SessionFactoryTest, InitializeSession) {
+TEST(SessionFactoryTest, InitializeSessionBasic) {
   FakeTokenizer tokenizer;
   std::vector<std::vector<int>> stop_token_ids = {{1}, {2}};
   std::vector<std::vector<int>> dummy_tokens = {{0}};
@@ -64,11 +64,11 @@ TEST(SessionFactoryTest, InitializeSession) {
   session_config.GetMutableStopTokenIds() = stop_token_ids;
   session_config.SetSamplerBackend(Backend::CPU);
   ThreadPool worker_thread_pool("testpool", /*max_num_threads=*/1);
-  auto session =
-      InitializeSession(&executor, &tokenizer,
-                        /*vision_executor=*/nullptr,
-                        /*audio_executor=*/nullptr, session_config,
-                        /*benchmark_info=*/std::nullopt, &worker_thread_pool);
+  auto session = InitializeSessionBasic(
+      &executor, &tokenizer,
+      /*vision_executor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config,
+      /*benchmark_info=*/std::nullopt, &worker_thread_pool);
   EXPECT_OK(session);
 }
 

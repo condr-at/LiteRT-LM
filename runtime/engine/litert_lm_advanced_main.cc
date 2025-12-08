@@ -145,7 +145,8 @@ absl::Status MainHelper(int argc, char** argv) {
            "[--clear_kv_cache_before_prefill=<true|false>] "
            "[--num_logits_to_print_after_decode=<num_logits_to_print>]"
            "[--score_target_text=<target_text>]"
-           "[--gpu_madvise_original_shared_tensors=<true|false>]";
+           "[--gpu_madvise_original_shared_tensors=<true|false>]"
+           ;
     ABSL_LOG(INFO)
         << "To provide data for multimodality, use [image:/path/to/image.jpg] "
            "or [audio:/path/to/audio.wav] in the input prompt. e.g. \"Describe "

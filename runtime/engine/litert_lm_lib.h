@@ -81,6 +81,7 @@ struct LiteRtLmSettings {
   std::optional<std::string> score_target_text = std::nullopt;
   bool gpu_madvise_original_shared_tensors = true;
   bool disable_cache = false;
+  bool run_with_two_sessions = false;
 };
 
 // Runs the LLM inference with the given settings.
