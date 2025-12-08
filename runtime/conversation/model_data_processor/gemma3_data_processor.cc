@@ -32,11 +32,11 @@
 #include "nlohmann/json_fwd.hpp"  // from @nlohmann_json
 #include "litert/cc/litert_layout.h"  // from @litert
 #include "runtime/components/constrained_decoding/constraint.h"
-#include "runtime/components/constrained_decoding/constraint_provider.h"
 #include "runtime/components/preprocessor/audio_preprocessor.h"
 #include "runtime/components/preprocessor/audio_preprocessor_miniaudio.h"
 #include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/preprocessor/stb_image_preprocessor.h"
+#include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/components/tool_use/parser_utils.h"
 #include "runtime/components/tool_use/python_tool_format_utils.h"
@@ -47,6 +47,7 @@
 #include "runtime/util/memory_mapped_file.h"
 #include "runtime/util/status_macros.h"
 #include "re2/re2.h"  // from @com_googlesource_code_re2
+#include "sentencepiece_model.pb.h"  // from @sentencepiece
 
 namespace litert::lm {
 namespace {

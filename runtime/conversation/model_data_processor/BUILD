@@ -222,6 +222,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@nlohmann_json//:json",
         "@litert//litert/cc:litert_layout",
+        "//runtime/components:sentencepiece_tokenizer",
         "//runtime/components:tokenizer",
         "//runtime/components/constrained_decoding:constraint",
         "//runtime/components/constrained_decoding:constraint_provider",
@@ -236,6 +237,7 @@ cc_library(
         "//runtime/util:litert_status_util",
         "//runtime/util:memory_mapped_file",
         "@com_googlesource_code_re2//:re2",
+        "@sentencepiece//:sentencepiece_model_cc_proto",
     ],
 )
 
