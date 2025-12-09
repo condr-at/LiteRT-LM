@@ -44,16 +44,13 @@
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/audio_executor_settings.h"
-#include "runtime/executor/audio_litert_compiled_model_executor.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/fake_llm_executor.h"
-#include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/framework/resource_management/execution_manager.h"
 #include "runtime/framework/threadpool.h"
 #include "runtime/util/convert_tensor_buffer.h"
 #include "runtime/util/scoped_file.h"
 #include "runtime/util/status_macros.h"  // NOLINT
-#include "runtime/util/tensor_buffer_util.h"
 #include "runtime/util/test_utils.h"  // NOLINT
 
 namespace litert::lm {

@@ -19,7 +19,6 @@
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
@@ -28,10 +27,8 @@
 #include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
-#include "absl/strings/match.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
-#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "runtime/components/tokenizer.h"
 #include "runtime/core/session_utils.h"
 #include "runtime/engine/engine.h"
