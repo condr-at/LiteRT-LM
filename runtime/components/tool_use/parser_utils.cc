@@ -89,6 +89,12 @@ absl::StatusOr<nlohmann::ordered_json> ParseTextAndToolCalls(
     absl::string_view code_fence_end, SyntaxType syntax_type,
     bool escape_fence_strings, absl::string_view tool_code_regex) {
   nlohmann::ordered_json result = nlohmann::json::object();
+  // If the response is empty, return a content array with a single empty text
+  // element to ensure the output format is consistent.
+  if (response_str.empty()) {
+    result["content"].push_back({{"type", "text"}, {"text", ""}});
+    return result;
+  }
   RE2 regex = TextAndToolCodeRegex(code_fence_start, code_fence_end,
                                    escape_fence_strings);
   if (!regex.ok()) {

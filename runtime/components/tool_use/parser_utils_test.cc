@@ -30,6 +30,21 @@ TEST(ParserUtilsTest, GetSyntaxType) {
   EXPECT_EQ(GetSyntaxType("unknown"), SyntaxType::kUnknown);
 }
 
+TEST(ParserUtilsTest, EmptyResponse) {
+  EXPECT_THAT(ParseTextAndToolCalls("",
+                                    /*code_fence_start=*/"```tool_code\n",
+                                    /*code_fence_end=*/"\n```",
+                                    /*syntax_type=*/SyntaxType::kPython),
+              IsOkAndHolds(nlohmann::ordered_json::parse(R"json({
+                "content":[
+                  {
+                    "type": "text",
+                    "text": ""
+                  }
+                ]
+              })json")));
+}
+
 TEST(ParserUtilsTest, TextOnly) {
   EXPECT_THAT(ParseTextAndToolCalls("This is some text.",
                                     /*code_fence_start=*/"```tool_code\n",
