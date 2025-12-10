@@ -131,15 +131,26 @@ class SessionAdvanced : public Engine::Session {
     return execution_manager_.WaitUntilAllDone(Engine::kDefaultTimeout);
   }
 
+  // TODO b/409401231 - Add unit tests for this function.
+  absl::StatusOr<std::unique_ptr<Session>> Clone(
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) override;
+
  private:
   explicit SessionAdvanced(SessionId session_id,
                            ExecutionManager* absl_nonnull execution_manager,
                            Tokenizer* absl_nonnull tokenizer,
-                           std::shared_ptr<const SessionInfo> session_info)
+                           std::shared_ptr<const SessionInfo> session_info,
+                           bool is_first_turn = true,
+                           absl::flat_hash_set<TaskId> last_task_ids = {},
+                           std::shared_ptr<std::atomic<bool>> cancelled =
+                               std::make_shared<std::atomic<bool>>(false))
       : session_id_(session_id),
         execution_manager_(*execution_manager),
         tokenizer_(*tokenizer),
-        session_info_(session_info) {}
+        session_info_(session_info),
+        is_first_turn_(is_first_turn),
+        last_task_ids_(last_task_ids),
+        cancelled_(cancelled) {}
 
   // The session ID used for the session.
   SessionId session_id_;

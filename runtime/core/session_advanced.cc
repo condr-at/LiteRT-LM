@@ -205,4 +205,25 @@ absl::StatusOr<BenchmarkInfo> SessionAdvanced::GetBenchmarkInfo() {
       "in the EngineSettings.");
 }
 
+absl::StatusOr<std::unique_ptr<Engine::Session>> SessionAdvanced::Clone(
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
+  ASSIGN_OR_RETURN(auto task_id, execution_manager_.GetNewTaskId());
+
+  ASSIGN_OR_RETURN(auto session_id, execution_manager_.RegisterNewSession(
+                                        session_info_->session_config,
+                                        session_info_->benchmark_info));
+
+  RETURN_IF_ERROR(execution_manager_.AddCloneSessionTask(
+      session_id_, task_id, last_task_ids_, session_id, std::move(callback)));
+
+  last_task_ids_ = {task_id};
+
+  ASSIGN_OR_RETURN(auto session_info,
+                   execution_manager_.GetSessionInfo(session_id));
+
+  return absl::WrapUnique(new SessionAdvanced(
+      session_id, &execution_manager_, &tokenizer_, session_info,
+      is_first_turn_, last_task_ids_, cancelled_));
+}
+
 }  // namespace litert::lm

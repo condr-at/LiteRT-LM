@@ -191,6 +191,21 @@ class ExecutionManager {
       absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback)
       ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
 
+  // Adds a clone session task to the execution manager.
+  // - session_id: The ID of the session that created the task.
+  // - task_id: The task ID of the task.
+  // - dep_tasks: The dependent tasks that should be done before the clone
+  //   session task starts.
+  // - cloned_session_id: The ID of the cloned session.
+  // - callback: The callback function.
+  // Note: AddCloneSessionTask will acquire the task lookup mutex.
+  // TODO b/409401231 - Add unit tests for this function.
+  absl::Status AddCloneSessionTask(
+      SessionId session_id, TaskId task_id,
+      absl::flat_hash_set<TaskId> dep_tasks, SessionId cloned_session_id,
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback)
+      ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
+
  private:
   // Private constructor. Use the Create function instead.
   ExecutionManager(Tokenizer* absl_nonnull tokenizer,

@@ -641,9 +641,9 @@ absl::Status ExecutionManager::AddDecodeTask(
   auto task = [this, task_id, constraint, cancelled]() mutable -> void {
     auto session_info_and_callback = StartTask(task_id);
     if (!session_info_and_callback.ok()) {
-      ABSL_LOG(INFO) << "Failed to start task: "
-                     << session_info_and_callback.status()
-                     << " with task id: " << task_id;
+      ABSL_LOG(ERROR) << "Failed to start task: "
+                      << session_info_and_callback.status()
+                      << " with task id: " << task_id;
       return;
     }
     auto [session_info, callback] =
@@ -689,6 +689,92 @@ absl::Status ExecutionManager::AddDecodeTask(
 
     auto status =
         FinishTask(task_id, std::move(responses), std::move(callback));
+    if (!status.ok()) {
+      ABSL_LOG(ERROR) << "Failed to finish task: " << status
+                      << " with task id: " << task_id;
+    }
+    return;
+  };
+
+  return CreateTask(session_id, task_id, std::move(task), std::move(dep_tasks),
+                    std::move(callback));
+}
+
+absl::Status ExecutionManager::AddCloneSessionTask(
+    SessionId session_id, TaskId task_id, absl::flat_hash_set<TaskId> dep_tasks,
+    SessionId cloned_session_id,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
+  if (callback == nullptr) {
+    callback = [](absl::StatusOr<Responses> responses) {};
+  }
+
+  auto task = [this, task_id, cloned_session_id]() mutable -> void {
+    auto session_info_and_callback = StartTask(task_id);
+    if (!session_info_and_callback.ok()) {
+      ABSL_LOG(ERROR) << "Failed to start task: "
+                      << session_info_and_callback.status()
+                      << " with task id: " << task_id;
+      return;
+    }
+    auto [session_info, callback] =
+        std::move(session_info_and_callback.value());
+    // If the session info is nullptr, it means the task is cancelled before it
+    // is started.
+    if (session_info == nullptr) {
+      return;
+    }
+
+    {
+      absl::MutexLock lock(session_and_task_lookup_mutex_);
+      if (!session_lookup_.contains(cloned_session_id)) {
+        callback(absl::InvalidArgumentError(
+            absl::StrCat("Cloned session ", cloned_session_id,
+                         " not found in session list.")));
+        return;
+      }
+      auto cloned_context_handler =
+          resource_manager_->CloneContextHandler(session_info->context_handler);
+      if (!cloned_context_handler.ok()) {
+        callback(cloned_context_handler.status());
+        return;
+      }
+      std::unique_ptr<Sampler> cloned_sampler;
+      if (session_info->sampler != nullptr) {
+        auto sampler =
+            CreateSampler(session_info->session_config.GetSamplerBackend(),
+                          session_info->session_config.GetNumOutputCandidates(),
+                          session_info->session_config.GetSamplerParams());
+        if (!sampler.ok()) {
+          callback(sampler.status());
+          return;
+        }
+        cloned_sampler = std::move(*sampler);
+      }
+      auto cloned_stop_token_detector = std::make_unique<StopTokenDetector>(1);
+      for (const auto& stop_token_sequence :
+           session_info->session_config.GetStopTokenIds()) {
+        auto status = cloned_stop_token_detector->AddStopTokenSequence(
+            stop_token_sequence);
+        if (!status.ok()) {
+          ABSL_LOG(ERROR) << "Failed to add stop token sequence: " << status;
+        }
+      }
+      session_lookup_.at(cloned_session_id)->session_config =
+          session_info->session_config;
+      session_lookup_.at(cloned_session_id)->context_handler =
+          std::move(cloned_context_handler.value());
+      session_lookup_.at(cloned_session_id)->sampler =
+          std::move(cloned_sampler);
+      session_lookup_.at(cloned_session_id)->last_prefill_token_id =
+          session_info->last_prefill_token_id;
+      session_lookup_.at(cloned_session_id)->stop_token_detector =
+          std::move(cloned_stop_token_detector);
+      session_lookup_.at(cloned_session_id)->benchmark_info =
+          session_info->benchmark_info;
+    }
+
+    auto status =
+        FinishTask(task_id, Responses(TaskState::kDone), std::move(callback));
     if (!status.ok()) {
       ABSL_LOG(ERROR) << "Failed to finish task: " << status
                       << " with task id: " << task_id;
