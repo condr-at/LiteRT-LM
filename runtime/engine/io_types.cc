@@ -35,6 +35,7 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/clock.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
+#include "absl/types/span.h"  // from @com_google_absl
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 
@@ -62,7 +63,7 @@ absl::StatusOr<InputText> InputText::CreateCopy() const {
     return InputText(std::move(std::get<std::string>(data_)));
   } else if (std::holds_alternative<TensorBuffer>(data_)) {
     LITERT_ASSIGN_OR_RETURN(auto tensor_buffer_clone,
-                                 std::get<TensorBuffer>(data_).Duplicate());
+                            std::get<TensorBuffer>(data_).Duplicate());
     return InputText(std::move(tensor_buffer_clone));
   }
   return absl::FailedPreconditionError(
@@ -70,11 +71,11 @@ absl::StatusOr<InputText> InputText::CreateCopy() const {
 }
 
 absl::StatusOr<absl::string_view> InputImage::GetRawImageBytes() const {
-    if (std::holds_alternative<std::string>(data_)) {
-      return absl::string_view(std::get<std::string>(data_));
-    }
-    return absl::FailedPreconditionError(
-        "The image is preprocessed and does not have raw image bytes.");
+  if (std::holds_alternative<std::string>(data_)) {
+    return absl::string_view(std::get<std::string>(data_));
+  }
+  return absl::FailedPreconditionError(
+      "The image is preprocessed and does not have raw image bytes.");
 }
 
 absl::StatusOr<const TensorBuffer*> InputImage::GetPreprocessedImageTensor()
@@ -91,7 +92,7 @@ absl::StatusOr<InputImage> InputImage::CreateCopy() const {
     return InputImage(std::move(std::get<std::string>(data_)));
   } else if (std::holds_alternative<TensorBuffer>(data_)) {
     LITERT_ASSIGN_OR_RETURN(auto tensor_buffer_clone,
-                                 std::get<TensorBuffer>(data_).Duplicate());
+                            std::get<TensorBuffer>(data_).Duplicate());
     return InputImage(std::move(tensor_buffer_clone));
   }
   return absl::FailedPreconditionError(
@@ -102,8 +103,7 @@ absl::StatusOr<absl::string_view> InputAudio::GetRawAudioBytes() const {
   if (std::holds_alternative<std::string>(data_)) {
     return absl::string_view(std::get<std::string>(data_));
   }
-  return absl::FailedPreconditionError(
-      "The audio is preprocessed and does not have raw audio bytes.");
+  return absl::FailedPreconditionError("The audio is not raw audio bytes.");
 }
 
 absl::StatusOr<const TensorBuffer*> InputAudio::GetPreprocessedAudioTensor()
@@ -112,7 +112,14 @@ absl::StatusOr<const TensorBuffer*> InputAudio::GetPreprocessedAudioTensor()
     return &std::get<TensorBuffer>(data_);
   }
   return absl::FailedPreconditionError(
-      "The audio is not preprocessed and does not have a tensor.");
+      "The audio is not a preprocessed tensor.");
+}
+
+absl::StatusOr<absl::Span<const float>> InputAudio::GetPcmFrames() const {
+  if (std::holds_alternative<std::vector<float>>(data_)) {
+    return std::get<std::vector<float>>(data_);
+  }
+  return absl::FailedPreconditionError("The audio is not a float vector.");
 }
 
 absl::StatusOr<InputAudio> InputAudio::CreateCopy() const {
@@ -120,11 +127,13 @@ absl::StatusOr<InputAudio> InputAudio::CreateCopy() const {
     return InputAudio(std::move(std::get<std::string>(data_)));
   } else if (std::holds_alternative<TensorBuffer>(data_)) {
     LITERT_ASSIGN_OR_RETURN(auto tensor_buffer_clone,
-                                 std::get<TensorBuffer>(data_).Duplicate());
+                            std::get<TensorBuffer>(data_).Duplicate());
     return InputAudio(std::move(tensor_buffer_clone));
+  } else if (std::holds_alternative<std::vector<float>>(data_)) {
+    return InputAudio(std::get<std::vector<float>>(data_));
   }
   return absl::FailedPreconditionError(
-      "The data_ is not a string or a TensorBuffer.");
+      "The data_ is not a string, TensorBuffer, or float vector.");
 }
 
 std::ostream& operator<<(std::ostream& os, const TaskState& task_state) {
@@ -409,8 +418,8 @@ std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info) {
   os << "--------------------------------------------------" << std::endl;
 
   if (!info.GetMarkDurations().empty()) {
-    os << "  Mark Durations (" << info.GetMarkDurations().size() << "):"
-       << std::endl;
+    os << "  Mark Durations (" << info.GetMarkDurations().size()
+       << "):" << std::endl;
     for (const auto& [mark_name, duration] : info.GetMarkDurations()) {
       os << "    - " << mark_name << ": " << duration << std::endl;
     }

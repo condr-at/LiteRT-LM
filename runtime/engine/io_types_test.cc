@@ -20,6 +20,7 @@
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -220,6 +221,15 @@ TEST(InputAudioTest, GetPreprocessedAudioTensor) {
   EXPECT_THAT(retrieved_data, ElementsAreArray(kTensorData));
 }
 
+TEST(InputAudioTest, GetAudioFloatData) {
+  std::vector<float> audio_data = {0.1, 0.2, 0.3, 0.4};
+  InputAudio input_audio(audio_data);
+  EXPECT_TRUE(input_audio.IsPcmFrames());
+  ASSERT_OK_AND_ASSIGN(auto retrieved_audio_data,
+                       input_audio.GetPcmFrames());
+  EXPECT_THAT(retrieved_audio_data, ElementsAreArray(audio_data));
+}
+
 TEST(InputTextTest, CreateCopyFromString) {
   InputText original_input_text("Hello World!");
   ASSERT_OK_AND_ASSIGN(InputText copied_input_text,
@@ -337,6 +347,23 @@ TEST(InputAudioTest, CreateCopyFromTensorBuffer) {
   EXPECT_THAT(retrieved_data, ElementsAreArray(kTensorData));
 }
 
+TEST(InputAudioTest, CreateCopyFromFloatVector) {
+  std::vector<float> audio_data = {0.1, 0.2, 0.3, 0.4};
+  InputAudio original_input_audio(audio_data);
+  ASSERT_OK_AND_ASSIGN(InputAudio copied_input_audio,
+                       original_input_audio.CreateCopy());
+
+  EXPECT_TRUE(copied_input_audio.IsPcmFrames());
+  EXPECT_THAT(copied_input_audio.GetRawAudioBytes(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(copied_input_audio.GetPreprocessedAudioTensor(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  ASSERT_OK_AND_ASSIGN(auto retrieved_audio_data,
+                       copied_input_audio.GetPcmFrames());
+  EXPECT_THAT(retrieved_audio_data, ElementsAreArray(audio_data));
+}
+
 TEST(CreateInputDataCopyTest, InputText) {
   InputData original_data = InputText("Test Text");
   ASSERT_OK_AND_ASSIGN(InputData copied_data,
@@ -401,6 +428,18 @@ TEST(CreateInputDataCopyTest, InputAudio) {
   ASSERT_OK_AND_ASSIGN(copied_data, CreateInputDataCopy(original_data));
   ASSERT_TRUE(std::holds_alternative<InputAudio>(copied_data));
   EXPECT_TRUE(std::get<InputAudio>(copied_data).IsTensorBuffer());
+}
+
+TEST(CreateInputDataCopyTest, InputAudioWithFloatVector) {
+  std::vector<float> audio_data = {0.1, 0.2, 0.3, 0.4};
+  InputData original_data = InputAudio(audio_data);
+  ASSERT_OK_AND_ASSIGN(InputData copied_data,
+                       CreateInputDataCopy(original_data));
+  ASSERT_TRUE(std::holds_alternative<InputAudio>(copied_data));
+  EXPECT_TRUE(std::get<InputAudio>(copied_data).IsPcmFrames());
+  ASSERT_OK_AND_ASSIGN(auto retrieved_audio_data,
+                       std::get<InputAudio>(copied_data).GetPcmFrames());
+  EXPECT_THAT(retrieved_audio_data, ElementsAreArray(audio_data));
 }
 
 TEST(CreateInputDataCopyTest, InputAudioEnd) {

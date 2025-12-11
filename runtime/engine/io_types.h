@@ -29,6 +29,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
+#include "absl/types/span.h"  // from @com_google_absl
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/components/constrained_decoding/constraint.h"
 #include "runtime/proto/engine.pb.h"
@@ -134,9 +135,11 @@ inline std::ostream& operator<<(std::ostream& os,
 // A container to host the input audio.
 class InputAudio {
  public:
-  // Constructs an InputAudio from a raw audio bytes string or a TensorBuffer of
-  // processed audio bytes. The InputAudio takes ownership of the provided data.
-  explicit InputAudio(std::variant<std::string, TensorBuffer> data)
+  // Constructs an InputAudio from a raw audio bytes string, a TensorBuffer of
+  // processed audio bytes, or a vector of float audio samples. The InputAudio
+  // takes ownership of the provided data.
+  explicit InputAudio(
+      std::variant<std::string, TensorBuffer, std::vector<float>> data)
       : data_(std::move(data)) {}
 
   // Copy constructor.
@@ -153,6 +156,12 @@ class InputAudio {
     return std::holds_alternative<TensorBuffer>(data_);
   }
 
+  // Returns true if the audio is PCM frames.
+  bool IsPcmFrames
+  () const {
+    return std::holds_alternative<std::vector<float>>(data_);
+  }
+
   // Returns the raw audio bytes. Returns an error if the audio is preprocessed.
   absl::StatusOr<absl::string_view> GetRawAudioBytes() const;
 
@@ -160,13 +169,18 @@ class InputAudio {
   // not preprocessed.
   absl::StatusOr<const TensorBuffer*> GetPreprocessedAudioTensor() const;
 
+  // Returns the raw audio float vector. Returns an error if the audio is not a
+  // float vector.
+  absl::StatusOr<absl::Span<const float>> GetPcmFrames() const;
+
   // Creates a copy of the InputAudio.
   // If the audio is preprocessed, the copy will be a TensorBuffer shallow copy.
-  // Otherwise, the copy will be a string byte deep copy.
+  // If the data is a `std::vector<float>`, a deep copy of the vector is made.
+  // Otherwise (if it's a string), the copy will be a string byte deep copy.
   absl::StatusOr<InputAudio> CreateCopy() const;
 
  private:
-  std::variant<std::string, TensorBuffer> data_;
+  std::variant<std::string, TensorBuffer, std::vector<float>> data_;
 };
 
 inline std::ostream& operator<<(std::ostream& os,

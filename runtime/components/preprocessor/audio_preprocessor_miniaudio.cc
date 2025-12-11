@@ -242,10 +242,16 @@ absl::StatusOr<InputAudio> AudioPreprocessorMiniAudio::Preprocess(
         std::move(processed_audio_tensor_with_reference));
     return processed_audio;
   }
-  ASSIGN_OR_RETURN(auto raw_audio_bytes, input_audio.GetRawAudioBytes());
-  std::vector<float> pcm_frames;
-  RETURN_IF_ERROR(DecodeAudio(raw_audio_bytes, config_.GetNumChannels(),
-                              config_.GetSampleRateHz(), pcm_frames));
+  std::vector<float> decoded_pcm_frames;
+  absl::Span<const float> pcm_frames;
+  if (input_audio.IsPcmFrames()) {
+    ASSIGN_OR_RETURN(pcm_frames, input_audio.GetPcmFrames());
+  } else {
+    ASSIGN_OR_RETURN(auto raw_audio_bytes, input_audio.GetRawAudioBytes());
+    RETURN_IF_ERROR(DecodeAudio(raw_audio_bytes, config_.GetNumChannels(),
+                                config_.GetSampleRateHz(), decoded_pcm_frames));
+    pcm_frames = decoded_pcm_frames;
+  }
   std::vector<float> spectrograms;
   RETURN_IF_ERROR(PcmFramesToSpectrogram(pcm_frames, spectrograms));
 

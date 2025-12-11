@@ -64,6 +64,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "//runtime/components/constrained_decoding:constraint",
         "//runtime/proto:engine_cc_proto",
         "//runtime/util:litert_status_util",
