@@ -72,6 +72,26 @@ load("@crate_index//:defs.bzl", "crate_repositories")
 
 crate_repositories()
 
+# cxxbridge-cmd is a binary-only package so we follow the steps in
+# https://bazelbuild.github.io/rules_rust/crate_universe_workspace.html#binary-dependencies.
+http_archive(
+    name = "cxxbridge_cmd",
+    build_file = "//cxxbridge_cmd:BUILD.cxxbridge_cmd.bazel",
+    strip_prefix = "cxxbridge-cmd-1.0.149",
+    type = "tar.gz",
+    urls = ["https://static.crates.io/crates/cxxbridge-cmd/cxxbridge-cmd-1.0.149.crate"],
+)
+
+crates_repository(
+    name = "cxxbridge_cmd_deps",
+    cargo_lockfile = "//cxxbridge_cmd:Cargo.lock",
+    manifests = ["@cxxbridge_cmd//:Cargo.toml"],
+)
+
+load("@cxxbridge_cmd_deps//:defs.bzl", cxxbridge_cmd_deps = "crate_repositories")
+
+cxxbridge_cmd_deps()
+
 # TensorFlow
 http_archive(
     name = "org_tensorflow",

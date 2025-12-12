@@ -118,7 +118,7 @@ run_cxxbridge_cmd = rule(
             doc = "Optional list of cargo features that CXX bridge definitions may depend on.",
         ),
         "_cxxbridge": attr.label(
-            default = Label("//third_party/rust/cxxbridge_cmd/v1:bin/cxxbridge"),
+            default = Label("@cxxbridge_cmd//:cxxbridge_cmd"),
             allow_single_file = True,
             executable = True,
             cfg = "exec",
