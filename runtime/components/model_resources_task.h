@@ -15,12 +15,15 @@
 #ifndef THIRD_PARTY_ODML_LITERT_LM_RUNTIME_COMPONENTS_MODEL_RESOURCES_TASK_H_
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_COMPONENTS_MODEL_RESOURCES_TASK_H_
 
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "litert/cc/litert_model.h"  // from @litert
@@ -29,6 +32,7 @@
 #include "runtime/components/tokenizer.h"
 #include "runtime/proto/llm_metadata.pb.h"
 #include "runtime/util/model_asset_bundle_resources.h"
+#include "runtime/util/scoped_file.h"
 
 namespace litert::lm {
 
@@ -49,6 +53,15 @@ class ModelResourcesTask : public ModelResources {
   };
   absl::StatusOr<Tokenizer*> GetTokenizer() override;
   absl::StatusOr<const proto::LlmMetadata*> GetLlmMetadata() override;
+  absl::StatusOr<std::reference_wrapper<ScopedFile>> GetScopedFile() override {
+    return absl::UnimplementedError(
+        "GetScopedFile is not implemented for Task model.");
+  }
+  absl::StatusOr<std::pair<size_t, size_t>> GetWeightsSectionOffset(
+      ModelType model_type) override {
+    return absl::UnimplementedError(
+        "GetWeightsSectionOffset is not implemented for Task model.");
+  }
 
  private:
   explicit ModelResourcesTask(

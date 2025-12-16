@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -102,6 +103,15 @@ absl::Status LitertLmLoader::MapSection(BufferKey buffer_key,
   section_buffers_[buffer_key] = BufferRef<uint8_t>(data, section_size);
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::reference_wrapper<ScopedFile>>
+LitertLmLoader::GetScopedFile() {
+  if (std::holds_alternative<ScopedFile>(model_source_)) {
+    return std::get<ScopedFile>(model_source_);
+  }
+  return absl::InvalidArgumentError(
+      "Model source is not a ScopedFile, cannot get ScopedFile.");
 }
 
 // This constructor is used when the model file is already loaded into memory.

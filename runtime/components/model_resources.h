@@ -17,8 +17,11 @@
 
 // All the loaded model resources the executor needs to hold to avoid the model
 // being destroyed.
+#include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -28,6 +31,7 @@
 #include "litert/cc/litert_model.h"  // from @litert
 #include "runtime/components/tokenizer.h"
 #include "runtime/proto/llm_metadata.pb.h"
+#include "runtime/util/scoped_file.h"
 
 namespace litert::lm {
 
@@ -138,6 +142,15 @@ class ModelResources {
   // Prefer to use GetTFLiteModel() if possible, as this function will leave
   // the model lifecycle management to the caller.
   virtual absl::StatusOr<absl::string_view> GetTFLiteModelBuffer(
+      ModelType model_type) = 0;
+
+  // Returns the reference to the ScopedFile. This is used for the getting the
+  // external weights that should not be mmapped into the memory.
+  virtual absl::StatusOr<std::reference_wrapper<ScopedFile>>
+  GetScopedFile() = 0;
+
+  // Returns the section start offset and end offset.
+  virtual absl::StatusOr<std::pair<size_t, size_t>> GetWeightsSectionOffset(
       ModelType model_type) = 0;
 
   // Returns the TFLite model backend constraint. When there is no constraint

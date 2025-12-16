@@ -14,7 +14,9 @@
 
 #include "runtime/components/model_resources_litert_lm.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,7 +34,9 @@
 #include "runtime/components/model_resources.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/util/litert_lm_loader.h"
+#include "runtime/util/scoped_file.h"
 #include "runtime/util/status_macros.h"  // NOLINT
+#include "schema/core/litertlm_header_schema_generated.h"
 
 #ifdef ENABLE_SENTENCEPIECE_TOKENIZER
 #include "runtime/components/sentencepiece_tokenizer.h"
@@ -149,5 +153,16 @@ ModelResourcesLitertLm::GetLlmMetadata() {
   }
   return llm_metadata_.get();
 };
+
+absl::StatusOr<std::reference_wrapper<ScopedFile>>
+ModelResourcesLitertLm::GetScopedFile() {
+  return litert_lm_loader_->GetScopedFile();
+}
+
+absl::StatusOr<std::pair<size_t, size_t>>
+ModelResourcesLitertLm::GetWeightsSectionOffset(ModelType model_type) {
+  return litert_lm_loader_->GetSectionLocation(
+      BufferKey(schema::AnySectionDataType_TFLiteWeights, model_type));
+}
 
 }  // namespace litert::lm

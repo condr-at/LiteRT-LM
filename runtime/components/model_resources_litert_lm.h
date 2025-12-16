@@ -15,6 +15,8 @@
 #ifndef THIRD_PARTY_ODML_LITERT_LM_RUNTIME_COMPONENTS_MODEL_RESOURCES_LITERT_LM_H_
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_COMPONENTS_MODEL_RESOURCES_LITERT_LM_H_
 
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,6 +30,7 @@
 #include "runtime/components/tokenizer.h"
 #include "runtime/proto/llm_metadata.pb.h"
 #include "runtime/util/litert_lm_loader.h"
+#include "runtime/util/scoped_file.h"
 
 namespace litert::lm {
 
@@ -51,6 +54,11 @@ class ModelResourcesLitertLm : public ModelResources {
   absl::StatusOr<Tokenizer*> GetTokenizer() override;
 
   absl::StatusOr<const proto::LlmMetadata*> GetLlmMetadata() override;
+
+  absl::StatusOr<std::reference_wrapper<ScopedFile>> GetScopedFile() override;
+
+  absl::StatusOr<std::pair<size_t, size_t>> GetWeightsSectionOffset(
+      ModelType model_type) override;
 
  protected:
   explicit ModelResourcesLitertLm(

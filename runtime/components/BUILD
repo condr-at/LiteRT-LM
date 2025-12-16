@@ -440,6 +440,8 @@ cc_library(
         "//runtime/proto:llm_metadata_cc_proto",
         "//runtime/util:litert_lm_loader",
         "//runtime/util:litert_status_util",
+        "//runtime/util:scoped_file",
+        "//schema/core:litertlm_header_schema",
     ] + select({
         ":disable_huggingface_tokenizer": [],
         "//conditions:default": [":huggingface_tokenizer"],
@@ -468,6 +470,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "//runtime/proto:llm_metadata_cc_proto",
+        "//runtime/util:scoped_file",
     ] + select({
         "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_api_with_dynamic_runtime",
@@ -499,6 +502,7 @@ cc_library(
         "//runtime/util:litert_status_util",
         "//runtime/util:metadata_util",
         "//runtime/util:model_asset_bundle_resources",
+        "//runtime/util:scoped_file",
     ] + select({
         "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_api_with_dynamic_runtime",

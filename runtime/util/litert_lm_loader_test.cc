@@ -20,14 +20,32 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"  // from @com_google_absl
 #include "runtime/components/model_resources.h"
 #include "runtime/util/memory_mapped_file.h"
 #include "runtime/util/scoped_file.h"
+#include "runtime/util/status_macros.h"  // IWYU pragma: keep
 #include "schema/core/litertlm_header_schema_generated.h"
 
 namespace litert::lm {
 
 namespace {
+
+using ::testing::status::StatusIs;
+
+TEST(LitertLmLoaderTest, GetSectionLocationNotFound) {
+  const auto model_path =
+      std::filesystem::path(::testing::SrcDir()) /
+      "litert_lm/runtime/testdata/test_lm.litertlm";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryMappedFile> mapped_file,
+                       MemoryMappedFile::Create(model_path.string()));
+  LitertLmLoader loader(std::move(mapped_file));
+
+  BufferKey embedder_key(schema::AnySectionDataType_TFLiteModel,
+                         ModelType::kTfLiteEmbedder);
+  EXPECT_THAT(loader.GetSectionLocation(embedder_key),
+              StatusIs(absl::StatusCode::kNotFound));
+}
 
 TEST(LitertLmLoaderTest, InitializeWithSentencePieceFile) {
   const auto model_path =

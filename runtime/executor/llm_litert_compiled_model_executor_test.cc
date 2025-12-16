@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <filesystem>  // NOLINT: Required for path manipulation.
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -426,6 +427,15 @@ class TfLiteModelResources : public ModelResources {
   std::optional<std::string> GetTFLiteModelBackendConstraint(
       ModelType model_type) override {
     return std::nullopt;
+  }
+
+  absl::StatusOr<std::reference_wrapper<ScopedFile>> GetScopedFile() override {
+    return absl::UnimplementedError("GetScopedFile not implemented.");
+  }
+
+  absl::StatusOr<std::pair<size_t, size_t>> GetWeightsSectionOffset(
+      ModelType model_type) override {
+    return absl::UnimplementedError("GetWeightsSectionOffset not implemented.");
   }
 
  private:

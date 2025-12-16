@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -28,6 +29,7 @@
 #include "absl/log/absl_check.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "litert/cc/litert_buffer_ref.h"  // from @litert
 #include "runtime/components/model_resources.h"
 #include "runtime/util/memory_mapped_file.h"
@@ -152,6 +154,8 @@ class LitertLmLoader {
 
   absl::StatusOr<std::pair<size_t, size_t>> GetSectionLocation(
       BufferKey buffer_key) const;
+
+  absl::StatusOr<std::reference_wrapper<ScopedFile>> GetScopedFile();
 
  private:
   // Initializes the LitertLmLoader. Includes reading the model header and

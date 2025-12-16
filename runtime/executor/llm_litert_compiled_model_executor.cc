@@ -1243,6 +1243,24 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
   if (!litert_model || !*litert_model) {
     return absl::InternalError("Failed to build LiteRt model");
   }
+  auto section_offset =
+      resources.GetWeightsSectionOffset(ModelType::kTfLitePrefillDecode);
+  if (section_offset.ok()) {
+    if (backend != Backend::GPU) {
+      return absl::InvalidArgumentError(
+          "Weights section offset is only "
+          "supported for GPU backend.");
+    }
+    Options::ScopedWeightSectionMap section_map;
+    section_map["tflite_weights"] = {
+        section_offset.value().first,
+        section_offset.value().second - section_offset.value().first};
+    ABSL_LOG(INFO) << "section_map: " << section_map["tflite_weights"].offset
+                   << " " << section_map["tflite_weights"].length;
+    LITERT_ASSIGN_OR_RETURN(auto scoped_file, resources.GetScopedFile());
+    compilation_options.SetExternalWeightScopedFile(scoped_file.get(),
+                                                    section_map);
+  };
 
   LITERT_ASSIGN_OR_RETURN(
       auto compiled_model,
