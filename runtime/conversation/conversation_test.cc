@@ -86,7 +86,8 @@ class MockSession : public Engine::Session {
   MOCK_METHOD(absl::Status, RunPrefill,
               (const std::vector<InputData>& contents), (override));
   MOCK_METHOD(
-      absl::Status, RunPrefillAsync,
+      absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>,
+      RunPrefillAsync,
       (const std::vector<InputData>& contents,
        absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback),
       (override));
@@ -94,11 +95,13 @@ class MockSession : public Engine::Session {
   MOCK_METHOD(absl::StatusOr<Responses>, RunDecode,
               (const DecodeConfig& decode_config), (override));
   MOCK_METHOD(
-      absl::Status, RunDecodeAsync,
+      absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>,
+      RunDecodeAsync,
       (absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback),
       (override));
   MOCK_METHOD(
-      absl::Status, RunDecodeAsync,
+      absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>,
+      RunDecodeAsync,
       (absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
        const DecodeConfig& decode_config),
       (override));

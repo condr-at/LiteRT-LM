@@ -70,6 +70,39 @@ class Engine {
   // history) of each separate interaction with LLM.
   class Session {
    public:
+    // The TaskController is responsible for controlling the async task
+    // execution.
+    class TaskController {
+     public:
+      TaskController() = default;
+
+      // The TaskController is not copyable. This is to avoid
+      // the user from accidentally copying the TaskController and calling the
+      // CancelProcess function multiple times.
+      TaskController(const TaskController&) = delete;
+      TaskController& operator=(const TaskController&) = delete;
+
+      // The TaskController is movable.
+      TaskController(TaskController&&) = default;
+      TaskController& operator=(TaskController&&) = default;
+
+      // The TaskController destructor.
+      virtual ~TaskController() = default;
+
+      // Waits until all the tasks are done or the timeout is reached. The
+      // function will return error if the timeout is reached.
+      virtual absl::Status WaitUntilDone(absl::Duration timeout) {
+        return absl::UnimplementedError("Not implemented.");
+      };
+
+      // Cancels the ongoing inference process. Note that if this function is
+      // called after the inference process is done, the function will be a
+      // no-op.
+      virtual absl::Status Cancel() {
+        return absl::UnimplementedError("Not implemented.");
+      };
+    };
+
     virtual ~Session() = default;
 
     // High-level API to generate content from the input prompt/query. This
@@ -129,7 +162,7 @@ class Engine {
 
     // This is a not blocking call and the function will return right away. The
     // processing status will be signaled through the callback.
-    virtual absl::Status RunPrefillAsync(
+    virtual absl::StatusOr<std::unique_ptr<TaskController>> RunPrefillAsync(
         const std::vector<InputData>& contents,
         absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
       return absl::UnimplementedError("Not implemented.");
@@ -151,14 +184,14 @@ class Engine {
     // This is a not blocking call and the function will return right away. The
     // result will be streamed through the callback.
     // - callback: Callback to receive streamed results.
-    virtual absl::Status RunDecodeAsync(
+    virtual absl::StatusOr<std::unique_ptr<TaskController>> RunDecodeAsync(
         absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
       return absl::UnimplementedError("Not implemented.");
     }
 
     // Same as above, but with a custom decode config.
     // - decode_config: configuration for the model decode process.
-    virtual absl::Status RunDecodeAsync(
+    virtual absl::StatusOr<std::unique_ptr<TaskController>> RunDecodeAsync(
         absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
         const DecodeConfig& decode_config) {
       return absl::UnimplementedError("Not implemented.");

@@ -55,6 +55,11 @@
 #include "runtime/util/tensor_buffer_util.h"
 
 namespace litert::lm {
+namespace {
+
+using TaskController = Engine::Session::TaskController;
+
+}
 
 // static
 absl::StatusOr<std::unique_ptr<SessionBasic>> SessionBasic::Create(
@@ -238,7 +243,7 @@ absl::Status SessionBasic::RunPrefill(const std::vector<InputData>& contents) {
   return status;
 }
 
-absl::Status SessionBasic::RunPrefillAsync(
+absl::StatusOr<std::unique_ptr<TaskController>> SessionBasic::RunPrefillAsync(
     const std::vector<InputData>& contents,
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
   if (contents.empty()) {
@@ -274,7 +279,7 @@ absl::Status SessionBasic::RunPrefillAsync(
           callback(Responses(TaskState::kDone));
         }
       }));
-  return absl::OkStatus();
+  return nullptr;
 }
 
 absl::StatusOr<Responses> SessionBasic::DecodeInternal(
@@ -349,12 +354,12 @@ absl::StatusOr<Responses> SessionBasic::RunDecode(
   return responses;
 }
 
-absl::Status SessionBasic::RunDecodeAsync(
+absl::StatusOr<std::unique_ptr<TaskController>> SessionBasic::RunDecodeAsync(
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
   return RunDecodeAsync(std::move(callback), DecodeConfig::CreateDefault());
 }
 
-absl::Status SessionBasic::RunDecodeAsync(
+absl::StatusOr<std::unique_ptr<TaskController>> SessionBasic::RunDecodeAsync(
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
     const DecodeConfig& decode_config) {
   ABSL_LOG(INFO) << "RunDecodeAsync";
@@ -362,11 +367,12 @@ absl::Status SessionBasic::RunDecodeAsync(
     // Reset the cancelled flag before processing the next turn.
     cancelled_ = false;
   }
-  return worker_thread_pool_.Schedule(
+  RETURN_IF_ERROR(worker_thread_pool_.Schedule(
       [this, callback = std::move(callback), decode_config]() mutable {
         this->DecodeInternalStreaming(std::move(callback), decode_config)
             .IgnoreError();
-      });
+      }));
+  return nullptr;
 }
 
 absl::StatusOr<Responses> SessionBasic::GenerateContent(
@@ -437,21 +443,23 @@ absl::Status SessionBasic::GenerateContentStream(
     ABSL_DLOG(INFO) << content;
   }
 
-  RETURN_IF_ERROR(RunPrefillAsync(
-      contents,
-      [this, callback = std::move(callback), decode_config = decode_config](
-          absl::StatusOr<Responses> responses) mutable {
-        if (!responses.ok()) {
-          callback(responses.status());
-        } else {
-          if (cancelled_.load()) {
-            callback(
-                absl::CancelledError("Session is cancelled during prefill."));
-            return;
-          }
-          auto status = RunDecodeAsync(std::move(callback), decode_config);
-        }
-      }));
+  ASSIGN_OR_RETURN(
+      auto task_controller,
+      RunPrefillAsync(
+          contents,
+          [this, callback = std::move(callback), decode_config = decode_config](
+              absl::StatusOr<Responses> responses) mutable {
+            if (!responses.ok()) {
+              callback(responses.status());
+            } else {
+              if (cancelled_.load()) {
+                callback(absl::CancelledError(
+                    "Session is cancelled during prefill."));
+                return;
+              }
+              auto status = RunDecodeAsync(std::move(callback), decode_config);
+            }
+          }));
   return absl::OkStatus();
 }
 

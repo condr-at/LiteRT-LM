@@ -93,7 +93,8 @@ class SessionBasic : public Engine::Session {
 
   absl::Status RunPrefill(const std::vector<InputData>& contents) override;
 
-  absl::Status RunPrefillAsync(
+  absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>
+  RunPrefillAsync(
       const std::vector<InputData>& contents,
       absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) override;
 
@@ -102,12 +103,13 @@ class SessionBasic : public Engine::Session {
   absl::StatusOr<Responses> RunDecode(
       const DecodeConfig& decode_config) override;
 
-  absl::Status RunDecodeAsync(
+  absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>
+  RunDecodeAsync(
       absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) override;
 
-  absl::Status RunDecodeAsync(
-      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
-      const DecodeConfig& decode_config) override;
+  absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>
+  RunDecodeAsync(absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+                 const DecodeConfig& decode_config) override;
 
   absl::StatusOr<BenchmarkInfo> GetBenchmarkInfo() override;
 

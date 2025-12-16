@@ -15,6 +15,7 @@
 #include "runtime/core/session_advanced.h"
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -39,6 +40,11 @@
 #include "runtime/util/status_macros.h"  // IWYU pragma: keep
 
 namespace litert::lm {
+namespace {
+
+using TaskController = Engine::Session::TaskController;
+
+}  // namespace
 
 // static
 absl::StatusOr<std::unique_ptr<SessionAdvanced>> SessionAdvanced::Create(
@@ -60,29 +66,26 @@ absl::StatusOr<std::unique_ptr<SessionAdvanced>> SessionAdvanced::Create(
 absl::Status SessionAdvanced::RunPrefill(
     const std::vector<InputData>& contents) {
   absl::Status status = absl::OkStatus();
-  RETURN_IF_ERROR(
+  ASSIGN_OR_RETURN(
+      auto task_controller,
       RunPrefillAsync(contents, [&status](absl::StatusOr<Responses> responses) {
         status = responses.status();
       }));
-  auto execution_manager_lock = execution_manager_.lock();
-  if (execution_manager_lock == nullptr) {
-    return absl::FailedPreconditionError("Execution manager is not available.");
-  }
-  RETURN_IF_ERROR(
-      execution_manager_lock->WaitUntilAllDone(Engine::kDefaultTimeout));
+  RETURN_IF_ERROR(task_controller->WaitUntilDone(Engine::kDefaultTimeout));
   return status;
 }
 
-absl::Status SessionAdvanced::RunPrefillAsync(
+absl::StatusOr<std::unique_ptr<TaskController>>
+SessionAdvanced::RunPrefillAsync(
     const std::vector<InputData>& contents,
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
   if (contents.empty()) {
     return absl::InvalidArgumentError("Input is empty.");
   }
-  if (cancelled_->load()) {
-    // Reset the cancelled flag before processing the next turn.
-    cancelled_->store(false);
-  }
+
+  auto cancelled = std::make_shared<std::atomic<bool>>(false);
+  cancel_flags_.insert(cancelled);
+
   auto execution_manager_lock = execution_manager_.lock();
   if (execution_manager_lock == nullptr) {
     return absl::FailedPreconditionError("Execution manager is not available.");
@@ -114,7 +117,8 @@ absl::Status SessionAdvanced::RunPrefillAsync(
 
   last_task_ids_ = {task_id};
 
-  return absl::OkStatus();
+  return std::make_unique<AdvancedTaskController>(task_id, cancelled,
+                                                  execution_manager_);
 }
 
 absl::StatusOr<Responses> SessionAdvanced::RunDecode() {
@@ -180,25 +184,24 @@ absl::StatusOr<Responses> SessionAdvanced::RunDecode(
     }
   };
 
-  RETURN_IF_ERROR(
+  ASSIGN_OR_RETURN(
+      auto task_controller,
       RunDecodeAsync(std::move(decode_sync_callback), decode_config));
-  RETURN_IF_ERROR(
-      execution_manager_lock->WaitUntilAllDone(Engine::kDefaultTimeout));
+  RETURN_IF_ERROR(task_controller->WaitUntilDone(Engine::kDefaultTimeout));
   return collected_responses;
 }
 
-absl::Status SessionAdvanced::RunDecodeAsync(
+absl::StatusOr<std::unique_ptr<TaskController>> SessionAdvanced::RunDecodeAsync(
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
   return RunDecodeAsync(std::move(callback), DecodeConfig::CreateDefault());
 }
 
-absl::Status SessionAdvanced::RunDecodeAsync(
+absl::StatusOr<std::unique_ptr<TaskController>> SessionAdvanced::RunDecodeAsync(
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
     const DecodeConfig& decode_config) {
-  if (cancelled_->load()) {
-    // Reset the cancelled flag before processing the next turn.
-    cancelled_->store(false);
-  }
+  auto cancelled = std::make_shared<std::atomic<bool>>(false);
+  cancel_flags_.insert(cancelled);
+
   auto execution_manager_lock = execution_manager_.lock();
   if (execution_manager_lock == nullptr) {
     return absl::FailedPreconditionError("Execution manager is not available.");
@@ -208,11 +211,12 @@ absl::Status SessionAdvanced::RunDecodeAsync(
 
   RETURN_IF_ERROR(execution_manager_lock->AddDecodeTask(
       session_id_, task_id, last_task_ids_, decode_config.GetConstraint(),
-      cancelled_, std::move(callback)));
+      cancelled, std::move(callback)));
 
   last_task_ids_ = {task_id};
 
-  return absl::OkStatus();
+  return std::make_unique<AdvancedTaskController>(task_id, cancelled,
+                                                  execution_manager_);
 }
 
 absl::StatusOr<Responses> SessionAdvanced::RunTextScoring(
@@ -253,7 +257,7 @@ absl::StatusOr<std::unique_ptr<Engine::Session>> SessionAdvanced::Clone(
 
   return absl::WrapUnique(new SessionAdvanced(
       session_id, execution_manager_, tokenizer_, session_info, is_first_turn_,
-      last_task_ids_, cancelled_));
+      last_task_ids_, cancel_flags_));
 }
 
 }  // namespace litert::lm
