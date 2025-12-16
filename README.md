@@ -106,6 +106,14 @@ lit list --show_all
 lit pull gemma3-1b --hf_token="**your huggingface token**"
 lit run gemma3-1b [--backend=<cpu|gpu>]
 ```
+Note: **Running GPU on Windows needs DirectXShaderCompiler**
+ <span id="windows_gpu"></span>
+ Download the dxc_2025_07_14.zip or the latest zip file from
+ https://github.com/microsoft/DirectXShaderCompiler/releases, unzip the file and
+ locate the right architecture directory under `bin`, copy the `dxil.dll` and
+ `dxcompiler.dll` into the same directory as the executable like `lit` or
+ `litert_lm_main`.
+
 Tip: For more functionality, use `lit --help` or `lit <command> --help`
 
 Tip: Follow this [link](https://huggingface.co/docs/hub/en/security-tokens) to
@@ -204,10 +212,8 @@ device and your development platform.
 > 2. `mkdir -p <test_dir>; cp <your litert_lm_main> <test_dir>; cp ./prebuilt/<your OS>/<shared libaries> <test_dir>/`
  and make sure the prebuilt .so/.dll/.dylib files are in the same directory as
   `litert_lm_main` binary
-> 3. [Windows only] Download the dxc_2025_07_14.zip or the latest zip file from
- https://github.com/microsoft/DirectXShaderCompiler/releases, unzip the file and
- locate the right architecture directory under `bin`, copy the `dxil.dll` and
- `dxcompiler.dll` into the same directory as the `litert_lm_main` binary.
+> 3. Running GPU on Windows needs DirectXShaderCompiler. See
+ [this Note](#windows_gpu) for more details.
 
 <details>
 <summary><strong>Deploy to Windows</strong></summary>
