@@ -297,6 +297,7 @@ cc_library(
         "//runtime/components:sentencepiece_tokenizer",
         "//runtime/components:tokenizer",
         "//runtime/components/constrained_decoding:constraint",
+        "//runtime/components/constrained_decoding:gemma_model_constraint_provider_lib",
         "//runtime/components/tool_use:fc_tool_format_utils",
         "//runtime/components/tool_use:parser_utils",
         "//runtime/conversation:io_types",
