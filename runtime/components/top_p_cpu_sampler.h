@@ -16,10 +16,10 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_COMPONENTS_TOP_P_CPU_SAMPLER_H_
 
 #include <memory>
+#include <random>
 #include <utility>
 #include <vector>
 
-#include "absl/random/random.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
@@ -53,9 +53,7 @@ class TopPSampler : public Sampler {
   explicit TopPSampler(int k, float p, float temperature, int batch_size,
                        int seed)
       : k_(k), p_(p), temperature_(temperature), batch_size_(batch_size) {
-    absl::SeedSeq proper_seed_seq({seed});
-    absl::BitGen rng(proper_seed_seq);
-    generator_ = std::move(rng);
+    generator_ = std::make_shared<std::default_random_engine>(seed);
   }
 
   // The parameters for the sampler.
@@ -63,7 +61,7 @@ class TopPSampler : public Sampler {
   const float p_;
   const float temperature_;
   const int batch_size_;
-  absl::BitGen generator_;
+  std::shared_ptr<std::default_random_engine> generator_;
 
   // The logits data to be used for sampling. Having it as a member to avoid
   // re-allocating the vector for each sampling call.

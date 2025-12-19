@@ -19,11 +19,11 @@
 #include <cstddef>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
 
-#include "absl/random/random.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
@@ -153,7 +153,8 @@ absl::StatusOr<std::vector<float>> Softmax(
 
 absl::StatusOr<std::vector<int>> TopKTopPSampling(
     absl::Span<const float> logits, int k, float p, float temperature,
-    absl::BitGen& rng, int batch_size, std::vector<float>& sampled_scores) {
+    std::shared_ptr<std::default_random_engine> rng, int batch_size,
+    std::vector<float>& sampled_scores) {
   if (logits.empty()) {
     return absl::InvalidArgumentError("Logits vector cannot be empty.");
   }
@@ -169,6 +170,9 @@ absl::StatusOr<std::vector<int>> TopKTopPSampling(
   }
   if (p < 0.0 || p > 1.0) {
     return absl::InvalidArgumentError("p must be in the range [0.0, 1.0].");
+  }
+  if (rng == nullptr) {
+    return absl::InvalidArgumentError("rng cannot be nullptr.");
   }
   const int vocab_size = logits.size() / batch_size;
   // Ensure k is not larger than the number of probabilities
@@ -241,7 +245,7 @@ absl::StatusOr<std::vector<int>> TopKTopPSampling(
 
     // O(final_sample_size) which is O(k) time complexity.
     std::uniform_real_distribution<double> dist(0.0, cumulative_prob);
-    double random_sample = dist(rng);
+    double random_sample = dist(*rng);
     double current_cumulative = 0.0;
     for (int i = 0; i < final_sample_size; ++i) {
       current_cumulative += (*probabilities)[b * k + index_of_topk[i]];

@@ -14,12 +14,13 @@
 
 #include "runtime/components/sampling_cpu_util.h"
 
+#include <memory>
+#include <random>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"  // from @com_google_absl
-#include "absl/random/random.h"  // from @com_google_absl
 
 namespace litert::lm {
 namespace {
@@ -125,7 +126,7 @@ TEST(SamplingCpuUtilTest, Softmax_BatchSize3) {
 
 TEST(SamplingCpuUtilTest, TopKTopPSampling_InvalidInputs) {
   const std::vector<float> probabilities = {0.0, 0.0, 0.3};
-  absl::BitGen rng;
+  auto rng = std::make_shared<std::default_random_engine>(0);
   // Negative k.
   std::vector<float> sampled_scores;
   auto sampled_ids = TopKTopPSampling(
@@ -143,7 +144,7 @@ TEST(SamplingCpuUtilTest, TopKTopPSampling_InvalidInputs) {
 
 TEST(SamplingCpuUtilTest, TopKTopPSampling_BatchSize1) {
   const std::vector<float> probabilities = {0.0, 0.0, 0.3};
-  absl::BitGen rng;
+  auto rng = std::make_shared<std::default_random_engine>(0);
   std::vector<float> sampled_scores;
   auto sampled_ids = TopKTopPSampling(
       absl::MakeConstSpan(probabilities), /*k=*/1,
@@ -158,7 +159,7 @@ TEST(SamplingCpuUtilTest, TopKTopPSampling_BatchSize1_TopK) {
   // Test that the sampler does return a sampled token from the top k
   // instead of always returning the first or the last token.
   const std::vector<float> logits = {-1.0e7f, 1.0f, -1e3f};
-  absl::BitGen rng;
+  auto rng = std::make_shared<std::default_random_engine>(0);
   std::vector<float> sampled_scores;
   auto sampled_ids = TopKTopPSampling(
       absl::MakeConstSpan(logits), /*k=*/3,
@@ -173,7 +174,7 @@ TEST(SamplingCpuUtilTest, TopKTopPSampling_BatchSize3) {
   // Batch of 3, vocab size of 3. The sampled ids are 2, 1, 0.
   const std::vector<float> logits = {0.0, 0.0, 1.0, 0.0, 1.0,
                                             0.0, 1.0, 0.0, 0.0};
-  absl::BitGen rng;
+  auto rng = std::make_shared<std::default_random_engine>(0);
   std::vector<float> sampled_scores;
   auto sampled_ids = TopKTopPSampling(
       absl::MakeConstSpan(logits), /*k=*/2, /*p=*/0.5,
@@ -189,7 +190,7 @@ TEST(SamplingCpuUtilTest, TopKTopPSampling_LargeVocabIndices) {
   // as offsets.
   std::vector<float> logits = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
                                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 10.0};
-  absl::BitGen rng;
+  auto rng = std::make_shared<std::default_random_engine>(0);
   std::vector<float> sampled_scores;
   // Top p = 0.0001f, should always return the token with the highest logit,
   // which is the 14th token in this case.

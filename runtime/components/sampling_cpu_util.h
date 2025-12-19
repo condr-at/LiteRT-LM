@@ -15,9 +15,10 @@
 #ifndef THIRD_PARTY_ODML_LITERT_LM_RUNTIME_COMPONENTS_SAMPLING_CPU_UTIL_H_
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_COMPONENTS_SAMPLING_CPU_UTIL_H_
 
+#include <memory>
+#include <random>
 #include <vector>
 
-#include "absl/random/random.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
 
@@ -62,7 +63,8 @@ absl::StatusOr<std::vector<float>> Softmax(
 //     sampled_scores are always 1.0.
 absl::StatusOr<std::vector<int>> TopKTopPSampling(
     absl::Span<const float> logits, int k, float p, float temperature,
-    absl::BitGen& rng, int batch_size, std::vector<float>& sampled_scores);
+    std::shared_ptr<std::default_random_engine> rng, int batch_size,
+    std::vector<float>& sampled_scores);
 
 }  // namespace litert::lm
 
