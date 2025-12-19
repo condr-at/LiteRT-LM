@@ -15,6 +15,8 @@
 #include "runtime/components/top_p_cpu_sampler.h"
 
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,6 +26,8 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
+#include "tflite/types/half.h"  // from @litert
+#include "litert/cc/litert_element_type.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/components/sampling_cpu_util.h"
@@ -50,6 +54,17 @@ absl::Status ValidateTensor(const TensorBuffer& tensor, int max_num_dims,
                      dims[0], " vs ", batch_size));
   }
   return absl::OkStatus();
+}
+
+// Converts an array of float16 values to float32 values.
+void ConvertFp16ToFp32(absl::Span<const uint16_t> fp16_values,
+                       std::vector<float>& out) {
+  out.resize(fp16_values.size());
+  for (int i = 0; i < fp16_values.size(); ++i) {
+    tflite::half half_val;
+    std::memcpy(&half_val, fp16_values.data() + i, sizeof(uint16_t));
+    out[i] = static_cast<float>(half_val);
+  }
 }
 
 }  // namespace
@@ -86,22 +101,33 @@ absl::Status TopPSampler::SampleToIdAndScoreBuffer(
     return status;
   }
 
-  auto logits_data_or = ReferTensorBufferAsSpan<float>(logits_tensor);
-  absl::Span<float> logits_data;
-  if (!logits_data_or) {  // Download the data if it is not in host memory.
-    LITERT_ASSIGN_OR_RETURN(auto logits_size, logits_tensor.PackedSize());
-    if (logits_data_.size() != logits_size / sizeof(float)) {
-      logits_data_ = std::vector<float>(logits_size / sizeof(float));
+  LITERT_ASSIGN_OR_RETURN(auto logits_tensor_type, logits_tensor.TensorType());
+  absl::Span<float> logits_data_span;
+  if (logits_tensor_type.ElementType() == ElementType::Float32) {
+    auto logits_data_or = ReferTensorBufferAsSpan<float>(logits_tensor);
+    if (!logits_data_or) {  // Download the data if it is not in host memory.
+      LITERT_ASSIGN_OR_RETURN(logits_data_,
+                              CopyFromTensorBuffer<float>(logits_tensor));
+      logits_data_span = absl::MakeSpan(logits_data_);
+    } else {
+      logits_data_span = *logits_data_or;
     }
+  } else if (logits_tensor_type.ElementType() == ElementType::Float16) {
+    LITERT_ASSIGN_OR_RETURN(auto logits_size, logits_tensor.PackedSize());
+    std::vector<uint16_t> logits_data_f16(logits_size / sizeof(uint16_t));
     TensorBuffer& mutable_logits_tensor =
         const_cast<TensorBuffer&>(logits_tensor);
-    mutable_logits_tensor.Read(absl::MakeSpan(logits_data_));
-    logits_data = absl::MakeSpan(logits_data_);
+    LITERT_RETURN_IF_ERROR(
+        mutable_logits_tensor.Read(absl::MakeSpan(logits_data_f16)));
+    ConvertFp16ToFp32(logits_data_f16, logits_data_);
+    logits_data_span = absl::MakeSpan(logits_data_);
   } else {
-    logits_data = logits_data_or.Value();
+    return absl::InvalidArgumentError(
+        "Unsupported logits data type for sampler.");
   }
+
   std::vector<float> sampled_scores;
-  auto sampled_ids = TopKTopPSampling(logits_data, k_, p_, temperature_,
+  auto sampled_ids = TopKTopPSampling(logits_data_span, k_, p_, temperature_,
                                       generator_, batch_size_, sampled_scores);
   if (!sampled_ids.ok()) {
     return sampled_ids.status();
