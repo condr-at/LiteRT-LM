@@ -311,8 +311,10 @@ class ExecutionManager {
   // - preprocessed_contents: The preprocessed contents of the task.
   // Returns:
   // - The processed and combined contents of the preprocessed contents.
+  // - benchmark_info: The benchmark info of the session.
   absl::StatusOr<ExecutorInputs> ProcessAndCombineContents(
-      const std::vector<InputData>& preprocessed_contents);
+      const std::vector<InputData>& preprocessed_contents,
+      std::optional<BenchmarkInfo>& benchmark_info);
 
   // The session ID.
   std::atomic<SessionId> next_session_id_ = 0;
@@ -342,9 +344,6 @@ class ExecutionManager {
 
   // The resource manager used for managing the resources.
   std::unique_ptr<ResourceManager> absl_nonnull resource_manager_;
-
-  // The benchmark info for collecting the performance data.
-  std::optional<BenchmarkInfo> benchmark_info_;
 
   // The LIRTER environment used for creating the LLM context.
   ::litert::Environment* absl_nullable litert_env_;

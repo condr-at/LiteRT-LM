@@ -440,7 +440,8 @@ absl::Status ExecutionManager::UpdateAllTasksToState(
 }
 
 absl::StatusOr<ExecutorInputs> ExecutionManager::ProcessAndCombineContents(
-    const std::vector<InputData>& preprocessed_contents) {
+    const std::vector<InputData>& preprocessed_contents,
+    std::optional<BenchmarkInfo>& benchmark_info) {
   std::vector<int> combined_token_ids;
   std::vector<ExecutorVisionData> all_image_data;
   std::vector<ExecutorAudioData> all_audio_data;
@@ -465,15 +466,15 @@ absl::StatusOr<ExecutorInputs> ExecutionManager::ProcessAndCombineContents(
         return absl::InvalidArgumentError(
             "Image tensor is null in preprocessed_contents.");
       }
-      if (benchmark_info_.has_value()) {
-        RETURN_IF_ERROR(benchmark_info_->TimeMarkDelta("vision_executor"));
+      if (benchmark_info.has_value()) {
+        RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("vision_executor"));
       }
       ASSIGN_OR_RETURN(auto vision_executor,
                        resource_manager_->AcquireVisionExecutor());
       ASSIGN_OR_RETURN(auto single_image_data,
                        vision_executor->Encode(*image_tensor));
-      if (benchmark_info_.has_value()) {
-        RETURN_IF_ERROR(benchmark_info_->TimeMarkDelta("vision_executor"));
+      if (benchmark_info.has_value()) {
+        RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("vision_executor"));
       }
       ASSIGN_OR_RETURN(auto embeddings_ptr,
                        single_image_data.GetEmbeddingsPtr());
@@ -487,15 +488,15 @@ absl::StatusOr<ExecutorInputs> ExecutionManager::ProcessAndCombineContents(
                    std::get_if<InputAudio>(&preprocessed_content)) {
       ASSIGN_OR_RETURN(const auto* spectrogram_tensor,
                        input_audio->GetPreprocessedAudioTensor());
-      if (benchmark_info_.has_value()) {
-        RETURN_IF_ERROR(benchmark_info_->TimeMarkDelta("audio_executor"));
+      if (benchmark_info.has_value()) {
+        RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
       }
       ASSIGN_OR_RETURN(auto audio_executor,
                        resource_manager_->AcquireAudioExecutor());
       ASSIGN_OR_RETURN(auto single_audio_data,
                        audio_executor->Encode(*spectrogram_tensor));
-      if (benchmark_info_.has_value()) {
-        RETURN_IF_ERROR(benchmark_info_->TimeMarkDelta("audio_executor"));
+      if (benchmark_info.has_value()) {
+        RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("audio_executor"));
       }
       const int num_audio_tokens = single_audio_data.GetValidTokens();
       all_audio_data.push_back(std::move(single_audio_data));
@@ -612,7 +613,8 @@ absl::Status ExecutionManager::AddPrefillTask(
 
     RETURN_IF_CANCELLED(cancelled, task_id, callback);
 
-    auto executor_inputs = ProcessAndCombineContents(inputs);
+    auto executor_inputs =
+        ProcessAndCombineContents(inputs, session_info->benchmark_info);
     if (!executor_inputs.ok()) {
       FinishTaskAndLogErrors(task_id, executor_inputs.status(),
                              std::move(callback));
