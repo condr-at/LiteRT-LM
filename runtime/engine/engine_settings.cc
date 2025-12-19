@@ -231,16 +231,8 @@ absl::Status EngineSettings::MaybeUpdateAndValidate(
   if (!metadata.has_llm_model_type()) {
     const auto& model_assets = main_executor_settings_.GetModelAssets();
     auto model_path = model_assets.GetPath();
-    // TODO(b/469437188) Remove test_lm_lora hack.
-    if (model_path.ok() && absl::StrContains(*model_path, "test_lm_lora")) {
-      ABSL_LOG(INFO)
-          << "LoRA model detected, skipping InferLlmModelType and using "
-             "generic_model.";
-      metadata.mutable_llm_model_type()->mutable_generic_model();
-    } else {
-      ASSIGN_OR_RETURN(*metadata.mutable_llm_model_type(),
-                       InferLlmModelType(metadata, tokenizer));
-    }
+    ASSIGN_OR_RETURN(*metadata.mutable_llm_model_type(),
+                     InferLlmModelType(metadata, tokenizer));
   }
   if (!metadata.has_jinja_prompt_template()) {
     ASSIGN_OR_RETURN(*metadata.mutable_jinja_prompt_template(),

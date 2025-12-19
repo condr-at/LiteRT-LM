@@ -255,10 +255,14 @@ class LlmExecutorSettings : public ExecutorSettingsBase {
       std::get<GpuArtisanConfig>(backend_config_).supported_lora_ranks =
           lora_ranks;
       return absl::OkStatus();
-    } else {
-      return absl::FailedPreconditionError(
-          "supported_lora_ranks is only supported for GpuArtisanConfig");
+    } else if (!lora_ranks.empty()) {
+      // If lora_ranks is not empty, but the backend is not GpuArtisanConfig,
+      // we log a warning and ignore the lora ranks.
+      LOG(ERROR) << "supported_lora_ranks is only supported for "
+                    "GpuArtisanConfig. The provided lora ranks will be "
+                    "ignored.";
     }
+    return absl::OkStatus();
   }
 
  private:
