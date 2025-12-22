@@ -62,6 +62,8 @@ struct ModelSignatures {
   // When this is provided, the per layer embedding model will be used to look
   // up the per layer embeddings.
   std::optional<std::string> input_per_layer_embeddings;
+  // Input int32 param signature name. For both prefill and decode.
+  std::optional<std::string> input_int32_param;
   // Output logits signature name. Necessary for decode.
   std::string output_logits;
 };
@@ -119,6 +121,11 @@ absl::Status InitializeAttentionMask(::litert::TensorBuffer& mask, bool is_f16);
 // steps - The number of steps to fill (the number of sequences to be filled).
 absl::Status FillAttentionMask(::litert::TensorBuffer& mask, int start_timestep,
                                int steps);
+
+absl::Status UploadInt32ParamTensorData(::litert::TensorBuffer& param_tensor,
+                                        int token_index_offset,
+                                        int active_tokens,
+                                        int active_tokens_aligned);
 
 // Builds the model resources from the model_path for compiled model only.
 // Supports .task and .litertlm formats.

@@ -646,7 +646,9 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::PrefillInternal(
         compiled_model_.Run(prefill_signature, input_buffers, output_buffers));
   }
 
-  std::swap(input_kv_cache_buffers_, output_kv_cache_buffers_);
+  if (!gpu_optimized_single_buffer_cache_) {
+    std::swap(input_kv_cache_buffers_, output_kv_cache_buffers_);
+  }
   return absl::OkStatus();
 }
 
@@ -805,7 +807,9 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
       compiled_model_.RunAsync(kDecodeSignatureRunner, decode_input_buffers,
                                decode_output_buffers, async));
 
-  std::swap(input_kv_cache_buffers_, output_kv_cache_buffers_);
+  if (!gpu_optimized_single_buffer_cache_) {
+    std::swap(input_kv_cache_buffers_, output_kv_cache_buffers_);
+  }
   return absl::OkStatus();
 }
 
@@ -1115,6 +1119,35 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
   }
   const Backend backend = executor_settings.GetBackend();
   bool use_fp16_precision = true;
+  bool gpu_optimized_single_buffer_cache = false;
+
+  if (!litert_model || !*litert_model) {
+    return absl::InternalError("Failed to build LiteRt model");
+  }
+
+  absl::string_view prefill_signature_key = "";
+  for (int i = 0; i < litert_model->GetNumSignatures(); ++i) {
+    LITERT_ASSIGN_OR_RETURN(auto sig, litert_model->GetSignature(i));
+    absl::string_view key = sig.Key();
+    if (absl::StartsWith(key, kPrefillSignatureRunner)) {
+      prefill_signature_key = key;
+      break;
+    }
+  }
+  LITERT_ASSIGN_OR_RETURN(auto prefill_signature,
+                          litert_model->FindSignature(prefill_signature_key));
+  std::string kv_cache_k_root_name;
+  std::string kv_cache_v_root_name;
+  RETURN_IF_ERROR(GetKVCacheRootNames(prefill_signature.InputNames(),
+                                      kv_cache_k_root_name,
+                                      kv_cache_v_root_name));
+  LITERT_ASSIGN_OR_RETURN(auto decode_signature,
+                          litert_model->FindSignature(kDecodeSignatureRunner));
+  ASSIGN_OR_RETURN(
+      ModelSignatures signatures,
+      GetModelSignaturesFromInputOutputNames(decode_signature.InputNames(),
+                                             decode_signature.OutputNames()));
+
   switch (backend) {
     case Backend::GPU: {
       // TODO: b/403132820 - Add accelerator compilation options for ML_DRIFT.
@@ -1242,9 +1275,6 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
           "Unsupported backend: ", executor_settings.GetBackend()));
   }
 
-  if (!litert_model || !*litert_model) {
-    return absl::InternalError("Failed to build LiteRt model");
-  }
   auto section_offset =
       resources.GetWeightsSectionOffset(ModelType::kTfLitePrefillDecode);
   if (section_offset.ok()) {
@@ -1273,34 +1303,12 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
   absl::flat_hash_map<absl::string_view, TensorBuffer> input_kv_cache_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> output_kv_cache_buffers;
 
-  absl::string_view prefill_signature_key = "";
-  for (int i = 0; i < litert_model->GetNumSignatures(); ++i) {
-    LITERT_ASSIGN_OR_RETURN(auto sig, litert_model->GetSignature(i));
-    absl::string_view key = sig.Key();
-    if (absl::StartsWith(key, kPrefillSignatureRunner)) {
-      prefill_signature_key = key;
-      break;
-    }
-  }
-  LITERT_ASSIGN_OR_RETURN(auto prefill_signature,
-                          litert_model->FindSignature(prefill_signature_key));
-  std::string kv_cache_k_root_name;
-  std::string kv_cache_v_root_name;
-  RETURN_IF_ERROR(GetKVCacheRootNames(prefill_signature.InputNames(),
-                                      kv_cache_k_root_name,
-                                      kv_cache_v_root_name));
-  LITERT_ASSIGN_OR_RETURN(auto decode_signature,
-                          litert_model->FindSignature(kDecodeSignatureRunner));
-  ASSIGN_OR_RETURN(
-      ModelSignatures signatures,
-      GetModelSignaturesFromInputOutputNames(decode_signature.InputNames(),
-                                             decode_signature.OutputNames()));
-
   for (auto input_name : prefill_signature.InputNames()) {
     // Skip creating buffers for the input tokens, positions and attn mask. Move
     // into prefill function to create them based on the ids size.
-    if (!absl::StartsWith(input_name, kv_cache_k_root_name) &&
-        !absl::StartsWith(input_name, kv_cache_v_root_name)) {
+    if ((!absl::StartsWith(input_name, kv_cache_k_root_name) &&
+         !absl::StartsWith(input_name, kv_cache_v_root_name)) ||
+        gpu_optimized_single_buffer_cache) {
       continue;
     }
     LITERT_ASSIGN_OR_RETURN(

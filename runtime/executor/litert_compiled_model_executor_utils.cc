@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <limits>
@@ -63,6 +64,9 @@ constexpr std::array<absl::string_view, 1> kEmbeddingNames = {"embeddings"};
 // Possible per layer embedding names:
 constexpr std::array<absl::string_view, 1> kPerLayerEmbeddingNames = {
     "per_layer_embeddings"};
+// Possible input int32 param names:
+constexpr std::array<absl::string_view, 1> kInputInt32ParamNames = {
+    "param_tensor"};
 // Possible output logits names:
 constexpr std::array<absl::string_view, 1> kOutputLogitsNames = {"logits"};
 
@@ -128,6 +132,10 @@ absl::StatusOr<ModelSignatures> GetModelSignaturesFromInputOutputNames(
     }
     if (absl::c_linear_search(kPerLayerEmbeddingNames, input_name)) {
       model_signatures.input_per_layer_embeddings = std::string(input_name);
+      continue;
+    }
+    if (absl::c_linear_search(kInputInt32ParamNames, input_name)) {
+      model_signatures.input_int32_param = std::string(input_name);
       continue;
     }
   }
@@ -257,6 +265,26 @@ absl::Status InitializeAttentionMask(litert::TensorBuffer& mask, bool is_f16) {
       return absl::InvalidArgumentError(
           "Unsupported attention mask data type.");
   }
+  return absl::OkStatus();
+}
+
+absl::Status UploadInt32ParamTensorData(litert::TensorBuffer& param_tensor,
+                                        int token_index_offset,
+                                        int active_tokens,
+                                        int active_tokens_aligned) {
+  // TODO(sulemanshahid): Local attention optimization is not supported in the
+  // OpenCL implementation, enable for WebGPU.
+  constexpr int kNumRuntimeParams = 7;
+  const int32_t runtime_params[kNumRuntimeParams] = {
+      token_index_offset, active_tokens, active_tokens_aligned, 0, 0, 0, 0};
+  auto param_tensor_lock_and_addr = litert::TensorBufferScopedLock::Create(
+      param_tensor, litert::TensorBuffer::LockMode::kWrite);
+  RET_CHECK(param_tensor_lock_and_addr)
+      << "Failed to lock param tensor buffer.";
+  int32_t* param_tensor_ptr =
+      static_cast<int32_t*>(param_tensor_lock_and_addr->second);
+  std::memcpy(param_tensor_ptr, runtime_params,
+              sizeof(int32_t) * kNumRuntimeParams);
   return absl::OkStatus();
 }
 

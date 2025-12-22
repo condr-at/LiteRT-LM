@@ -270,6 +270,9 @@ class LlmLiteRtCompiledModelExecutorBase : public LlmExecutor {
   // The logits data type of the model, used to determine the data type of the
   // logits tensor for gpu sampling.
   LogitsDataType logits_data_type_;
+
+  // GPU optimized single buffer cache
+  bool gpu_optimized_single_buffer_cache_ = false;
 };
 
 // The static executor for the prefill-decode compiled model.
