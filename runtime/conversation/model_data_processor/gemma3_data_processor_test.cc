@@ -414,7 +414,8 @@ print(default_api.another_tool())
                 {
                   "type": "function",
                   "function": {
-                    "name": "another_tool"
+                    "name": "another_tool",
+                    "arguments": {}
                   }
                 }
               ]

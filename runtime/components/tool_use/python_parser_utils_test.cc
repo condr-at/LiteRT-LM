@@ -87,7 +87,8 @@ TEST(PythonParserUtilsTest, ParseInvalidToolCall) {
 TEST(PythonParserUtilsTest, ParseNoArguments) {
   EXPECT_THAT(ParsePythonExpression("function_name()"),
               IsOkAndHolds(nlohmann::ordered_json::parse(R"json([{
-                "name": "function_name"
+                "name": "function_name",
+                "arguments": {}
               }])json")));
 }
 

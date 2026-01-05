@@ -27,7 +27,7 @@
 #include "atn/ATNConfigSet.h"
 #include "dfa/DFA.h"
 #include "nlohmann/json_fwd.hpp"  // from @nlohmann_json
-#include "runtime/components/tool_use/proto/tool_call.pb.h"
+#include "runtime/components/tool_use/rust/parsers.rs.h"
 
 namespace litert::lm {
 
@@ -61,9 +61,9 @@ class DefaultErrorListener final : public antlr4::ANTLRErrorListener {
   bool status_;
 };
 
-absl::string_view StripQuotes(absl::string_view text);
+nlohmann::ordered_json ConvertJsonValue(const JsonValue& json_value);
 
-nlohmann::ordered_json ToolCallsToJson(const proto::ToolCalls& tool_calls);
+absl::string_view StripQuotes(absl::string_view text);
 
 }  // namespace litert::lm
 
