@@ -1241,33 +1241,31 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
     }
     case Backend::CPU: {
       use_fp16_precision = false;
-      Expected<CpuOptions> cpu_compilation_options = CpuOptions::Create();
+      LITERT_ASSIGN_OR_RETURN(auto& cpu_compilation_options,
+                              compilation_options.GetCpuOptions());
       const uint32_t num_threads =
           executor_settings.GetBackendConfig<CpuConfig>()->number_of_threads;
-      cpu_compilation_options->SetNumThreads(num_threads);
+      cpu_compilation_options.SetNumThreads(num_threads);
       auto weight_cache_file =
           executor_settings.GetWeightCacheFile(".xnnpack_cache");
       if (weight_cache_file.ok()) {
         if (std::holds_alternative<std::string>(*weight_cache_file)) {
           weight_cache_path = std::get<std::string>(*weight_cache_file);
-          cpu_compilation_options->SetXNNPackWeightCachePath(
+          cpu_compilation_options.SetXNNPackWeightCachePath(
               weight_cache_path.c_str());
         } else {
           auto scoped_cache_file =
               std::get<std::shared_ptr<ScopedFile>>(*weight_cache_file);
           ASSIGN_OR_RETURN(auto duplicated, scoped_cache_file->Duplicate());
           ASSIGN_OR_RETURN(int fd, duplicated.Release());
-          cpu_compilation_options->SetXNNPackWeightCacheFileDescriptor(fd);
+          cpu_compilation_options.SetXNNPackWeightCacheFileDescriptor(fd);
         }
       }
       LITERT_ASSIGN_OR_RETURN(const uint32_t default_xnnpack_flags,
-                              cpu_compilation_options->GetXNNPackFlags());
-      cpu_compilation_options->SetXNNPackFlags(
+                              cpu_compilation_options.GetXNNPackFlags());
+      cpu_compilation_options.SetXNNPackFlags(
           default_xnnpack_flags |
           TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS);
-      LITERT_ASSIGN_OR_RETURN(auto runtime_options, RuntimeOptions::Create());
-      compilation_options.AddOpaqueOptions(std::move(runtime_options));
-      compilation_options.AddOpaqueOptions(std::move(*cpu_compilation_options));
       compilation_options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
       break;
     }
@@ -1619,37 +1617,35 @@ LlmLiteRtCompiledModelExecutorDynamic::Create(
   uint32_t kv_increament_size = 0;
   int prefill_chunk_size = -1;
   {
-    Expected<CpuOptions> cpu_compilation_options = CpuOptions::Create();
+    LITERT_ASSIGN_OR_RETURN(auto& cpu_compilation_options,
+                            compilation_options.GetCpuOptions());
     ASSIGN_OR_RETURN(const auto& cpu_config,
                      executor_settings.GetBackendConfig<CpuConfig>());
     kv_increament_size = cpu_config.kv_increment_size;
     prefill_chunk_size = cpu_config.prefill_chunk_size;
-    cpu_compilation_options->SetNumThreads(cpu_config.number_of_threads);
+    cpu_compilation_options.SetNumThreads(cpu_config.number_of_threads);
     auto weight_cache_file =
         executor_settings.GetWeightCacheFile(".xnnpack_cache");
     if (weight_cache_file.ok()) {
       if (std::holds_alternative<std::string>(*weight_cache_file)) {
         weight_cache_path = std::get<std::string>(*weight_cache_file);
-        cpu_compilation_options->SetXNNPackWeightCachePath(
+        cpu_compilation_options.SetXNNPackWeightCachePath(
             weight_cache_path.c_str());
       } else {
         auto scoped_cache_file =
             std::get<std::shared_ptr<ScopedFile>>(*weight_cache_file);
         ASSIGN_OR_RETURN(auto duplicated, scoped_cache_file->Duplicate());
         ASSIGN_OR_RETURN(int fd, duplicated.Release());
-        cpu_compilation_options->SetXNNPackWeightCacheFileDescriptor(fd);
+        cpu_compilation_options.SetXNNPackWeightCacheFileDescriptor(fd);
       }
     }
     RET_CHECK_GT(kv_increament_size, 0)
         << "KV increment size must be greater than 0.";
     LITERT_ASSIGN_OR_RETURN(const uint32_t default_xnnpack_flags,
-                            cpu_compilation_options->GetXNNPackFlags());
-    cpu_compilation_options->SetXNNPackFlags(
+                            cpu_compilation_options.GetXNNPackFlags());
+    cpu_compilation_options.SetXNNPackFlags(
         default_xnnpack_flags |
         TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS);
-    LITERT_ASSIGN_OR_RETURN(auto runtime_options, RuntimeOptions::Create());
-    compilation_options.AddOpaqueOptions(std::move(runtime_options));
-    compilation_options.AddOpaqueOptions(std::move(*cpu_compilation_options));
     compilation_options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
   }
 
