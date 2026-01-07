@@ -32,6 +32,12 @@ class AudioExecutorBase {
   // shape `[batch, 1, num_audio_tokens, model_dimension]`.
   virtual absl::StatusOr<::litert::lm::ExecutorAudioData> Encode(
       const litert::TensorBuffer& spectrogram_tensor) = 0;
+
+  // Reset the audio executor to its initial state. It must be called for
+  // streaming audio models after finishing an audio stream.
+  virtual absl::Status Reset() {
+    return absl::UnimplementedError("Not implemented.");
+  }
 };
 
 }  // namespace litert::lm

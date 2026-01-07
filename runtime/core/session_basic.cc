@@ -120,6 +120,12 @@ SessionBasic::~SessionBasic() {
   if (!status.ok()) {
     ABSL_LOG(ERROR) << "Failed to reset executor: " << status;
   }
+  if (audio_executor_ != nullptr) {
+    status = audio_executor_->Reset();
+    if (!status.ok()) {
+      ABSL_LOG(ERROR) << "Failed to reset audio executor: " << status;
+    }
+  }
   absl::MutexLock lock(occupied_executors_mu_);  // NOLINT
   occupied_executors_->erase(&executor_);
 }

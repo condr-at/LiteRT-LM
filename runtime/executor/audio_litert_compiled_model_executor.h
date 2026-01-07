@@ -84,6 +84,10 @@ class AudioLiteRtCompiledModelExecutor : public AudioExecutor {
       const TensorBuffer& spectrogram_tensor,
       const TensorBuffer& spectrogram_mask);
 
+  // Reset the audio encoder, which will be a stateful object when streaming
+  // model is used.
+  absl::Status Reset() override { return audio_encoder_->Reset(); }
+
  private:
   // The Audio Encoder LiteRT CompiledModel wrapper manage the input and
   // output buffers of the audio encoder model. It is not expected to be used
