@@ -99,8 +99,6 @@ class ExecutionManagerTest : public ::testing::Test {
 
   void CreateExecutionManager(
       std::unique_ptr<FakeLlmExecutor> fake_llm_executor) {
-    std::optional<BenchmarkInfo> benchmark_info = std::nullopt;
-
     // The objects are moved to execution_manager_ so we can't access them
     // after creation.
     ASSERT_OK_AND_ASSIGN(execution_manager_,
@@ -130,6 +128,27 @@ class ExecutionManagerTest : public ::testing::Test {
 
   std::unique_ptr<ExecutionManager> execution_manager_;
 };
+
+TEST_F(ExecutionManagerTest, CanGetMutableBenchmarkInfo) {
+  CreateExecutionManager(CreateDefaultFakeLlmExecutor());
+  ASSERT_OK_AND_ASSIGN(auto session_config, CreateDefaultSessionConfig());
+  ASSERT_OK_AND_ASSIGN(const SessionId session_id,
+                       execution_manager_->RegisterNewSession(
+                           session_config, std::make_optional<BenchmarkInfo>(
+                                               proto::BenchmarkParams())));
+  ASSERT_OK_AND_ASSIGN(BenchmarkInfo * benchmark_info,
+                       execution_manager_->GetMutableBenchmarkInfo(session_id));
+  EXPECT_NE(benchmark_info, nullptr);
+}
+
+TEST_F(ExecutionManagerTest, GetMutableBenchmarkInfoFailsIfNoBenchmarkInfo) {
+  CreateExecutionManager(CreateDefaultFakeLlmExecutor());
+  ASSERT_OK_AND_ASSIGN(auto session_config, CreateDefaultSessionConfig());
+  ASSERT_OK_AND_ASSIGN(const SessionId session_id,
+                       execution_manager_->RegisterNewSession(session_config));
+  EXPECT_THAT(execution_manager_->GetMutableBenchmarkInfo(session_id),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+}
 
 TEST_F(ExecutionManagerTest, AddPrefillTask) {
   CreateExecutionManager(CreateDefaultFakeLlmExecutor({{{1, 2, 3, -4}}}));
@@ -356,11 +375,10 @@ TEST_F(ExecutionManagerTest, AddDecodeTaskWithExternalSampler) {
   EXPECT_OK(
       execution_manager_->WaitUntilDone(decode_task_id, absl::Seconds(3)));
 
-  EXPECT_THAT(
-      task_states,
-      ElementsAre(TaskState::kCreated, TaskState::kQueued,
-                  TaskState::kProcessing, TaskState::kProcessing,
-                  TaskState::kProcessing, TaskState::kDone));
+  EXPECT_THAT(task_states,
+              ElementsAre(TaskState::kCreated, TaskState::kQueued,
+                          TaskState::kProcessing, TaskState::kProcessing,
+                          TaskState::kProcessing, TaskState::kDone));
 
   EXPECT_THAT(responses_texts, ElementsAre("4", "5"));
 }

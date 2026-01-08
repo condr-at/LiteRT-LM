@@ -193,7 +193,7 @@ class Conversation {
   // - `config`: The ConversationConfig instance to be used for creating the
   // Conversation.
   static absl::StatusOr<std::unique_ptr<Conversation>> Create(
-      const Engine& engine, const ConversationConfig& config);
+      Engine& engine, const ConversationConfig& config);
 
   // Sends a message to the LLM and returns the complete message.
   // Args:
@@ -267,11 +267,16 @@ class Conversation {
   // Returns the configuration used for creating the Conversation.
   const ConversationConfig& GetConfig() const { return config_; }
 
-  // Returns the benchmark info for the conversation. Underlying this method
-  // triggers the benchmark info collection from the Session.
-  // Returns:
+  // Returns the benchmark info for the conversation. Under the hood, this
+  // method triggers the benchmark info collection from the Session. Returns:
   // - The benchmark info for the conversation.
   absl::StatusOr<BenchmarkInfo> GetBenchmarkInfo();
+
+  // Returns the mutable benchmark info for the conversation. Under the hood,
+  // this method triggers the mutable benchmark info collection from the
+  // Session. Returns:
+  // - The mutable benchmark info for the conversation.
+  absl::StatusOr<BenchmarkInfo*> GetMutableBenchmarkInfo();
 
   // Cancels the ongoing inference process, for asynchronous inference.
   // Note: the underlying Session is not rollbacked, so the message

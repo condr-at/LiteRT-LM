@@ -201,6 +201,10 @@ class Engine {
     // benchmark is not enabled.
     virtual absl::StatusOr<BenchmarkInfo> GetBenchmarkInfo() = 0;
 
+    // Returns the mutable benchmark info for the session. Returns error if the
+    // benchmark is not enabled.
+    virtual absl::StatusOr<BenchmarkInfo*> GetMutableBenchmarkInfo() = 0;
+
     // Cancels the ongoing inference process. Note that if this function is
     // called, the inference process will return with a kCancelled error. The
     // session could still be used after afterwards.
@@ -225,7 +229,7 @@ class Engine {
 
   // Method to create the Session.
   virtual absl::StatusOr<std::unique_ptr<Session>> CreateSession(
-      const SessionConfig& session_config) const = 0;
+      const SessionConfig& session_config) = 0;
 
   // Waits until the engine is done with all the tasks. The function will
   // return error if the timeout is reached.

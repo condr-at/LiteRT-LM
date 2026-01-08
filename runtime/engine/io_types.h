@@ -157,8 +157,7 @@ class InputAudio {
   }
 
   // Returns true if the audio is PCM frames.
-  bool IsPcmFrames
-  () const {
+  bool IsPcmFrames() const {
     return std::holds_alternative<std::vector<float>>(data_);
   }
 
@@ -338,11 +337,44 @@ class BenchmarkInfo {
   const proto::BenchmarkParams& GetBenchmarkParams() const;
 
   // --- Methods to record data ---
-  // Time the start and end of a phase in the initialization. The phase name
-  // should be a string that uniquely identifies the phase. Otherwise, the
-  // methods will return an error.
-  absl::Status TimeInitPhaseStart(const std::string& phase_name);
-  absl::Status TimeInitPhaseEnd(const std::string& phase_name);
+
+  enum class InitPhase {
+    kModelAssets,
+    kLlmMetadata,
+    kExecutor,
+    kTokenizer,
+    kSession,
+    kConversation,
+  };
+  static constexpr absl::string_view InitPhaseToString(InitPhase phase) {
+    switch (phase) {
+      case InitPhase::kModelAssets:
+        return "Model assets";
+      case InitPhase::kLlmMetadata:
+        return "LLM metadata";
+      case InitPhase::kExecutor:
+        return "Executor";
+      case InitPhase::kTokenizer:
+        return "Tokenizer";
+      case InitPhase::kSession:
+        return "Session";
+      case InitPhase::kConversation:
+        return "Conversation";
+    }
+  }
+
+  // Time the start and end of an init phase. The method will return an error
+  // if the methods are called out of order (i.e. one end after one start).
+  // Each phase can only be timed once, and the subsequent calls will return
+  // error.
+  absl::Status TimeInitPhaseStart(InitPhase phase);
+  absl::Status TimeInitPhaseEnd(InitPhase phase);
+
+  // An alternative to TimeInitPhaseStart and TimeInitPhaseEnd. Allows directly
+  // recording the duration of a phase. This is useful when the BenchmarkInfo
+  // object is not available to mark the start time as needed.
+  absl::Status InitPhaseRecord(InitPhase phase, absl::Duration duration);
+
   // Time the start and end of a prefill/decode turn. The num_prefill_tokens
   // should be the number of tokens processed in this turn. The method will
   // return an error if the methods are called out of order (i.e. one end after

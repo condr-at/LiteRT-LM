@@ -158,6 +158,15 @@ class ExecutionManager {
   absl::StatusOr<std::shared_ptr<const SessionInfo>> GetSessionInfo(
       SessionId session_id) ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
 
+  // Returns the mutable benchmark info with the given session ID.
+  // Note: The returned benchmark info is not thread-safe and should be used
+  // with care to record appropriate metrics.
+  // Returns:
+  // - The mutable benchmark info.
+  // - INVALID_ARGUMENT if the session ID is not found.
+  absl::StatusOr<BenchmarkInfo*> GetMutableBenchmarkInfo(SessionId session_id)
+      ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
+
   // Returns a new task ID.
   // The returned task ID is guaranteed to be unique.
   absl::StatusOr<TaskId> GetNewTaskId();

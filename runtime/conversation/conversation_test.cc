@@ -106,6 +106,8 @@ class MockSession : public Engine::Session {
        const DecodeConfig& decode_config),
       (override));
   MOCK_METHOD(absl::StatusOr<BenchmarkInfo>, GetBenchmarkInfo, (), (override));
+  MOCK_METHOD(absl::StatusOr<BenchmarkInfo*>, GetMutableBenchmarkInfo, (),
+              (override));
   MOCK_METHOD(void, CancelProcess, (), (override));
   MOCK_METHOD(absl::Status, WaitUntilDone, (), (override));
   MOCK_METHOD(const SessionConfig&, GetSessionConfig, (), (const, override));
@@ -116,7 +118,7 @@ class MockEngine : public Engine {
  public:
   MOCK_METHOD(const EngineSettings&, GetEngineSettings, (), (const, override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Session>>, CreateSession,
-              (const SessionConfig& session_config), (const, override));
+              (const SessionConfig& session_config), (override));
   MOCK_METHOD(absl::Status, WaitUntilDone, (absl::Duration timeout),
               (override));
 };

@@ -503,4 +503,13 @@ absl::StatusOr<BenchmarkInfo> SessionBasic::GetBenchmarkInfo() {
       "in the EngineSettings.");
 }
 
+absl::StatusOr<BenchmarkInfo*> SessionBasic::GetMutableBenchmarkInfo() {
+  if (benchmark_info_.has_value()) {
+    return &benchmark_info_.value();
+  }
+  return absl::InternalError(
+      "Benchmark is not enabled. Please make sure the BenchmarkParams is set "
+      "in the EngineSettings.");
+}
+
 }  // namespace litert::lm

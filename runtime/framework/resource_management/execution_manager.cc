@@ -60,11 +60,11 @@
 namespace litert::lm {
 
 // Helper macro to check if the task has been cancelled.
-#define RETURN_IF_CANCELLED(cancelled, task_id, callback)                    \
-  if (cancelled != nullptr && cancelled->load()) {                           \
-    FinishTaskAndLogErrors(task_id, Responses(TaskState::kCancelled),        \
-                           std::move(callback));                             \
-    return;                                                                  \
+#define RETURN_IF_CANCELLED(cancelled, task_id, callback)             \
+  if (cancelled != nullptr && cancelled->load()) {                    \
+    FinishTaskAndLogErrors(task_id, Responses(TaskState::kCancelled), \
+                           std::move(callback));                      \
+    return;                                                           \
   }
 
 absl::StatusOr<SessionId> ExecutionManager::RegisterNewSession(
@@ -136,6 +136,20 @@ ExecutionManager::GetSessionInfo(SessionId session_id) {
         absl::StrCat("Session ", session_id, " not found in session list."));
   }
   return session_lookup_.at(session_id);
+}
+
+absl::StatusOr<BenchmarkInfo*> ExecutionManager::GetMutableBenchmarkInfo(
+    SessionId session_id) {
+  absl::MutexLock lock(session_and_task_lookup_mutex_);
+  if (!session_lookup_.contains(session_id)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Session ", session_id, " not found in session list."));
+  }
+  if (!session_lookup_.at(session_id)->benchmark_info.has_value()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Session ", session_id, " does not have benchmark info."));
+  }
+  return &session_lookup_.at(session_id)->benchmark_info.value();
 }
 
 absl::StatusOr<TaskId> ExecutionManager::GetNewTaskId() {

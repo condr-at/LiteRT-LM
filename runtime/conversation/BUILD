@@ -88,6 +88,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@nlohmann_json//:json",
         "//runtime/components:prompt_template",
         "//runtime/components/constrained_decoding:constraint",

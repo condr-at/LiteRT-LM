@@ -232,6 +232,14 @@ absl::StatusOr<BenchmarkInfo> SessionAdvanced::GetBenchmarkInfo() {
       "in the EngineSettings.");
 }
 
+absl::StatusOr<BenchmarkInfo*> SessionAdvanced::GetMutableBenchmarkInfo() {
+  auto execution_manager_lock = execution_manager_.lock();
+  if (execution_manager_lock == nullptr) {
+    return absl::FailedPreconditionError("Execution manager is not available.");
+  }
+  return execution_manager_lock->GetMutableBenchmarkInfo(session_id_);
+}
+
 absl::StatusOr<std::unique_ptr<Engine::Session>> SessionAdvanced::Clone(
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
   auto execution_manager_lock = execution_manager_.lock();

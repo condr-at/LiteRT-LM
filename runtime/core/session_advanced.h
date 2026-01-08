@@ -161,6 +161,8 @@ class SessionAdvanced : public Engine::Session {
 
   absl::StatusOr<BenchmarkInfo> GetBenchmarkInfo() override;
 
+  absl::StatusOr<BenchmarkInfo*> GetMutableBenchmarkInfo() override;
+
   // TODO(b/450903294): Add rollback history support for Session and
   // Conversation.
   void CancelProcess() override {

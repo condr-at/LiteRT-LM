@@ -141,7 +141,7 @@ class EngineImpl : public Engine {
 
   // Method to create the Session.
   absl::StatusOr<std::unique_ptr<Session>> CreateSession(
-      const SessionConfig& session_config) const override {
+      const SessionConfig& session_config) override {
     auto config = session_config;
     RETURN_IF_ERROR(config.MaybeUpdateAndValidate(engine_settings_));
     return InitializeSessionAdvanced(execution_manager_, tokenizer_, config,
@@ -185,8 +185,8 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
   if (engine_settings.IsBenchmarkEnabled()) {
     benchmark_info = std::make_optional<BenchmarkInfo>(
         engine_settings.GetBenchmarkParams().value());
-    RETURN_IF_ERROR(
-        benchmark_info->TimeInitPhaseStart("Executor initialization"));
+    RETURN_IF_ERROR(benchmark_info->TimeInitPhaseStart(
+        BenchmarkInfo::InitPhase::kExecutor));
   }
   ASSIGN_OR_RETURN(auto scoped_model_file,
                    engine_settings.GetMainExecutorSettings()
@@ -204,16 +204,16 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
     ASSIGN_OR_RETURN(auto resources, ModelAssetBundleResources::Create(
                                          /*tag=*/"", scoped_model_file));
     if (benchmark_info.has_value()) {
-      RETURN_IF_ERROR(
-          benchmark_info->TimeInitPhaseStart("Tokenizer initialization"));
+      RETURN_IF_ERROR(benchmark_info->TimeInitPhaseStart(
+          BenchmarkInfo::InitPhase::kTokenizer));
     }
     ASSIGN_OR_RETURN(auto vocab_buffer, resources->GetFile("TOKENIZER_MODEL"));
     ASSIGN_OR_RETURN(task_tokenizer,
                      SentencePieceTokenizer::CreateFromBuffer(vocab_buffer));
     tokenizer = task_tokenizer.get();
     if (benchmark_info.has_value()) {
-      RETURN_IF_ERROR(
-          benchmark_info->TimeInitPhaseEnd("Tokenizer initialization"));
+      RETURN_IF_ERROR(benchmark_info->TimeInitPhaseEnd(
+          BenchmarkInfo::InitPhase::kTokenizer));
     }
     ASSIGN_OR_RETURN(auto metadata_buffer, resources->GetFile("METADATA"));
     ASSIGN_OR_RETURN(llm_metadata,
@@ -266,7 +266,7 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
 
   if (benchmark_info.has_value()) {
     RETURN_IF_ERROR(
-        benchmark_info->TimeInitPhaseEnd("Executor initialization"));
+        benchmark_info->TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kExecutor));
   }
 
   RuntimeConfig runtime_config;

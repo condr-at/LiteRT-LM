@@ -225,8 +225,7 @@ TEST(InputAudioTest, GetAudioFloatData) {
   std::vector<float> audio_data = {0.1, 0.2, 0.3, 0.4};
   InputAudio input_audio(audio_data);
   EXPECT_TRUE(input_audio.IsPcmFrames());
-  ASSERT_OK_AND_ASSIGN(auto retrieved_audio_data,
-                       input_audio.GetPcmFrames());
+  ASSERT_OK_AND_ASSIGN(auto retrieved_audio_data, input_audio.GetPcmFrames());
   EXPECT_THAT(retrieved_audio_data, ElementsAreArray(audio_data));
 }
 
@@ -661,31 +660,70 @@ proto::BenchmarkParams GetBenchmarkParams() {
 // --- Test Init Phases ---
 TEST(BenchmarkInfoTests, AddAndGetInitPhases) {
   BenchmarkInfo benchmark_info(GetBenchmarkParams());
-  EXPECT_OK(benchmark_info.TimeInitPhaseStart("Model Load"));
-  EXPECT_OK(benchmark_info.TimeInitPhaseStart("Tokenizer Load"));
+  EXPECT_OK(benchmark_info.TimeInitPhaseStart(
+      BenchmarkInfo::InitPhase::kModelAssets));
+  EXPECT_OK(
+      benchmark_info.TimeInitPhaseStart(BenchmarkInfo::InitPhase::kTokenizer));
   absl::SleepFor(absl::Milliseconds(50));
-  EXPECT_OK(benchmark_info.TimeInitPhaseEnd("Tokenizer Load"));
+  EXPECT_OK(
+      benchmark_info.TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kTokenizer));
   absl::SleepFor(absl::Milliseconds(50));
-  EXPECT_OK(benchmark_info.TimeInitPhaseEnd("Model Load"));
+  EXPECT_OK(
+      benchmark_info.TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kModelAssets));
 
   const auto& phases = benchmark_info.GetInitPhases();
   ASSERT_EQ(phases.size(), 2);
   // The time should be greater than 50ms.
-  EXPECT_GT(phases.at("Tokenizer Load"), absl::Milliseconds(50));
+  EXPECT_GT(phases.at(std::string(BenchmarkInfo::InitPhaseToString(
+                BenchmarkInfo::InitPhase::kTokenizer))),
+            absl::Milliseconds(50));
   // The time should be greater than 50 + 50 = 100ms.
-  EXPECT_GT(phases.at("Model Load"), absl::Milliseconds(100));
+  EXPECT_GT(phases.at(std::string(BenchmarkInfo::InitPhaseToString(
+                BenchmarkInfo::InitPhase::kModelAssets))),
+            absl::Milliseconds(100));
 }
 
 TEST(BenchmarkInfoTests, AddInitPhaseTwice) {
   BenchmarkInfo benchmark_info(GetBenchmarkParams());
-  EXPECT_OK(benchmark_info.TimeInitPhaseStart("Model Load"));
+  EXPECT_OK(benchmark_info.TimeInitPhaseStart(
+      BenchmarkInfo::InitPhase::kModelAssets));
   // Starting the same phase twice should fail.
-  EXPECT_THAT(benchmark_info.TimeInitPhaseStart("Model Load"),
-              StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(
+      benchmark_info.TimeInitPhaseStart(BenchmarkInfo::InitPhase::kModelAssets),
+      StatusIs(absl::StatusCode::kInternal));
 
   // Ending a phase that has not started should fail.
-  EXPECT_THAT(benchmark_info.TimeInitPhaseEnd("Tokenizer Load"),
-              StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(
+      benchmark_info.TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kTokenizer),
+      StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(BenchmarkInfoTests, CandDoInitPhaseRecord) {
+  BenchmarkInfo benchmark_info(GetBenchmarkParams());
+  EXPECT_OK(benchmark_info.InitPhaseRecord(
+      BenchmarkInfo::InitPhase::kModelAssets, absl::Milliseconds(50)));
+  EXPECT_OK(benchmark_info.InitPhaseRecord(BenchmarkInfo::InitPhase::kTokenizer,
+                                           absl::Milliseconds(100)));
+
+  EXPECT_EQ(benchmark_info.GetInitPhases().at(
+                std::string(BenchmarkInfo::InitPhaseToString(
+                    BenchmarkInfo::InitPhase::kModelAssets))),
+            absl::Milliseconds(50));
+  EXPECT_EQ(benchmark_info.GetInitPhases().at(
+                std::string(BenchmarkInfo::InitPhaseToString(
+                    BenchmarkInfo::InitPhase::kTokenizer))),
+            absl::Milliseconds(100));
+}
+
+TEST(BenchmarkInfoTests, AddInitPhaseError) {
+  BenchmarkInfo benchmark_info(GetBenchmarkParams());
+  // Recording the same phase twice should fail.
+  EXPECT_OK(benchmark_info.InitPhaseRecord(
+      BenchmarkInfo::InitPhase::kModelAssets, absl::Milliseconds(50)));
+  EXPECT_THAT(
+      benchmark_info.InitPhaseRecord(BenchmarkInfo::InitPhase::kModelAssets,
+                                     absl::Milliseconds(50)),
+      StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(BenchmarkInfoTests, AddPrefillTurn) {
@@ -793,10 +831,14 @@ TEST(BenchmarkInfoTests, GetTimeToFirstTokenValid) {
 
 TEST(BenchmarkInfoTests, OperatorOutputWithData) {
   BenchmarkInfo benchmark_info(GetBenchmarkParams());
-  EXPECT_OK(benchmark_info.TimeInitPhaseStart("Load Model"));
-  EXPECT_OK(benchmark_info.TimeInitPhaseStart("Load Tokenizer"));
-  EXPECT_OK(benchmark_info.TimeInitPhaseEnd("Load Model"));
-  EXPECT_OK(benchmark_info.TimeInitPhaseEnd("Load Tokenizer"));
+  EXPECT_OK(benchmark_info.TimeInitPhaseStart(
+      BenchmarkInfo::InitPhase::kModelAssets));
+  EXPECT_OK(
+      benchmark_info.TimeInitPhaseStart(BenchmarkInfo::InitPhase::kTokenizer));
+  EXPECT_OK(
+      benchmark_info.TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kModelAssets));
+  EXPECT_OK(
+      benchmark_info.TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kTokenizer));
 
   EXPECT_OK(benchmark_info.TimePrefillTurnStart());
   EXPECT_OK(benchmark_info.TimePrefillTurnEnd(100));
@@ -810,8 +852,8 @@ TEST(BenchmarkInfoTests, OperatorOutputWithData) {
   ss << benchmark_info;
   const std::string expected_output = R"(BenchmarkInfo:
   Init Phases \(2\):
-    - Load Model: .* ms
-    - Load Tokenizer: .* ms
+    - Model assets: .* ms
+    - Tokenizer: .* ms
     Total init time: .* ms
 --------------------------------------------------
   Time to first token: .* s

@@ -213,7 +213,8 @@ const proto::BenchmarkParams& BenchmarkInfo::GetBenchmarkParams() const {
   return benchmark_params_;
 }
 
-absl::Status BenchmarkInfo::TimeInitPhaseStart(const std::string& phase_name) {
+absl::Status BenchmarkInfo::TimeInitPhaseStart(InitPhase phase) {
+  std::string phase_name = std::string(InitPhaseToString(phase));
   if (start_time_map_.contains(phase_name)) {
     return absl::InternalError(
         absl::StrCat("Phase ", phase_name, " already started."));
@@ -222,12 +223,25 @@ absl::Status BenchmarkInfo::TimeInitPhaseStart(const std::string& phase_name) {
   return absl::OkStatus();
 }
 
-absl::Status BenchmarkInfo::TimeInitPhaseEnd(const std::string& phase_name) {
+absl::Status BenchmarkInfo::TimeInitPhaseEnd(InitPhase phase) {
+  std::string phase_name = std::string(InitPhaseToString(phase));
   if (!start_time_map_.contains(phase_name)) {
     return absl::InternalError(
         absl::StrCat("Phase ", phase_name, " not started."));
   }
   init_phases_[phase_name] = absl::Now() - start_time_map_[phase_name];
+  return absl::OkStatus();
+}
+
+absl::Status BenchmarkInfo::InitPhaseRecord(InitPhase phase,
+                                            absl::Duration duration) {
+  std::string phase_name = std::string(InitPhaseToString(phase));
+  if (init_phases_.contains(phase_name)) {
+    return absl::InternalError(absl::StrCat("Phase ", phase_name,
+                                            " already recorded with duration ",
+                                            init_phases_[phase_name], "."));
+  }
+  init_phases_[phase_name] = duration;
   return absl::OkStatus();
 }
 
@@ -376,7 +390,26 @@ std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info) {
     os << "    No init phases recorded." << std::endl;
   } else {
     double total_time = 0.0;
-    for (const auto& phase : info.GetInitPhases()) {
+    const auto& init_phases = info.GetInitPhases();
+    bool has_conversation_creation = false;
+    std::string conversation_creation_phase_name =
+        std::string(BenchmarkInfo::InitPhaseToString(
+            BenchmarkInfo::InitPhase::kConversation));
+    std::string session_creation_phase_name = std::string(
+        BenchmarkInfo::InitPhaseToString(BenchmarkInfo::InitPhase::kSession));
+    for (const auto& [phase_name, phase_duration] : init_phases) {
+      if (phase_name == conversation_creation_phase_name) {
+        has_conversation_creation = true;
+        break;
+      }
+    }
+    for (const auto& phase : init_phases) {
+      if (has_conversation_creation &&
+          phase.first == session_creation_phase_name) {
+        // Session creation time is included in conversation creation time,
+        // so skip it.
+        continue;
+      }
       total_time += absl::ToDoubleMilliseconds(phase.second);
       os << "    - " << phase.first << ": "
          << absl::ToDoubleMilliseconds(phase.second) << " ms" << std::endl;
