@@ -574,6 +574,56 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
   // scoring. Otherwise, we will create a Conversation.
   std::unique_ptr<Engine::Session> session;
   std::unique_ptr<Conversation> conversation;
+  if (settings.score_target_text.has_value() &&
+      !settings.score_target_text->empty()) {
+    ABSL_LOG(INFO) << "Creating session";
+    ASSIGN_OR_RETURN(auto session, engine->CreateSession(session_config));
+    std::string input_prompt = settings.input_prompt;
+    std::string score_target_text = settings.score_target_text.value();
+    ABSL_CHECK_OK(RunScoreText(engine.get(), session.get(), input_prompt,
+                               {score_target_text},
+                               /*store_char_and_token_lengths=*/false));
+  } else {
+    ABSL_LOG(INFO) << "Creating conversation";
+    ASSIGN_OR_RETURN(
+        auto conversation_config,
+        ConversationConfig::CreateFromSessionConfig(*engine, session_config));
+    ASSIGN_OR_RETURN(conversation,
+                     Conversation::Create(*engine, conversation_config));
+    if (settings.multi_turns) {
+      ABSL_LOG(INFO) << "Running multi-turns conversation";
+      RETURN_IF_ERROR(
+          RunMultiTurnConversation(settings, engine.get(), conversation.get()));
+    } else {
+      ABSL_LOG(INFO) << "Running single-turn conversation";
+      RETURN_IF_ERROR(RunSingleTurnConversation(
+          settings.input_prompt, settings, engine.get(), conversation.get()));
+    }
+  }
+
+  if (settings.benchmark) {
+    auto benchmark_info = conversation ? conversation->GetBenchmarkInfo()
+                                       : session->GetBenchmarkInfo();
+    if (benchmark_info.ok()) {
+      LogBenchmarkInfo(*benchmark_info, settings);
+    }
+  }
+
+  // Manually resetting the session to ensure that memory usage from
+  // `GetMemoryUsage()` is reporting idle engine state without active sessions.
+  conversation.reset();
+  session.reset();
+
+  if (settings.report_peak_memory_footprint) {
+    float peak_mem_mb = 0.0f;
+    float peak_private_mb = 0.0f;
+    if (mem_monitor != nullptr) {
+      mem_monitor->Stop();
+      peak_mem_mb = mem_monitor->GetPeakMemUsageInMB();
+      peak_private_mb = mem_monitor->GetPeakPrivateFootprintInMB();
+    }
+    LogMemoryUsage(settings, peak_mem_mb, peak_private_mb);
+  }
 
   if (log_sink) {
     absl::RemoveLogSink(log_sink.get());
