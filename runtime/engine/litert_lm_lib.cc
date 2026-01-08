@@ -46,6 +46,7 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
+#include "litert/cc/internal/scoped_file.h"  // from @litert
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/engine/engine.h"
@@ -54,7 +55,6 @@
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/proto/sampler_params.pb.h"
-#include "litert/cc/internal/scoped_file.h"  // from @litert
 #include "runtime/util/status_macros.h"  // IWYU pragma: keep
 #include "re2/re2.h"  // from @com_googlesource_code_re2
 #include "tflite/profiling/memory_info.h"  // from @litert
@@ -574,13 +574,6 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
     absl::AddLogSink(log_sink.get());
   }
 
-  std::unique_ptr<tflite::profiling::memory::MemoryUsageMonitor> mem_monitor;
-  if (settings.report_peak_memory_footprint) {
-    mem_monitor =
-        std::make_unique<tflite::profiling::memory::MemoryUsageMonitor>(
-            kMemoryCheckIntervalMs);
-    mem_monitor->Start();
-  }
   ASSIGN_OR_RETURN(EngineSettings engine_settings,
                    CreateEngineSettings(settings));
   ABSL_LOG(INFO) << "Creating engine";
@@ -590,70 +583,87 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
   // Get the session config.
   SessionConfig session_config = CreateSessionConfig(settings);
 
-  // Session and Conversation are mutually exclusive. Only when
-  // settings.score_target_text is set, we will create a Session to run the
-  // scoring. Otherwise, we will create a Conversation.
-  std::unique_ptr<Engine::Session> session;
-  std::unique_ptr<Conversation> conversation;
-  if (settings.score_target_text.has_value() &&
-      !settings.score_target_text->empty()) {
-    ABSL_LOG(INFO) << "Creating session";
-    ASSIGN_OR_RETURN(session, engine->CreateSession(session_config));
-    std::string input_prompt = settings.input_prompt;
-    std::string score_target_text = settings.score_target_text.value();
-    ABSL_CHECK_OK(RunScoreText(engine.get(), session.get(), input_prompt,
-                               {score_target_text},
-                               /*store_char_and_token_lengths=*/false));
-  } else if (settings.use_session) {
-    ABSL_LOG(INFO) << "Creating session";
-    ASSIGN_OR_RETURN(session, engine->CreateSession(session_config));
-    if (settings.multi_turns) {
-      return absl::UnimplementedError(
-          "Multi-turns is not supported with Session.");
+  for (int i = 0; i < settings.num_iterations; ++i) {
+    std::unique_ptr<tflite::profiling::memory::MemoryUsageMonitor> mem_monitor;
+    if (settings.report_peak_memory_footprint) {
+      mem_monitor =
+          std::make_unique<tflite::profiling::memory::MemoryUsageMonitor>(
+              kMemoryCheckIntervalMs);
+      mem_monitor->Start();
+    }
+
+    // Session and Conversation are mutually exclusive. Only when
+    // settings.score_target_text is set, we will create a Session to run the
+    // scoring. Otherwise, we will create a Conversation.
+    std::unique_ptr<Engine::Session> session;
+    std::unique_ptr<Conversation> conversation;
+      if (settings.score_target_text.has_value() &&
+          !settings.score_target_text->empty()) {
+      ABSL_LOG(INFO) << "Creating session";
+      ASSIGN_OR_RETURN(session, engine->CreateSession(session_config));
+      std::string input_prompt = settings.input_prompt;
+      std::string score_target_text = settings.score_target_text.value();
+      ABSL_CHECK_OK(RunScoreText(engine.get(), session.get(), input_prompt,
+                                 {score_target_text},
+                                 /*store_char_and_token_lengths=*/false));
+    } else if (settings.use_session) {
+      ABSL_LOG(INFO) << "Creating session";
+      ASSIGN_OR_RETURN(session, engine->CreateSession(session_config));
+      if (settings.multi_turns) {
+        return absl::UnimplementedError(
+            "Multi-turns is not supported with Session.");
+      } else {
+        RETURN_IF_ERROR(RunSingleTurnSession(settings.input_prompt, settings,
+                                             engine.get(), session.get()));
+      }
     } else {
-      RETURN_IF_ERROR(RunSingleTurnSession(settings.input_prompt, settings,
-                                           engine.get(), session.get()));
+      ABSL_LOG(INFO) << "Creating conversation";
+      ASSIGN_OR_RETURN(
+          auto conversation_config,
+          ConversationConfig::CreateFromSessionConfig(*engine, session_config));
+      ASSIGN_OR_RETURN(conversation,
+                       Conversation::Create(*engine, conversation_config));
+      if (settings.multi_turns) {
+        ABSL_LOG(INFO) << "Running multi-turns conversation";
+        RETURN_IF_ERROR(RunMultiTurnConversation(settings, engine.get(),
+                                                 conversation.get()));
+      } else {
+        ABSL_LOG(INFO) << "Running single-turn conversation";
+        RETURN_IF_ERROR(RunSingleTurnConversation(
+            settings.input_prompt, settings, engine.get(), conversation.get()));
+      }
     }
-  } else {
-    ABSL_LOG(INFO) << "Creating conversation";
-    ASSIGN_OR_RETURN(
-        auto conversation_config,
-        ConversationConfig::CreateFromSessionConfig(*engine, session_config));
-    ASSIGN_OR_RETURN(conversation,
-                     Conversation::Create(*engine, conversation_config));
-    if (settings.multi_turns) {
-      ABSL_LOG(INFO) << "Running multi-turns conversation";
-      RETURN_IF_ERROR(
-          RunMultiTurnConversation(settings, engine.get(), conversation.get()));
-    } else {
-      ABSL_LOG(INFO) << "Running single-turn conversation";
-      RETURN_IF_ERROR(RunSingleTurnConversation(
-          settings.input_prompt, settings, engine.get(), conversation.get()));
-    }
-  }
 
-  if (settings.benchmark) {
-    auto benchmark_info = conversation ? conversation->GetBenchmarkInfo()
-                                       : session->GetBenchmarkInfo();
-    if (benchmark_info.ok()) {
-      LogBenchmarkInfo(*benchmark_info, settings);
+    if (settings.benchmark) {
+      absl::StatusOr<BenchmarkInfo> benchmark_info;
+      if (conversation != nullptr) {
+        benchmark_info = conversation->GetBenchmarkInfo();
+      } else if (session != nullptr) {
+        benchmark_info = session->GetBenchmarkInfo();
+      } else {
+        return absl::InternalError("No session or conversation to benchmark.");
+      }
+      if (benchmark_info.ok()) {
+        LogBenchmarkInfo(*benchmark_info, settings);
+      }
     }
-  }
 
-  // Manually resetting the session to ensure that memory usage from
-  // `GetMemoryUsage()` is reporting idle engine state without active sessions.
-  conversation.reset();
-  session.reset();
+    // Manually resetting the session to ensure that memory usage from
+    // `GetMemoryUsage()` is reporting idle engine state without active
+    // sessions.
+    conversation.reset();
+    session.reset();
 
-  if (settings.report_peak_memory_footprint) {
-    float peak_mem_mb = 0.0f;
-    float peak_private_mb = 0.0f;
-    if (mem_monitor != nullptr) {
-      mem_monitor->Stop();
-      peak_mem_mb = mem_monitor->GetPeakMemUsageInMB();
-      peak_private_mb = mem_monitor->GetPeakPrivateFootprintInMB();
+    if (settings.report_peak_memory_footprint) {
+      float peak_mem_mb = 0.0f;
+      float peak_private_mb = 0.0f;
+      if (mem_monitor != nullptr) {
+        mem_monitor->Stop();
+        peak_mem_mb = mem_monitor->GetPeakMemUsageInMB();
+        peak_private_mb = mem_monitor->GetPeakPrivateFootprintInMB();
+      }
+      LogMemoryUsage(settings, peak_mem_mb, peak_private_mb);
     }
-    LogMemoryUsage(settings, peak_mem_mb, peak_private_mb);
   }
 
   if (log_sink) {
