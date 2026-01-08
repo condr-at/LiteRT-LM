@@ -90,6 +90,9 @@ struct LiteRtLmSettings {
   bool convert_weights_on_gpu = false;
   bool optimize_shader_compilation = true;
   bool share_constant_tensors = true;
+  // If true, use Session instead of Conversation to run the inference.
+  // Note that session does not add necessary prompt templates.
+  bool use_session = false;
 };
 
 // Runs the LLM inference with the given settings.

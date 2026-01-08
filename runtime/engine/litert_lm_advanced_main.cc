@@ -60,6 +60,11 @@ ABSL_FLAG(int, prefill_chunk_size, -1,
           "input length of 300 results in 3 chunks: 128, 128, and 44 tokens. "
           "A value of -1 disables chunking. Only supported by the dynamic "
           "executor.");
+ABSL_FLAG(bool, use_session, false,
+          "If true, use Session instead of Conversation to run inference. "
+          "Note that session does not use Jinja templates. As such, if using "
+          "Jinja in LLM Metadata, the user is responsible for manually "
+          "applying the prompt template to the input prompt.");
 
 namespace {
 
@@ -190,8 +195,8 @@ absl::Status MainHelper(int argc, char** argv) {
   settings.convert_weights_on_gpu = absl::GetFlag(FLAGS_convert_weights_on_gpu);
   settings.optimize_shader_compilation =
       absl::GetFlag(FLAGS_optimize_shader_compilation);
-  settings.share_constant_tensors =
-      absl::GetFlag(FLAGS_share_constant_tensors);
+  settings.share_constant_tensors = absl::GetFlag(FLAGS_share_constant_tensors);
+  settings.use_session = absl::GetFlag(FLAGS_use_session);
 
   // Adjust max_num_tokens and prefill_batch_size if not set on benchmark mode.
   if (settings.benchmark && settings.benchmark_prefill_tokens > 0) {
