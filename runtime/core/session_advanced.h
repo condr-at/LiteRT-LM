@@ -109,22 +109,14 @@ class SessionAdvanced : public Engine::Session {
   };
 
   absl::StatusOr<Responses> GenerateContent(
-      const std::vector<InputData>& contents) override {
-    return absl::UnimplementedError("GenerateContent is not implemented.");
-  };
+      const std::vector<InputData>& contents) override;
   absl::Status GenerateContentStream(
       const std::vector<InputData>& contents,
-      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) override {
-    return absl::UnimplementedError(
-        "GenerateContentStream is not implemented.");
-  };
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) override;
   absl::Status GenerateContentStream(
       const std::vector<InputData>& contents,
       absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
-      const DecodeConfig& decode_config) override {
-    return absl::UnimplementedError(
-        "GenerateContentStream is not implemented.");
-  };
+      const DecodeConfig& decode_config) override;
 
   // Scores the target text after the prefill process is done. This function
   // will only run the decode process to fetch the decode output logits, which

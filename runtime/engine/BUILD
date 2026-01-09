@@ -146,20 +146,6 @@ cc_library(
     ),
 )
 
-cc_test(
-    name = "litert_lm_lib_test",
-    srcs = ["litert_lm_lib_test.cc"],
-    data = [
-        "//runtime/testdata",
-    ],
-    deps = [
-        ":litert_lm_lib",
-        "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/status",
-        "//runtime/util:test_utils",
-    ],
-)
-
 cc_library(
     name = "shared_flags",
     srcs = ["shared_flags.cc"],

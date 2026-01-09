@@ -23,6 +23,7 @@
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/log/check.h"  // from @com_google_absl
 #include "absl/log/log.h"  // from @com_google_absl
+#include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
@@ -51,9 +52,44 @@
 #include "runtime/util/status_macros.h"  // NOLINT
 
 namespace litert::lm {
+
+absl::StatusOr<std::unique_ptr<Engine>> CreateEngineAdvancedLegacy(
+    EngineSettings engine_settings);
+
 namespace {
 
 namespace oi = ::odml::infra;
+
+class EngineAdvancedLegacyImpl : public Engine {
+ public:
+  ~EngineAdvancedLegacyImpl() override;
+
+  absl::StatusOr<std::unique_ptr<Session>> CreateSession(
+      const SessionConfig& session_config) override;
+
+  absl::Status WaitUntilDone(absl::Duration timeout) override;
+
+  const EngineSettings& GetEngineSettings() const override;
+
+ private:
+  friend absl::StatusOr<std::unique_ptr<Engine>>
+  litert::lm::CreateEngineAdvancedLegacy(EngineSettings engine_settings);
+
+  explicit EngineAdvancedLegacyImpl(
+      EngineSettings engine_settings,
+      std::unique_ptr<odml::infra::ExecutorModelResources> model_resources,
+      std::unique_ptr<ExecutionManager> execution_manager,
+      Tokenizer* absl_nonnull tokenizer,
+      std::unique_ptr<Tokenizer> task_tokenizer,
+      std::optional<BenchmarkInfo> benchmark_info);
+
+  EngineSettings engine_settings_;
+  std::unique_ptr<odml::infra::ExecutorModelResources> model_resources_;
+  std::shared_ptr<ExecutionManager> execution_manager_;
+  Tokenizer* tokenizer_;
+  std::unique_ptr<Tokenizer> task_tokenizer_;
+  std::optional<BenchmarkInfo> benchmark_info_;
+};
 
 absl::StatusOr<std::unique_ptr<LlmExecutor>> BuildExecutor(
     const oi::ExecutorModelResources& model_resources,
@@ -84,7 +120,7 @@ absl::StatusOr<std::unique_ptr<LlmExecutor>> BuildExecutor(
     ASSIGN_OR_RETURN(executor,
                      oi::LlmGpuArtisanExecutor::Create(
                          engine_settings.GetMainExecutorSettings(),
-                         *(model_resources.litert_lm_model_resources.get())));
+                         *model_resources.litert_lm_model_resources));
   } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unsupported backend: ",
@@ -106,80 +142,53 @@ absl::StatusOr<Environment&> GetEnvironment() {
   return **kEnvironment;
 }
 
+EngineAdvancedLegacyImpl::~EngineAdvancedLegacyImpl() {
+  ABSL_QCHECK_OK(WaitUntilDone(Engine::kDefaultTimeout));
+}
+
+EngineAdvancedLegacyImpl::EngineAdvancedLegacyImpl(
+    EngineSettings engine_settings,
+    std::unique_ptr<oi::ExecutorModelResources> model_resources,
+    std::unique_ptr<ExecutionManager> execution_manager,
+    Tokenizer* absl_nonnull tokenizer,
+    std::unique_ptr<Tokenizer> task_tokenizer,
+    std::optional<BenchmarkInfo> benchmark_info)
+    : engine_settings_(std::move(engine_settings)),
+      model_resources_(std::move(model_resources)),
+      execution_manager_(std::move(execution_manager)),
+      tokenizer_(std::move(tokenizer)),
+      task_tokenizer_(std::move(task_tokenizer)),
+      benchmark_info_(std::move(benchmark_info)) {}
+
+// Method to create the Session.
+absl::StatusOr<std::unique_ptr<Engine::Session>>
+EngineAdvancedLegacyImpl::CreateSession(
+    const SessionConfig& session_config) {
+  auto config = session_config;
+  RETURN_IF_ERROR(config.MaybeUpdateAndValidate(engine_settings_));
+  return InitializeSessionAdvanced(execution_manager_, tokenizer_, config,
+                                   benchmark_info_);
+}
+
+absl::Status EngineAdvancedLegacyImpl::WaitUntilDone(absl::Duration timeout) {
+  return execution_manager_->WaitUntilAllDone(timeout);
+}
+
+const EngineSettings& EngineAdvancedLegacyImpl::GetEngineSettings() const {
+  return engine_settings_;
+}
+
 }  // namespace
-
-class EngineImpl : public Engine {
- public:
-  ~EngineImpl() override {
-    ABSL_QCHECK_OK(WaitUntilDone(Engine::kDefaultTimeout));
-  }
-
-  // Constructor for EngineImpl.
-  //
-  // Arguments:
-  //   engine_settings: The settings for the engine.
-  //   model_resources: The model resources, which must outlive the executor.
-  //   execution_manager: The execution manager for all sessions.
-  //   tokenizer: The tokenizer from the task file.
-  //   task_tokenizer: The task tokenizer, this is needed for .task and .tflite
-  //     tokenizer.
-  //     TODO(b/466112373): Remove this argument.
-  //   benchmark_info: The benchmark info for the engine.
-  explicit EngineImpl(
-      EngineSettings engine_settings,
-      std::unique_ptr<oi::ExecutorModelResources> model_resources,
-      std::unique_ptr<ExecutionManager> execution_manager,
-      Tokenizer* absl_nonnull tokenizer,
-      std::unique_ptr<Tokenizer> task_tokenizer,
-      std::optional<BenchmarkInfo> benchmark_info)
-      : engine_settings_(std::move(engine_settings)),
-        model_resources_(std::move(model_resources)),
-        execution_manager_(std::move(execution_manager)),
-        tokenizer_(std::move(tokenizer)),
-        task_tokenizer_(std::move(task_tokenizer)),
-        benchmark_info_(std::move(benchmark_info)) {}
-
-  // Method to create the Session.
-  absl::StatusOr<std::unique_ptr<Session>> CreateSession(
-      const SessionConfig& session_config) override {
-    auto config = session_config;
-    RETURN_IF_ERROR(config.MaybeUpdateAndValidate(engine_settings_));
-    return InitializeSessionAdvanced(execution_manager_, tokenizer_, config,
-                                     benchmark_info_);
-  }
-
-  absl::Status WaitUntilDone(absl::Duration timeout) override {
-    return execution_manager_->WaitUntilAllDone(timeout);
-  }
-
-  const EngineSettings& GetEngineSettings() const override {
-    return engine_settings_;
-  }
-
- private:
-  // Stored engine settings.
-  EngineSettings engine_settings_;
-
-  // Model resources, which must outlive `executor_`.
-  std::unique_ptr<oi::ExecutorModelResources> model_resources_;
-
-  // Execution manager for all sessions.
-  std::shared_ptr<ExecutionManager> execution_manager_;
-
-  // Tokenizer from task file, that is not owned by the model resources.
-  // So we keep it here to avoid the model resources being destroyed.
-  Tokenizer* tokenizer_;
-
-  // Task tokenizer, this is needed for .task file's tokenizer.
-  std::unique_ptr<Tokenizer> task_tokenizer_;
-
-  // Benchmark info for the engine.
-  std::optional<BenchmarkInfo> benchmark_info_;
-};
 
 // Method to create Engine.
 absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
-    EngineSettings engine_settings, absl::string_view input_prompt_as_hint) {
+    EngineSettings settings, absl::string_view input_prompt_as_hint) {
+  return CreateEngineAdvancedLegacy(std::move(settings));
+}
+
+// Method to create Engine.
+absl::StatusOr<std::unique_ptr<Engine>> CreateEngineAdvancedLegacy(
+    EngineSettings engine_settings) {
   ABSL_LOG(INFO) << "Constructing legacy EngineImpl...";
   std::optional<BenchmarkInfo> benchmark_info;
   if (engine_settings.IsBenchmarkEnabled()) {
@@ -230,7 +239,7 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
   // Update and load the parameters from the model file and convert the tokens
   // to ids.
   RETURN_IF_ERROR(engine_settings.MaybeUpdateAndValidate(
-      *tokenizer, &llm_metadata, input_prompt_as_hint));
+      *tokenizer, &llm_metadata));
 
   ASSIGN_OR_RETURN(auto executor,
                    BuildExecutor(*model_resources, engine_settings));
@@ -285,10 +294,10 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
                        std::move(vision_executor_settings_ptr),
                        std::move(audio_executor_settings_ptr), &litert_env));
 
-  auto llm_impl = std::make_unique<EngineImpl>(
+  auto llm_impl = absl::WrapUnique(new EngineAdvancedLegacyImpl(
       std::move(engine_settings), std::move(model_resources),
       std::move(execution_manager), std::move(tokenizer),
-      std::move(task_tokenizer), std::move(benchmark_info));
+      std::move(task_tokenizer), std::move(benchmark_info)));
   return llm_impl;
 };
 

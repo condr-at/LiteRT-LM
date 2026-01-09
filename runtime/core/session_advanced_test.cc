@@ -864,6 +864,48 @@ TEST_F(SessionAdvancedTest, RunPrefillAndDecodeAsyncWithExternalSampler) {
               testing::ElementsAre(" How", "'", "s", " it", " go", "ing", "?"));
 }
 
+TEST_F(SessionAdvancedTest, GenerateContentStream) {
+  const std::vector<std::vector<int>> stop_token_ids = {{2294}};
+  SessionConfig session_config = SessionConfig::CreateDefault();
+  session_config.GetMutableSamplerParams() = sampler_params_;
+  session_config.GetMutableStopTokenIds() = stop_token_ids;
+  session_config.SetStartTokenId(2);
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<ExecutionManager> execution_manager,
+      ExecutionManager::Create(tokenizer_.get(), std::move(executor),
+                               /*vision_executor_settings=*/nullptr,
+                               /*audio_executor_settings=*/nullptr,
+                               /*litert_env=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto session, SessionAdvanced::Create(execution_manager, tokenizer_.get(),
+                                            session_config, std::nullopt));
+
+  std::vector<InputData> inputs;
+  inputs.emplace_back(InputText("Hello World!"));
+  absl::Status status;
+  TaskState task_state;
+  std::vector<std::string> texts;
+  absl::Notification done = absl::Notification();
+  EXPECT_OK(session->GenerateContentStream(
+      inputs, CreateStreamingTestCallback(status, task_state, texts, done)));
+
+  done.WaitForNotification();
+  EXPECT_OK(status);
+  EXPECT_EQ(task_state, TaskState::kDone);
+  EXPECT_EQ(texts.size(), 7);
+  EXPECT_THAT(texts,
+              testing::ElementsAre(" How", "'", "s", " it", " go", "ing", "?"));
+}
+
 TEST_F(SessionAdvancedTest, RunPrefillEmptyInput) {
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
   SessionConfig session_config = SessionConfig::CreateDefault();
