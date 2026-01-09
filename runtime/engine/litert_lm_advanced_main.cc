@@ -49,8 +49,7 @@
 ABSL_FLAG(std::string, backend, "gpu",
           "Executor backend to use for LLM execution (cpu, gpu, etc.)");
 ABSL_FLAG(std::string, model_path, "", "Model path to use for LLM execution.");
-ABSL_FLAG(std::string, input_prompt,
-          "What is the tallest building in the world?",
+ABSL_FLAG(std::string, input_prompt, "",
           "Input prompt to use for testing LLM execution.");
 ABSL_FLAG(std::string, input_prompt_file, "", "File path to the input prompt.");
 ABSL_FLAG(int, prefill_chunk_size, -1,
@@ -87,7 +86,8 @@ std::string GetInputPrompt() {
   const std::string input_prompt_file = absl::GetFlag(FLAGS_input_prompt_file);
   if (!input_prompt.empty() && !input_prompt_file.empty()) {
     ABSL_LOG(FATAL) << "Only one of --input_prompt and --input_prompt_file can "
-                       "be specified.";
+                       "be specified. Currently both are specified as "
+                    << input_prompt << " and " << input_prompt_file;
   }
   if (!input_prompt.empty()) {
     return input_prompt;
