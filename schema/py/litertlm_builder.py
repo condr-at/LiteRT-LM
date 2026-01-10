@@ -655,7 +655,9 @@ def _is_binary_proto(filepath: str) -> bool:
       if msg.IsInitialized():
         return False
   except (text_format.ParseError, UnicodeDecodeError) as e:
-    raise ValueError(f"Failed to parse LlmMetadata from {filepath}.") from e
+    raise ValueError(
+        f"Failed to parse LlmMetadata from {filepath}. Exception: {e}"
+    ) from e
 
 
 def _write_padding(stream: BinaryIO, block_size: int) -> None:
