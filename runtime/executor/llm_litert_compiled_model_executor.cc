@@ -473,11 +473,26 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::FillInputBufferWithToken(
   return absl::OkStatus();
 }
 
+absl::Status LlmLiteRtCompiledModelExecutorBase::RollBackProcessedTokens() {
+  if (current_step_ == processed_tokens_.TokenCount()) {
+    return absl::OkStatus();
+  }
+  if (current_step_ == 0) {
+    RETURN_IF_ERROR(processed_tokens_.RollBackToStep(0));
+  } else {
+    auto step_and_token = processed_tokens_.GetTokenAtStep(current_step_ - 1);
+    RETURN_IF_ERROR(processed_tokens_.RollBackToStep(current_step_ - 1));
+    processed_tokens_.AddProcessedTokens({step_and_token});
+  }
+  return absl::OkStatus();
+}
+
 absl::Status LlmLiteRtCompiledModelExecutorBase::PrefillInternal(
     absl::string_view prefill_signature,
     absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>&
         prefill_input_buffers,
     Span<const int> ids, bool async) {
+  RETURN_IF_ERROR(RollBackProcessedTokens());
 
   {
     // Fill the input buffers with scoped locks.
@@ -619,7 +634,7 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::PrefillInternal(
     // Add the last input token to the pending input token list.
     RETURN_IF_ERROR(
         processed_tokens_.AddPendingInputToken({std::move(last_input_token)}));
-    current_step_++;
+    ++current_step_;
   }
 
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer> input_buffers;
@@ -655,6 +670,8 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::PrefillInternal(
 absl::StatusOr<ProcessedTokens::StepAndToken>
 LlmLiteRtCompiledModelExecutorBase::GetTokenToDecode(
     const ExecutorInputs& inputs) {
+  RETURN_IF_ERROR(RollBackProcessedTokens());
+
   if (inputs.GetTextDataPtr().ok()) {
     auto input_tensor_size = (*inputs.GetTextTokenIdsPtr())->PackedSize();
     if (input_tensor_size && *input_tensor_size != 0) {
@@ -717,8 +734,10 @@ LlmLiteRtCompiledModelExecutorBase::ConsumePendingOrAddProcessedToken(
 }
 
 absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
-    int step, const std::vector<std::shared_ptr<TokenData>>& token,
+    const std::vector<std::shared_ptr<TokenData>>& token,
     TensorBuffer& output_logits) {
+  int step = current_step_ - 1;
+
   const bool use_token_as_lookup = !signatures_.input_tokens.empty();
   const bool use_per_layer_embedding =
       signatures_.input_per_layer_embeddings.has_value();
@@ -895,10 +914,9 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::Decode(
     const ExecutorInputs& inputs, ::litert::TensorBuffer& output_logits) {
   RETURN_IF_ERROR(PrepareFirstDecode());
   ASSIGN_OR_RETURN(auto step_and_token, GetTokenToDecode(inputs));
-  RETURN_IF_ERROR(
-      DecodeInternal(step_and_token.step, step_and_token.token, output_logits));
+  RETURN_IF_ERROR(DecodeInternal(step_and_token.token, output_logits));
   RETURN_IF_ERROR(ConsumePendingOrAddProcessedToken(step_and_token.token));
-  current_step_ = step_and_token.step + 1;
+  ++current_step_;
   return absl::OkStatus();
 }
 
@@ -917,8 +935,7 @@ LlmLiteRtCompiledModelExecutorBase::DecodeLogits(
   bool last_run_is_decode = ran_decode_;
   RETURN_IF_ERROR(PrepareFirstDecode());
   ASSIGN_OR_RETURN(auto step_and_token, GetTokenToDecode(inputs));
-  RETURN_IF_ERROR(
-      DecodeInternal(step_and_token.step, step_and_token.token, output_logits));
+  RETURN_IF_ERROR(DecodeInternal(step_and_token.token, output_logits));
   RETURN_IF_ERROR(ConsumePendingOrAddProcessedToken(step_and_token.token));
 
   if (decode_params.HasConstraintDecoder() && !step_and_token.token.empty()) {
@@ -965,7 +982,7 @@ LlmLiteRtCompiledModelExecutorBase::DecodeLogits(
     }
   }
 
-  current_step_ = step_and_token.step + 1;
+  ++current_step_;
 
   const auto& settings = executor_settings_.GetAdvancedSettings();
   if (settings && settings->num_logits_to_print_after_decode > 0) {
@@ -1008,7 +1025,6 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::SampleLogits(
 
 absl::Status LlmLiteRtCompiledModelExecutorBase::Reset() {
   current_step_ = 0;
-  RETURN_IF_ERROR(processed_tokens_.RollBackToStep(0));
   return absl::OkStatus();
 }
 
@@ -1476,6 +1492,7 @@ absl::Status LlmLiteRtCompiledModelExecutorDynamic::Prefill(
 
 absl::Status LlmLiteRtCompiledModelExecutorDynamic::PrefillInternal(
     absl::Span<int> ids, const ExecutorPrefillParams& params) {
+  RETURN_IF_ERROR(RollBackProcessedTokens());
   // Check if have a pending input token. Note that 'internal_start_step' is
   // always equal to the number of processed tokens plus 1.
   ProcessedTokens::StepAndToken step_and_token =
@@ -1560,7 +1577,7 @@ absl::Status LlmLiteRtCompiledModelExecutorDynamic::PrefillInternal(
 }
 
 absl::Status LlmLiteRtCompiledModelExecutorDynamic::DecodeInternal(
-    int step, const std::vector<std::shared_ptr<TokenData>>& token,
+    const std::vector<std::shared_ptr<TokenData>>& token,
     TensorBuffer& output_logits) {
   int current_kv_len = 0;
   {
@@ -1573,7 +1590,7 @@ absl::Status LlmLiteRtCompiledModelExecutorDynamic::DecodeInternal(
         key_buffer_tensor_type.Layout().Dimensions()[key_dynamic_dim_index_];
   }
 
-  if (current_kv_len <= step) {
+  if (current_kv_len <= current_step_ - 1) {
     int entries_to_add = kv_increament_size_;
     int new_kv_len = current_kv_len + entries_to_add;
     for (const auto& k_cache_input_name : key_cache_input_names_) {
@@ -1603,7 +1620,7 @@ absl::Status LlmLiteRtCompiledModelExecutorDynamic::DecodeInternal(
       compiled_model_.CreateInputBuffer("decode",
                                         signatures_.input_attn_mask.value()));
 
-  return LlmLiteRtCompiledModelExecutorBase::DecodeInternal(step, token,
+  return LlmLiteRtCompiledModelExecutorBase::DecodeInternal(token,
                                                             output_logits);
 }
 

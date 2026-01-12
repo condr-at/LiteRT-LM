@@ -159,6 +159,9 @@ class LlmLiteRtCompiledModelExecutorBase : public LlmExecutor {
         logits_data_type_(logits_data_type) {}
 
  protected:
+  // Rolls back the processed tokens to the current step.
+  absl::Status RollBackProcessedTokens();
+
   // Samples output logits and write to ids_tensor.
   absl::Status SampleLogits(const TensorBuffer& logits,
                             TensorBuffer& ids_tensor);
@@ -176,7 +179,7 @@ class LlmLiteRtCompiledModelExecutorBase : public LlmExecutor {
   // logits from the decode step are stored in the 'logits' output buffer of
   // the transformer model when this function returns absl::OkStatus().
   virtual absl::Status DecodeInternal(
-      int step, const std::vector<std::shared_ptr<TokenData>>& token,
+      const std::vector<std::shared_ptr<TokenData>>& token,
       TensorBuffer& output_logits);
 
   // Create Prefill input buffers for a given signature.
@@ -394,7 +397,7 @@ class LlmLiteRtCompiledModelExecutorDynamic
 
   // Extends the base class DecodeInternal to handle KV cache buffers.
   absl::Status DecodeInternal(
-      int step, const std::vector<std::shared_ptr<TokenData>>& token,
+      const std::vector<std::shared_ptr<TokenData>>& token,
       TensorBuffer& output_logits) override;
 
   int prefill_chunk_size_;

@@ -410,6 +410,21 @@ absl::StatusOr<Responses> Decode(
         RETURN_IF_ERROR(benchmark_info->TimeDecodeTurnEnd(
             num_decode_steps * num_output_candidates));
       }
+      if (is_custom_sampling) {
+        // For external sampling, the sampled tokens are provided by the
+        // sampler. We must run one prefill to add the last token as pending
+        // token in the LLM Executor when cancellation happens.
+        LITERT_ASSIGN_OR_RETURN(auto duplicated_decoded_ids,
+                                decoded_ids->Duplicate());
+        ExecutorInputs inputs;
+        inputs.SetTextData(ExecutorTextData(std::move(duplicated_decoded_ids)));
+        std::optional<BenchmarkInfo> unused_benchmark_info;
+        auto status = Prefill(executor, inputs, /*wait_for_completion=*/true,
+                              unused_benchmark_info);
+        if (!status.ok()) {
+          return status.status();
+        }
+      }
       return absl::CancelledError("Process cancelled.");
     }
     std::optional<litert::TensorBuffer> decoded_ids_to_use = std::nullopt;
