@@ -484,6 +484,38 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::RollBackProcessedTokens() {
     RETURN_IF_ERROR(processed_tokens_.RollBackToStep(current_step_ - 1));
     processed_tokens_.AddProcessedTokens({step_and_token});
   }
+
+  // Reset sampler input handling as the step is rolled back.
+  if (sampler_ != nullptr && sampler_->HandlesInput()) {
+    RETURN_IF_ERROR(SetSamplerInputHandling(/*reset=*/true));
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status LlmLiteRtCompiledModelExecutorBase::PrepareFirstPrefillAfterDecode(
+    int token_index_to_reduce) {
+  if (!ran_decode_) {
+    return absl::OkStatus();
+  }
+
+  ran_decode_ = false;
+
+  if (output_batch_size_ > 1) {
+    LITERT_RETURN_IF_ERROR(
+        processed_tokens_.ReduceTokenCandidates(token_index_to_reduce));
+    LITERT_RETURN_IF_ERROR(
+        CopyKvCacheBuffers(output_batch_size_, token_index_to_reduce,
+                           *input_kv_cache_buffers_, kv_cache_buffers_1_));
+    input_kv_cache_buffers_ = &kv_cache_buffers_1_;
+    output_kv_cache_buffers_ = &kv_cache_buffers_2_;
+  }
+
+  // Reset sampler input handling if it handles input for next decode.
+  if (sampler_ != nullptr && sampler_->HandlesInput()) {
+    RETURN_IF_ERROR(SetSamplerInputHandling(/*reset=*/true));
+  }
+
   return absl::OkStatus();
 }
 
@@ -737,6 +769,15 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
     const std::vector<std::shared_ptr<TokenData>>& token,
     TensorBuffer& output_logits) {
   int step = current_step_ - 1;
+  if (sampler_ && sampler_->HandlesInput()) {
+    // The sampler has already been running decode for this step. Check if
+    // output_logits is the one used last time, i.e. by
+    // BindTensorsAndRunDecodeStatic().
+    LITERT_RETURN_IF_ERROR(
+        output_logits.Get() ==
+        decode_output_buffers_[signatures_.output_logits].Get());
+    return absl::OkStatus();
+  }
 
   const bool use_token_as_lookup = !signatures_.input_tokens.empty();
   const bool use_per_layer_embedding =
@@ -794,6 +835,11 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
         /*steps=*/1));
   }
 
+  return BindTensorsAndRunDecode(&output_logits);
+}
+
+absl::Status LlmLiteRtCompiledModelExecutorBase::BindTensorsAndRunDecode(
+    TensorBuffer* output_logits) {
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       decode_input_buffers;
   for (const auto& [input_name, input_buffer] : decode_input_buffers_) {
@@ -808,9 +854,10 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
       decode_output_buffers;
   for (const auto& [output_name, output_buffer] : decode_output_buffers_) {
     // LITERT_ASSIGN_OR_RETURN() causes a compilation error on windows.
-    auto output_buffer_dup = output_name == signatures_.output_logits
-                                 ? output_logits.Duplicate()
-                                 : output_buffer.Duplicate();
+    auto output_buffer_dup =
+        output_logits && output_name == signatures_.output_logits
+            ? output_logits->Duplicate()
+            : output_buffer.Duplicate();
     RET_CHECK(output_buffer_dup) << "Failed to duplicate output buffer.";
     output_buffer_dup->ClearEvent();
     decode_output_buffers[output_name] = std::move(*output_buffer_dup);
@@ -830,6 +877,17 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
     std::swap(input_kv_cache_buffers_, output_kv_cache_buffers_);
   }
   return absl::OkStatus();
+}
+
+int LlmLiteRtCompiledModelExecutorBase::BindTensorsAndRunDecodeStatic(
+    void* arg) {
+  auto self = static_cast<LlmLiteRtCompiledModelExecutorBase*>(arg);
+  // Run decode with default output_logits.
+  auto status = self->BindTensorsAndRunDecode(/*output_logits=*/nullptr);
+  if (!status.ok()) {
+    ABSL_LOG(ERROR) << "Failed to bind tensors and run decode: " << status;
+  }
+  return status.raw_code();
 }
 
 absl::Status LlmLiteRtCompiledModelExecutorBase::PrepareFirstDecode() {
@@ -1009,13 +1067,67 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::InitializeSampler() {
       sampler_, CreateSampler(sampler_backend, output_batch_size_,
                               std::move(sampler_params), env_.Get(), vocab_size,
                               logits_data_type_));
+
+  // If the sampler can handle input, prepare the input tensors for it.
+  if (sampler_->CanHandleInput() && !signatures_.input_tokens.empty()) {
+    if (!decode_prev_input_pos_) {
+      LITERT_ASSIGN_OR_RETURN(
+          decode_prev_input_pos_,
+          compiled_model_.CreateInputBuffer(kDecodeSignatureRunner,
+                                            signatures_.input_positions));
+    }
+    if (!decode_prev_mask_ && signatures_.input_attn_mask.has_value()) {
+      LITERT_ASSIGN_OR_RETURN(
+          decode_prev_mask_,
+          compiled_model_.CreateInputBuffer(kDecodeSignatureRunner,
+                                            *signatures_.input_attn_mask));
+    }
+    // Set, then reset the input handling to get the underlying model ready, but
+    // not to bind the input tensors.
+    RETURN_IF_ERROR(SetSamplerInputHandling(/*reset=*/false));
+    RETURN_IF_ERROR(SetSamplerInputHandling(/*reset=*/true));
+  }
+
   return absl::OkStatus();
+}
+
+absl::Status LlmLiteRtCompiledModelExecutorBase::SwapSamplerInputTensors() {
+  bool has_input_attn_mask = signatures_.input_attn_mask.has_value();
+  // Move the input_pos and mask to previous ones.
+  std::swap(decode_prev_input_pos_,
+            decode_input_buffers_[signatures_.input_positions]);
+  if (has_input_attn_mask) {
+    std::swap(decode_prev_mask_,
+              decode_input_buffers_[*signatures_.input_attn_mask]);
+  }
+  return SetSamplerInputHandling(/*reset=*/false);
+}
+
+absl::Status LlmLiteRtCompiledModelExecutorBase::SetSamplerInputHandling(
+    bool reset) {
+  if (reset) {
+    return sampler_->SetInputTensorsAndInferenceFunc(
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+  }
+
+  bool has_input_attn_mask = signatures_.input_attn_mask.has_value();
+  return sampler_->SetInputTensorsAndInferenceFunc(
+      &decode_input_buffers_[signatures_.input_tokens], &decode_prev_input_pos_,
+      &decode_input_buffers_[signatures_.input_positions],
+      has_input_attn_mask ? &decode_prev_mask_ : nullptr,
+      has_input_attn_mask ? &decode_input_buffers_[*signatures_.input_attn_mask]
+                          : nullptr,
+      BindTensorsAndRunDecodeStatic, this);
 }
 
 absl::Status LlmLiteRtCompiledModelExecutorBase::SampleLogits(
     const TensorBuffer& logits, TensorBuffer& ids_tensor) {
   if (sampler_ == nullptr) {
     RETURN_IF_ERROR(InitializeSampler());
+  }
+
+  if (sampler_->CanHandleInput() && !signatures_.input_tokens.empty()) {
+    RETURN_IF_ERROR(SwapSamplerInputTensors());
   }
 
   RETURN_IF_ERROR(sampler_->SampleToIdAndScoreBuffer(
@@ -1051,18 +1163,7 @@ absl::Status LlmLiteRtCompiledModelExecutorStatic::Prefill(
   // the first input and processed tokens. This should be updated if user select
   // the decode output candidate.
   constexpr int kTokenIndexToReduce = 0;
-  if (ran_decode_) {
-    ran_decode_ = false;
-    if (output_batch_size_ > 1) {
-      LITERT_RETURN_IF_ERROR(
-          processed_tokens_.ReduceTokenCandidates(kTokenIndexToReduce));
-      LITERT_RETURN_IF_ERROR(
-          CopyKvCacheBuffers(output_batch_size_, kTokenIndexToReduce,
-                             *input_kv_cache_buffers_, kv_cache_buffers_1_));
-      input_kv_cache_buffers_ = &kv_cache_buffers_1_;
-      output_kv_cache_buffers_ = &kv_cache_buffers_2_;
-    }
-  }
+  LITERT_RETURN_IF_ERROR(PrepareFirstPrefillAfterDecode(kTokenIndexToReduce));
 
   LITERT_ASSIGN_OR_RETURN(auto tensor_type,
                           (*inputs.GetTextTokenIdsPtr())->TensorType());
@@ -1466,9 +1567,12 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
 
 absl::Status LlmLiteRtCompiledModelExecutorDynamic::Prefill(
     const ExecutorInputs& inputs, const ExecutorPrefillParams& params) {
+
+  // Only accept batch size 1 for now.
+  LITERT_RETURN_IF_ERROR(PrepareFirstPrefillAfterDecode(0));
+
   LITERT_ASSIGN_OR_RETURN(auto tensor_type,
                           (*inputs.GetTextTokenIdsPtr())->TensorType());
-  // Only accept batch size 1 for now.
   RET_CHECK_EQ(tensor_type.Layout().Dimensions()[0], 1);
   RET_CHECK_GT(tensor_type.Layout().Dimensions()[1], 0)
       << "Prefill token ids must be non-empty.";
