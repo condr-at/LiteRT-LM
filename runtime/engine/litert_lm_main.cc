@@ -49,8 +49,7 @@
 ABSL_FLAG(std::string, backend, "gpu",
           "Executor backend to use for LLM execution (cpu, gpu, etc.)");
 ABSL_FLAG(std::string, model_path, "", "Model path to use for LLM execution.");
-ABSL_FLAG(std::string, input_prompt,
-          "",
+ABSL_FLAG(std::string, input_prompt, "",
           "Input prompt to use for testing LLM execution.");
 ABSL_FLAG(std::string, input_prompt_file, "", "File path to the input prompt.");
 
@@ -142,8 +141,9 @@ absl::Status MainHelper(int argc, char** argv) {
   std::unique_ptr<Conversation> conversation;
   auto session_config = litert::lm::SessionConfig::CreateDefault();
   ASSIGN_OR_RETURN(
-      auto conversation_config,
-      ConversationConfig::CreateFromSessionConfig(*engine, session_config));
+      auto conversation_config, ConversationConfig::Builder()
+                                    .SetSessionConfig(session_config)
+                                    .Build(*engine));
   ASSIGN_OR_RETURN(conversation,
                    Conversation::Create(*engine, conversation_config));
 

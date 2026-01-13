@@ -106,7 +106,7 @@ JsonPreface preface;
 preface.tools = nlohmann::ordered_json::parse(kToolString);
 ```
 
-The `Preface` is passed to `ConversationConfig::CreateFromSessionConfig` when
+The `Preface` is passed to `ConversationConfig::Builder` when
 you create the `Conversation` object:
 
 ```c++
@@ -125,8 +125,10 @@ ASSIGN_OR_RETURN(
 // Create `Conversation`.
 auto session_config = litert::lm::SessionConfig::CreateDefault();
 ASSIGN_OR_RETURN(auto conversation_config,
-                   ConversationConfig::CreateFromSessionConfig(
-                       engine, session_config, preface));
+                   ConversationConfig::Builder()
+                       .SetSessionConfig(session_config)
+                       .SetPreface(preface)
+                       .Build(*engine));
 ASSIGN_OR_RETURN(std::unique_ptr<Conversation> conversation,
                    Conversation::Create(*engine, conversation_config));
 ```

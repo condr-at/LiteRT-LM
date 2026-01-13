@@ -621,9 +621,10 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
       }
     } else {
       ABSL_LOG(INFO) << "Creating conversation";
-      ASSIGN_OR_RETURN(
-          auto conversation_config,
-          ConversationConfig::CreateFromSessionConfig(*engine, session_config));
+      ASSIGN_OR_RETURN(auto conversation_config,
+                       ConversationConfig::Builder()
+                           .SetSessionConfig(session_config)
+                           .Build(*engine));
       ASSIGN_OR_RETURN(conversation,
                        Conversation::Create(*engine, conversation_config));
       if (settings.multi_turns) {
