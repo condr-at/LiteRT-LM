@@ -698,13 +698,13 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateConversation)(
     return 0;
   }
 
-  std::optional<Preface> preface = json_preface;
-
   // Create the conversation
-  auto conversation_config = ConversationConfig::CreateFromSessionConfig(
-      *engine, session_config, preface,
-      /*overwrite_prompt_template=*/std::nullopt,
-      /*overwrite_processor_config=*/std::nullopt, enable_constrained_decoding);
+  auto conversation_config =
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config)
+          .SetPreface(json_preface)
+          .SetEnableConstrainedDecoding(enable_constrained_decoding)
+          .Build(*engine);
 
   if (!conversation_config.ok()) {
     ThrowLiteRtLmJniException(env, "Failed to create conversation config: " +
