@@ -181,10 +181,10 @@ TEST(ConversationConfigTest, CreateDefaultWithOverwritePromptTemplate) {
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
-  ASSERT_OK_AND_ASSIGN(auto config, ConversationConfig::CreateDefault(
-                                        *engine,
-                                        /*preface=*/std::nullopt,
-                                        PromptTemplate("Hello world!")));
+  ASSERT_OK_AND_ASSIGN(auto config, ConversationConfig::Builder()
+                                        .SetOverwritePromptTemplate(
+                                            PromptTemplate("Hello world!"))
+                                        .Build(*engine));
   EXPECT_EQ(config.GetPromptTemplate().GetTemplateSource(), "Hello world!");
   EXPECT_TRUE(
       config.GetSessionConfig().GetPromptTemplates().user().prefix().empty());
@@ -206,11 +206,12 @@ TEST(ConversationConfigTest, CreateFromSessionConfig) {
 
   ASSERT_OK_AND_ASSIGN(
       auto config,
-      ConversationConfig::CreateFromSessionConfig(
-          *engine, session_config, /*preface=*/
-          JsonPreface{
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config)
+          .SetPreface(JsonPreface{
               .messages = {{{"role", "system"},
-                            {"content", "You are a helpful assistant."}}}}));
+                            {"content", "You are a helpful assistant."}}}})
+          .Build(*engine));
   EXPECT_EQ(config.GetPromptTemplate().GetTemplateSource(), "A fixed content");
   EXPECT_TRUE(std::holds_alternative<JsonPreface>(config.GetPreface()));
   EXPECT_EQ(
@@ -266,12 +267,10 @@ TEST_P(ConversationTest, SendMessage) {
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
-      ConversationConfig::CreateDefault(
-          *engine, /*preface=*/std::nullopt,
-          /*overwrite_prompt_template=*/std::nullopt,
-          /*overwrite_processor_config=*/std::nullopt,
-          /*enable_constrained_decoding=*/enable_constrained_decoding_,
-          /*prefill_preface_on_init=*/prefill_preface_on_init_));
+      ConversationConfig::Builder()
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
+          .Build(*engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*engine, config));
   EXPECT_THAT(conversation->GetHistory(), testing::IsEmpty());
@@ -318,8 +317,9 @@ TEST_P(ConversationTest, SendSingleMessage) {
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(auto conversation_config,
-                       ConversationConfig::CreateFromSessionConfig(
-                           *mock_engine, session_config));
+                       ConversationConfig::Builder()
+                           .SetSessionConfig(session_config)
+                           .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*mock_engine, conversation_config));
 
@@ -383,11 +383,11 @@ TEST_P(ConversationTest, SendMultipleMessages) {
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
-      ConversationConfig::CreateFromSessionConfig(
-          *mock_engine, session_config, /*preface=*/std::nullopt,
-          /*overwrite_processor_config=*/std::nullopt,
-          /*enable_constrained_decoding=*/enable_constrained_decoding_,
-          /*prefill_preface_on_init=*/prefill_preface_on_init_));
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config)
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
+          .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*mock_engine, conversation_config));
 
@@ -465,11 +465,11 @@ TEST_P(ConversationTest, SendMultipleMessagesWithHistory) {
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
-      ConversationConfig::CreateFromSessionConfig(
-          *mock_engine, session_config, /*preface=*/std::nullopt,
-          /*overwrite_processor_config=*/std::nullopt,
-          /*enable_constrained_decoding=*/enable_constrained_decoding_,
-          /*prefill_preface_on_init=*/prefill_preface_on_init_));
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config)
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
+          .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*mock_engine, conversation_config));
 
@@ -558,12 +558,10 @@ TEST_P(ConversationTest, SendMessageAsync) {
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
-      ConversationConfig::CreateDefault(
-          *engine, /*preface=*/std::nullopt,
-          /*overwrite_prompt_template=*/std::nullopt,
-          /*overwrite_processor_config=*/std::nullopt,
-          /*enable_constrained_decoding=*/enable_constrained_decoding_,
-          /*prefill_preface_on_init=*/prefill_preface_on_init_));
+      ConversationConfig::Builder()
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
+          .Build(*engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*engine, config));
 
@@ -614,8 +612,9 @@ TEST_P(ConversationTest, SendSingleMessageAsync) {
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(auto conversation_config,
-                       ConversationConfig::CreateFromSessionConfig(
-                           *mock_engine, session_config));
+                       ConversationConfig::Builder()
+                           .SetSessionConfig(session_config)
+                           .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*mock_engine, conversation_config));
 
@@ -695,11 +694,11 @@ TEST_P(ConversationTest, SendMultipleMessagesAsync) {
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
-      ConversationConfig::CreateFromSessionConfig(
-          *mock_engine, session_config, /*preface=*/std::nullopt,
-          /*overwrite_processor_config=*/std::nullopt,
-          /*enable_constrained_decoding=*/enable_constrained_decoding_,
-          /*prefill_preface_on_init=*/prefill_preface_on_init_));
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config)
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
+          .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*mock_engine, conversation_config));
 
@@ -792,10 +791,10 @@ TEST_P(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
-      ConversationConfig::CreateFromSessionConfig(
-          *mock_engine, session_config, /*preface=*/std::nullopt,
-          /*overwrite_processor_config=*/std::nullopt,
-          /*enable_constrained_decoding=*/enable_constrained_decoding_));
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config)
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*mock_engine, conversation_config));
 
@@ -924,16 +923,13 @@ TEST_P(ConversationTest, SendMessageWithPreface) {
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
-      ConversationConfig::CreateDefault(
-          *engine,
-          /*preface=*/
-          JsonPreface{
+      ConversationConfig::Builder()
+          .SetPreface(JsonPreface{
               .messages = {{{"role", "system"},
-                            {"content", "You are a helpful assistant."}}}},
-          /*overwrite_prompt_template=*/std::nullopt,
-          /*overwrite_processor_config=*/std::nullopt,
-          /*enable_constrained_decoding=*/enable_constrained_decoding_,
-          /*prefill_preface_on_init=*/prefill_preface_on_init_));
+                            {"content", "You are a helpful assistant."}}}})
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
+          .Build(*engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*engine, config));
   ASSERT_OK_AND_ASSIGN(const Message message,
@@ -971,16 +967,13 @@ TEST_P(ConversationTest, GetBenchmarkInfo) {
   ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
-      ConversationConfig::CreateDefault(
-          *engine,
-          /*preface=*/
-          JsonPreface{
+      ConversationConfig::Builder()
+          .SetPreface(JsonPreface{
               .messages = {{{"role", "system"},
-                            {"content", "You are a helpful assistant."}}}},
-          /*overwrite_prompt_template=*/std::nullopt,
-          /*overwrite_processor_config=*/std::nullopt,
-          /*enable_constrained_decoding=*/enable_constrained_decoding_,
-          /*prefill_preface_on_init=*/prefill_preface_on_init_));
+                            {"content", "You are a helpful assistant."}}}})
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
+          .Build(*engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*engine, config));
   ASSERT_OK_AND_ASSIGN(const Message message_1,

@@ -38,9 +38,14 @@
 namespace litert::lm {
 
 // Configuration for the Conversation instance. This class is used to
-// initialize the Conversation instance. The configuration is created from the
-// Engine with default SessionConfig, or from a provided SessionConfig, with
-// optional overwrite for the prompt template, processor config.
+// initialize the Conversation instance.
+//
+// To create a ConversationConfig, use ConversationConfig::CreateDefault() to
+// create a default config, or use the ConversationConfig::Builder() to build a
+// custom config.
+//
+// TODO(b/474667126): Make CreateFromSessionConfig private.
+// TODO(b/474667126): Remove the argument from CreateDefault().
 class ConversationConfig {
  public:
   // Creates a default ConversationConfig from the given Engine.
@@ -121,6 +126,87 @@ class ConversationConfig {
   // created. This will make the first response faster, but take longer to
   // initialize.
   bool prefill_preface_on_init() const { return prefill_preface_on_init_; }
+
+ public:
+  // Builder class for ConversationConfig.
+  //
+  // Example usage:
+  //   // Create a ConversationConfig instance using the Builder.
+  //   ASSIGN_OR_RETURN(auto conversation_config,
+  //                    ConversationConfig::Builder()
+  //                        .SetEnableConstrainedDecoding(true)
+  //                        .SetPrefillPrefaceOnInit(true)
+  //                        .Build(*engine));
+  class Builder {
+   public:
+    // Sets the SessionConfig to be used for creating the ConversationConfig.
+    Builder& SetSessionConfig(const SessionConfig& session_config) {
+      session_config_ = session_config;
+      return *this;
+    }
+
+    // Sets the Preface for the conversation. The Preface provides
+    // the initial background for the conversation, tool uses and extra
+    // context for the conversation. If not provided, the conversation will
+    // start with an empty Preface.
+    Builder& SetPreface(const Preface& preface) {
+      preface_ = preface;
+      return *this;
+    }
+
+    // Sets the PromptTemplate instance to be used for the conversation. If
+    // not provided, the conversation will use the template read from the model
+    // metadata.
+    Builder& SetOverwritePromptTemplate(
+        const PromptTemplate& overwrite_prompt_template) {
+      overwrite_prompt_template_ = overwrite_prompt_template;
+      return *this;
+    }
+
+    // Sets the configuration for the model data processor. If not provided,
+    // the default config for the model type's data processor will be used.
+    // Most of the time, the users don't need to provide the data processor
+    // config.
+    Builder& SetOverwriteProcessorConfig(
+        const DataProcessorConfig& overwrite_processor_config) {
+      overwrite_processor_config_ = overwrite_processor_config;
+      return *this;
+    }
+
+    // Sets whether to enable constrained decoding. If true, constrained
+    // decoding will be used, primarily for function calling.
+    Builder& SetEnableConstrainedDecoding(bool enable_constrained_decoding) {
+      enable_constrained_decoding_ = enable_constrained_decoding;
+      return *this;
+    }
+
+    // Sets whether to prefill the preface on init. If true, the preface will
+    // be prefilled on init, which will make the first response faster, but
+    // take longer to initialize.
+    Builder& SetPrefillPrefaceOnInit(bool prefill_preface_on_init) {
+      prefill_preface_on_init_ = prefill_preface_on_init;
+      return *this;
+    }
+
+    absl::StatusOr<ConversationConfig> Build(const Engine& engine) {
+      if (overwrite_prompt_template_.has_value()) {
+        session_config_.GetMutableJinjaPromptTemplate() =
+            overwrite_prompt_template_->GetTemplateSource();
+      }
+
+      return ConversationConfig::CreateFromSessionConfig(
+          engine, session_config_, preface_, overwrite_processor_config_,
+          enable_constrained_decoding_, prefill_preface_on_init_);
+    }
+
+   private:
+    SessionConfig session_config_ = SessionConfig::CreateDefault();
+    std::optional<Preface> preface_;
+    std::optional<PromptTemplate> overwrite_prompt_template_;
+    std::optional<DataProcessorConfig> overwrite_processor_config_;
+    bool enable_constrained_decoding_ = false;
+    bool prefill_preface_on_init_ = false;
+  };
 
  private:
   explicit ConversationConfig(SessionConfig session_config, Preface preface,
