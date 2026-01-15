@@ -25,16 +25,6 @@ package(
 
 licenses(["notice"])
 
-config_setting(
-    name = "use_legacy_engine",
-    values = {"copt": "-DUSE_LEGACY_ENGINE"},
-)
-
-config_setting(
-    name = "use_advanced_legacy_engine",
-    values = {"copt": "-DUSE_ADVANCED_LEGACY_ENGINE"},
-)
-
 cc_library(
     name = "engine_interface",
     hdrs = ["engine.h"],
@@ -49,6 +39,14 @@ cc_library(
         "@com_google_absl//absl/time",
         "//runtime/components:tokenizer",
     ],
+)
+
+# The selected engine implementations based on the build flags.
+cc_library(
+    name = "engine_impl_selected",
+    deps = select({
+        "//conditions:default": ["//runtime/core:engine_impl"],
+    }),
 )
 
 cc_library(
@@ -106,6 +104,7 @@ cc_library(
     srcs = ["litert_lm_lib.cc"],
     hdrs = ["litert_lm_lib.h"],
     deps = [
+        ":engine_impl_selected",
         ":engine_interface",
         ":engine_settings",
         ":io_types",
@@ -136,14 +135,10 @@ cc_library(
         "@litert//tflite/profiling:memory_info",
         "@litert//tflite/profiling:memory_usage_monitor",
     ] + select({
-        "//conditions:default": ["//runtime/core:engine_impl"],
-    }) + select(
-        {
-            "@platforms//os:linux": [
-            ],
-            "//conditions:default": [],
-        },
-    ),
+        "@platforms//os:linux": [
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -181,6 +176,7 @@ cc_binary(
         "//conditions:default": [],
     }),
     deps = [
+        ":engine_impl_selected",
         ":engine_interface",
         ":engine_settings",
         ":io_types",
@@ -200,9 +196,7 @@ cc_binary(
         "//runtime/conversation:io_types",
         "//runtime/executor:executor_settings_base",
         "//runtime/util:litert_status_util",
-    ] + select({
-        "//conditions:default": ["//runtime/core:engine_impl"],
-    }),
+    ],
 )
 
 cc_binary(

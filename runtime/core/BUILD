@@ -24,6 +24,17 @@ package(
 
 licenses(["notice"])
 
+# In most case, pick the engine implementation with
+# //runtime/core:engine_impl_selected.
+#
+package_group(
+    name = "engine_impl_users",
+    packages = [
+        # for ":engine_impl_selected".
+        "//runtime/engine",
+    ],
+)
+
 ENGINE_IMPL_COMMON_DEPS = [
     ":session_factory",
     "@com_google_absl//absl/base:no_destructor",
@@ -71,6 +82,7 @@ ENGINE_IMPL_COMMON_DEPS = [
 cc_library(
     name = "engine_impl",
     srcs = ["engine_impl.cc"],
+    visibility = [":engine_impl_users"],
     deps = ENGINE_IMPL_COMMON_DEPS + [
         "//runtime/components:default_static_gpu_samplers",
         "//runtime/executor:default_static_gpu_accelerator",
