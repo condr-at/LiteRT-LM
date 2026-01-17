@@ -219,7 +219,7 @@ class LlmExecutorSettings : public ExecutorSettingsBase {
       ModelAssets model_assets, Backend backend = Backend::CPU);
 
   uint32_t GetMaxNumTokens() const { return max_num_tokens_; }
-  void SetMaxNumTokens(uint64_t max_num_tokens) {
+  void SetMaxNumTokens(uint32_t max_num_tokens) {
     max_num_tokens_ = max_num_tokens;
   }
 
