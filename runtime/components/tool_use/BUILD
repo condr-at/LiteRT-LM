@@ -85,7 +85,6 @@ cc_library(
     }),
     deps = [
         "@com_google_absl//absl/strings",
-        "@antlr4//:cpp",
         "@nlohmann_json//:json",
         "//runtime/components/tool_use/rust:parsers_cpp",
     ],
@@ -97,6 +96,8 @@ cc_test(
     deps = [
         ":parser_common",
         "@com_google_googletest//:gtest_main",
+        "@nlohmann_json//:json",
+        "//runtime/components/tool_use/rust:parsers_cpp",
     ],
 )
 
@@ -132,12 +133,11 @@ cc_library(
     hdrs = ["json_parser_utils.h"],
     deps = [
         ":parser_common",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@nlohmann_json//:json",
-        "//runtime/components/tool_use/antlr:antlr_json_tool_call_parser",
+        "//runtime/components/tool_use/rust:parsers_cpp",
     ],
 )
 

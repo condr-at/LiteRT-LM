@@ -53,6 +53,16 @@ rust_library(
 )
 
 rust_library(
+    name = "json_parser",
+    srcs = [
+        "json_parser.rs",
+    ],
+    deps = [
+        "@crate_index//:serde_json",
+    ],
+)
+
+rust_library(
     name = "parsers",
     srcs = [
         "parsers.rs",
@@ -60,6 +70,7 @@ rust_library(
     deps = [
         ":python_parser",
         ":fc_parser",
+        ":json_parser",
         "@crate_index//:cxx",
         "@crate_index//:indexmap",
         "@crate_index//:serde_json",

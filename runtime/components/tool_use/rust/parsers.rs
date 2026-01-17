@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use indexmap::IndexMap;
+use json_parser;
 use python_parser;
 use serde_json::{Number, Value};
 use std::sync::Arc;
@@ -48,6 +49,7 @@ mod ffi {
 
         fn parse_python_expression(text: &str) -> ToolCalls;
         fn parse_fc_expression(text: &str) -> ToolCalls;
+        fn parse_json_expression(text: &str) -> ToolCalls;
     }
 }
 
@@ -175,6 +177,20 @@ pub fn parse_python_expression(text: &str) -> ffi::ToolCalls {
 
 pub fn parse_fc_expression(text: &str) -> ffi::ToolCalls {
     match fc_parser::parse_fc_expression(text) {
+        Ok(v) => ffi::ToolCalls {
+            tool_calls: v
+                .into_iter()
+                .map(|v| JsonValue { inner: Arc::new(InnerValue::from(v)) })
+                .collect(),
+            is_ok: true,
+            error: "".to_string(),
+        },
+        Err(e) => ffi::ToolCalls { tool_calls: Vec::new(), is_ok: false, error: e },
+    }
+}
+
+pub fn parse_json_expression(text: &str) -> ffi::ToolCalls {
+    match json_parser::parse_json_expression(text) {
         Ok(v) => ffi::ToolCalls {
             tool_calls: v
                 .into_iter()
