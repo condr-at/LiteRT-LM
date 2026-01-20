@@ -256,6 +256,9 @@ enum class TaskState {
   kCancelled,               // The task is cancelled.
   kDependentTaskCancelled,  // The task was cancelled because a dependent task
                             // was cancelled.
+  kLastCallbackQueued,      // The last callback is queued to be called.
+                            // This is internal state, will not be called to the
+                            // user callback.
 };
 std::ostream& operator<<(std::ostream& os, const TaskState& task_state);
 

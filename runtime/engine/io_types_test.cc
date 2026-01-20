@@ -486,6 +486,10 @@ TEST(ResponsesTest, GetTaskState) {
     EXPECT_EQ(responses.GetTaskState(), TaskState::kDependentTaskCancelled);
   }
   {
+    Responses responses(TaskState::kLastCallbackQueued, {});
+    EXPECT_EQ(responses.GetTaskState(), TaskState::kLastCallbackQueued);
+  }
+  {
     Responses responses(TaskState::kUnknown, {});
     EXPECT_EQ(responses.GetTaskState(), TaskState::kUnknown);
   }
@@ -539,6 +543,11 @@ TEST(TaskStateTest, TaskStateToString) {
   }
   {
     std::stringstream ss;
+    ss << TaskState::kLastCallbackQueued;
+    EXPECT_EQ(ss.str(), "LastCallbackQueued");
+  }
+  {
+    std::stringstream ss;
     ss << TaskState::kUnknown;
     EXPECT_EQ(ss.str(), "Unknown");
   }
@@ -563,6 +572,8 @@ TEST(ResponsesTest, SetTaskState) {
   EXPECT_EQ(responses.GetTaskState(), TaskState::kCancelled);
   responses.SetTaskState(TaskState::kDependentTaskCancelled);
   EXPECT_EQ(responses.GetTaskState(), TaskState::kDependentTaskCancelled);
+  responses.SetTaskState(TaskState::kLastCallbackQueued);
+  EXPECT_EQ(responses.GetTaskState(), TaskState::kLastCallbackQueued);
   responses.SetTaskState(TaskState::kUnknown);
   EXPECT_EQ(responses.GetTaskState(), TaskState::kUnknown);
 }

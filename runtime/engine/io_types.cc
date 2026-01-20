@@ -165,6 +165,9 @@ std::ostream& operator<<(std::ostream& os, const TaskState& task_state) {
     case TaskState::kDependentTaskCancelled:
       os << "DependentTaskCancelled";
       break;
+    case TaskState::kLastCallbackQueued:
+      os << "LastCallbackQueued";
+      break;
     default:
       os << "Unknown";
       break;

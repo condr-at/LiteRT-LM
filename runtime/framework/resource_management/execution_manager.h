@@ -234,6 +234,9 @@ class ExecutionManager {
     execution_thread_pool_ =
         std::make_unique<ThreadPool>(/*name_prefix=*/"execution_thread_pool",
                                      /*max_num_threads=*/1);
+    callback_thread_pool_ =
+        std::make_unique<ThreadPool>(/*name_prefix=*/"callback_thread_pool",
+                                     /*max_num_threads=*/1);
   }
 
   // Creates a task with the given task ID, task, dependent tasks, and callback.
@@ -361,6 +364,12 @@ class ExecutionManager {
 
   // The thread pool with a single worker thread used for executing the tasks.
   std::unique_ptr<ThreadPool> absl_nonnull execution_thread_pool_;
+
+  // The thread pool used for running the callbacks without blocking the
+  // execution thread pool.
+  // TODO b/476205457 - Consider updating all the callback triggering to use
+  // this thread pool, and remove the syncing logic.
+  std::unique_ptr<ThreadPool> absl_nonnull callback_thread_pool_;
 };
 
 }  // namespace litert::lm

@@ -205,7 +205,12 @@ absl::Status ExecutionManager::CreateTask(
       }
       dependent_tasks.erase(dep_task_id);
     } else {
-      task_lookup_.at(dep_task_id).following_tasks.insert(task_id);
+      if (task_lookup_.at(dep_task_id).task_state ==
+          TaskState::kLastCallbackQueued) {
+        dependent_tasks.erase(dep_task_id);
+      } else {
+        task_lookup_.at(dep_task_id).following_tasks.insert(task_id);
+      }
     }
   }
 
@@ -370,15 +375,27 @@ absl::Status ExecutionManager::FinishTask(
           responses->GetTaskState())));
     }
 
-    if (responses.ok()) {
-      auto task_state = responses->GetTaskState();
-      callback(std::move(responses));
-      RETURN_IF_ERROR(UpdateTaskState(task_id, task_state));
-    } else {
-      callback(std::move(responses));
-      RETURN_IF_ERROR(UpdateTaskState(task_id, TaskState::kFailed));
-    }
+    TaskState next_task_state =
+        responses.ok() ? responses->GetTaskState() : TaskState::kFailed;
+    RETURN_IF_ERROR(callback_thread_pool_->Schedule(
+        [callback = std::move(callback), responses = std::move(responses),
+         task_id = task_id, next_task_state = std::move(next_task_state),
+         this]() mutable {
+          callback(std::move(responses));
+          absl::MutexLock lock(session_and_task_lookup_mutex_);
+          auto status = UpdateTaskState(task_id, next_task_state);
+          if (!status.ok()) {
+            ABSL_LOG(ERROR) << "Failed to update task state: " << status
+                            << " with task id: " << task_id;
+          }
+        }));
+    RETURN_IF_ERROR(UpdateTaskState(task_id, TaskState::kLastCallbackQueued));
   }
+
+  // TODO b/476205457 - Consider to use a asynchronous approach to handle the
+  // callback, and remove this WaitUntilDone.
+  RETURN_IF_ERROR(callback_thread_pool_->WaitUntilDone(absl::Seconds(10)));
+
   return absl::OkStatus();
 }
 
