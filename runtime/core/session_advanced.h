@@ -133,6 +133,12 @@ class SessionAdvanced : public Engine::Session {
       const std::vector<absl::string_view>& target_text,
       bool store_token_lengths) override;
 
+  absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>
+  RunTextScoringAsync(
+      const std::vector<absl::string_view>& target_text,
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+      bool store_token_lengths) override;
+
   absl::Status RunPrefill(const std::vector<InputData>& contents) override;
 
   absl::StatusOr<std::unique_ptr<TaskController>> RunPrefillAsync(

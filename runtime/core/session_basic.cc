@@ -413,7 +413,25 @@ absl::StatusOr<Responses> SessionBasic::GenerateContent(
 absl::StatusOr<Responses> SessionBasic::RunTextScoring(
     const std::vector<absl::string_view>& target_text,
     bool store_token_lengths) {
-  // Currently batch scoring is not supported by the models.
+  absl::StatusOr<Responses> collected_responses;
+  auto scoring_sync_callback =
+      [&collected_responses](absl::StatusOr<Responses> responses) {
+        collected_responses = std::move(responses);
+      };
+
+  ASSIGN_OR_RETURN(auto task_controller,
+                   RunTextScoringAsync(target_text,
+                                       std::move(scoring_sync_callback),
+                                       store_token_lengths));
+  RETURN_IF_ERROR(worker_thread_pool_.WaitUntilDone(Engine::kDefaultTimeout));
+  return collected_responses;
+}
+
+absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>
+SessionBasic::RunTextScoringAsync(
+    const std::vector<absl::string_view>& target_text,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+    bool store_token_lengths) {
   if (target_text.size() != 1) {
     return absl::InvalidArgumentError("Target text size should be 1.");
   }
@@ -422,26 +440,23 @@ absl::StatusOr<Responses> SessionBasic::RunTextScoring(
   // the sampler or the sampler parameters? For now, hardcode it to 1.0f for
   // testing.
   auto temperature = 1.0f;
-  absl::StatusOr<Responses> score;
-  // Scheduled on the worker thread pool to ensure serialized execution with
-  // other engine operations as the function waits for completion.
-  RETURN_IF_ERROR(worker_thread_pool_.Schedule([this, &score, &target_text,
-                                                store_token_lengths,
-                                                &temperature]() mutable {
-    std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
-                                 last_prefill_token_id_);
-    auto decoded_ids_buffer = CopyToTensorBuffer<int>(
-        decoded_ids, {session_config_.GetNumOutputCandidates(), 1});
-    if (!decoded_ids_buffer.HasValue()) {
-      score = absl::InternalError(decoded_ids_buffer.Error().Message());
-      return;
-    }
-    score = ScoreCustomSampling(executor_, tokenizer_, target_text, temperature,
-                                std::move(decoded_ids_buffer.Value()),
-                                store_token_lengths);
-  }));
-  RETURN_IF_ERROR(worker_thread_pool_.WaitUntilDone(Engine::kDefaultTimeout));
-  return score;
+  RETURN_IF_ERROR(worker_thread_pool_.Schedule(
+      [this, callback = std::move(callback), target_text, store_token_lengths,
+       temperature]() mutable {
+        std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
+                                     last_prefill_token_id_);
+        auto decoded_ids_buffer = CopyToTensorBuffer<int>(
+            decoded_ids, {session_config_.GetNumOutputCandidates(), 1});
+        if (!decoded_ids_buffer.HasValue()) {
+          callback(absl::InternalError(decoded_ids_buffer.Error().Message()));
+          return;
+        }
+        callback(ScoreCustomSampling(executor_, tokenizer_, target_text,
+                                     temperature,
+                                     std::move(decoded_ids_buffer.Value()),
+                                     store_token_lengths));
+      }));
+  return nullptr;
 }
 
 absl::Status SessionBasic::GenerateContentStream(

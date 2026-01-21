@@ -152,6 +152,20 @@ class Engine {
         const std::vector<absl::string_view>& target_text,
         bool store_token_lengths) = 0;
 
+    // Similar to the above RunTextScoring function, but this is a not blocking
+    // call and the function will return right away. The processing status will
+    // be signaled through the callback.
+    // - target_text: The target text to score.
+    // - callback: Callback to receive the scoring results.
+    // - store_token_lengths: Whether to store the token lengths of the target
+    //   texts in `Responses`.
+    virtual absl::StatusOr<std::unique_ptr<TaskController>> RunTextScoringAsync(
+        const std::vector<absl::string_view>& target_text,
+        absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+        bool store_token_lengths) {
+      return absl::UnimplementedError("Not implemented.");
+    }
+
     // Adds the input prompt/query to the model for starting the prefilling
     // process. Note that the user can break down their prompt/query into
     // multiple chunks and call this function multiple times.

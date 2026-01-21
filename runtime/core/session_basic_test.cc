@@ -736,6 +736,52 @@ TEST_F(SessionBasicTest, RunTextScoringWithTokenLengthsSuccess) {
   EXPECT_EQ((*responses_with_token_lengths->GetTokenLengths())[0], 7);
 }
 
+TEST_F(SessionBasicTest, RunTextScoringAsyncWithTokenLengthsSuccess) {
+  const std::vector<std::vector<int>> stop_token_ids = {{2294}};
+  SessionConfig session_config = SessionConfig::CreateDefault();
+  session_config.GetMutableSamplerParams() = sampler_params_;
+  session_config.GetMutableStopTokenIds() = stop_token_ids;
+  session_config.SetStartTokenId(2);
+  session_config.SetSamplerBackend(Backend::CPU);
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  auto session = SessionBasic::Create(
+      executor.get(), tokenizer_.get(), /*vision_executor=*/nullptr,
+      /*audio_executor=*/nullptr, session_config, std::nullopt,
+      worker_thread_pool_.get());
+  std::vector<InputData> inputs;
+  inputs.emplace_back(InputText("Hello World!"));
+  EXPECT_OK((*session)->RunPrefill(inputs));
+
+  absl::Notification done;
+  absl::StatusOr<Responses> responses;
+  auto callback = [&done, &responses](absl::StatusOr<Responses> r) {
+    responses = std::move(r);
+    done.Notify();
+  };
+
+  std::vector<absl::string_view> target_texts;
+  target_texts.push_back("How's it going?");
+  ASSERT_OK((*session)->RunTextScoringAsync(
+      target_texts, std::move(callback), /*store_token_lengths=*/true));
+
+  done.WaitForNotification();
+
+  EXPECT_OK(responses);
+  // Expect a single output candidate with score 0.0f and token length 7.
+  EXPECT_EQ(responses->GetScores().size(), 1);
+  EXPECT_EQ(responses->GetScores()[0], 0.0f);
+  EXPECT_TRUE(responses->GetTokenLengths().has_value());
+  EXPECT_EQ(responses->GetTokenLengths()->size(), 1);
+  EXPECT_EQ((*responses->GetTokenLengths())[0], 7);
+}
+
 TEST_F(SessionBasicTest, GenerateContentStream) {
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
   SessionConfig session_config = SessionConfig::CreateDefault();

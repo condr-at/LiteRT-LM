@@ -1944,5 +1944,105 @@ TEST_F(SessionAdvancedTest, RunTextScoringWithTokenLengthsSuccess) {
   EXPECT_EQ((*responses->GetTokenLengths())[0], 7);
 }
 
+TEST_F(SessionAdvancedTest, RunTextScoringAsyncEmptyTargetTextFailure) {
+  ASSERT_OK_AND_ASSIGN(auto session, CreateTestSession());
+  std::vector<absl::string_view> target_text;
+  auto controller = session->RunTextScoringAsync(
+      target_text, [](absl::StatusOr<Responses> r) {},
+      /*store_token_lengths=*/false);
+  EXPECT_THAT(controller.status(),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument,
+                                        "Target text size should be 1."));
+}
+
+TEST_F(SessionAdvancedTest, RunTextScoringAsyncMultipleTargetTextFailure) {
+  ASSERT_OK_AND_ASSIGN(auto session, CreateTestSession());
+  std::vector<absl::string_view> target_text;
+  target_text.push_back("How's it going?");
+  target_text.push_back("How are you?");
+  auto controller = session->RunTextScoringAsync(
+      target_text, [](absl::StatusOr<Responses> r) {},
+      /*store_token_lengths=*/false);
+  EXPECT_THAT(controller.status(),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument,
+                                        "Target text size should be 1."));
+}
+
+TEST_F(SessionAdvancedTest, RunTextScoringAsyncWithoutTokenLengthsSuccess) {
+  ASSERT_OK_AND_ASSIGN(auto session, CreateTestSession());
+  std::vector<InputData> inputs;
+  inputs.emplace_back(InputText("Hello World!"));
+  EXPECT_OK(session->RunPrefill(inputs));
+  std::vector<absl::string_view> target_texts;
+  target_texts.push_back("How's it going?");
+
+  absl::Notification done;
+  absl::Status status;
+  std::optional<Responses> responses;
+
+  auto controller = session->RunTextScoringAsync(
+      target_texts,
+      [&](absl::StatusOr<Responses> r) {
+        if (!r.ok()) {
+          status = r.status();
+          done.Notify();
+          return;
+        }
+        if (IsTaskEndState(r->GetTaskState())) {
+          responses.emplace(*std::move(r));
+          done.Notify();
+        }
+      }, /*store_token_lengths=*/false);
+  EXPECT_OK(controller);
+
+  done.WaitForNotification();
+
+  EXPECT_OK(status);
+  ASSERT_TRUE(responses.has_value());
+  // Expect a single output candidate with score 0.0f.
+  EXPECT_EQ(responses->GetScores().size(), 1);
+  EXPECT_EQ(responses->GetScores()[0], 0.0f);
+  EXPECT_FALSE(responses->GetTokenLengths().has_value());
+}
+
+TEST_F(SessionAdvancedTest, RunTextScoringAsyncWithTokenLengthsSuccess) {
+  ASSERT_OK_AND_ASSIGN(auto session, CreateTestSession());
+  std::vector<InputData> inputs;
+  inputs.emplace_back(InputText("Hello World!"));
+  EXPECT_OK(session->RunPrefill(inputs));
+  std::vector<absl::string_view> target_texts;
+  target_texts.push_back("How's it going?");
+
+  absl::Notification done;
+  absl::Status status;
+  std::optional<Responses> responses;
+
+  auto controller = session->RunTextScoringAsync(
+      target_texts,
+      [&](absl::StatusOr<Responses> r) {
+        if (!r.ok()) {
+          status = r.status();
+          done.Notify();
+          return;
+        }
+        if (IsTaskEndState(r->GetTaskState())) {
+          responses.emplace(*std::move(r));
+          done.Notify();
+        }
+      }, /*store_token_lengths=*/true);
+  EXPECT_OK(controller);
+
+  done.WaitForNotification();
+
+  EXPECT_OK(status);
+  ASSERT_TRUE(responses.has_value());
+  // Expect a single output candidate with score 0.0f and token length 7.
+  EXPECT_EQ(responses->GetScores().size(), 1);
+  EXPECT_EQ(responses->GetScores()[0], 0.0f);
+  EXPECT_TRUE(responses->GetTokenLengths().has_value());
+  EXPECT_EQ(responses->GetTokenLengths()->size(), 1);
+  EXPECT_EQ((*responses->GetTokenLengths())[0], 7);
+}
+
 }  // namespace
 }  // namespace litert::lm

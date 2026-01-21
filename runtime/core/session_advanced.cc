@@ -238,16 +238,35 @@ absl::StatusOr<Responses> SessionAdvanced::RunTextScoring(
         collected_responses = std::move(responses);
       };
 
+  ASSIGN_OR_RETURN(auto task_controller,
+                   RunTextScoringAsync(target_text,
+                                       std::move(scoring_sync_callback),
+                                       store_token_lengths));
+  RETURN_IF_ERROR(task_controller->WaitUntilDone(Engine::kDefaultTimeout));
+  return collected_responses;
+}
+
+absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>
+SessionAdvanced::RunTextScoringAsync(
+    const std::vector<absl::string_view>& target_text,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+    bool store_token_lengths) {
+  if (target_text.size() != 1) {
+    return absl::InvalidArgumentError("Target text size should be 1.");
+  }
+  auto execution_manager_lock = execution_manager_.lock();
+  if (execution_manager_lock == nullptr) {
+    return absl::FailedPreconditionError("Execution manager is not available.");
+  }
+
   auto cancelled = std::make_shared<std::atomic<bool>>(false);
   ASSIGN_OR_RETURN(auto task_id, execution_manager_lock->GetNewTaskId());
   RETURN_IF_ERROR(execution_manager_lock->AddTextScoringTask(
       session_id_, task_id, last_task_ids_, target_text, store_token_lengths,
-      cancelled, std::move(scoring_sync_callback)));
+      cancelled, std::move(callback)));
 
-  auto task_controller = std::make_unique<AdvancedTaskController>(
-      task_id, cancelled, execution_manager_);
-  RETURN_IF_ERROR(task_controller->WaitUntilDone(Engine::kDefaultTimeout));
-  return collected_responses;
+  return std::make_unique<AdvancedTaskController>(task_id, cancelled,
+                                                  execution_manager_);
 }
 
 absl::StatusOr<Responses> SessionAdvanced::GenerateContent(
