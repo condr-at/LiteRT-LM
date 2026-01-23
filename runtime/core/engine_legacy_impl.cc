@@ -57,7 +57,9 @@
 #if !defined(LITERTLM_CPU_ONLY)
 #include "third_party/odml/infra/genai/inference/executor/gpu_artisan_audio_executor.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_gpu_artisan_executor.h"
+#if !defined(__APPLE__)  // It is unused on MacOS.
 #include "third_party/odml/infra/genai/inference/executor/llm_litert_opencl_executor.h"
+#endif  // !defined(__APPLE__)
 #endif  // !defined(LITERTLM_CPU_ONLY)
 
 namespace litert::lm {
@@ -85,11 +87,13 @@ absl::StatusOr<std::unique_ptr<LlmExecutor>> BuildExecutor(
                                    engine_settings.GetMainExecutorSettings(),
                                    model_resources));
 #if !defined(LITERTLM_CPU_ONLY)
+#if !defined(__APPLE__)  // It is unused on MacOS.
   } else if (engine_settings.GetMainExecutorSettings().GetBackend() ==
              Backend::GPU) {
     ASSIGN_OR_RETURN(executor, oi::LlmLiteRTOpenClExecutor::Create(
                                    engine_settings.GetMainExecutorSettings(),
                                    model_resources));
+#endif  // !defined(__APPLE__)
   } else if (engine_settings.GetMainExecutorSettings().GetBackend() ==
              Backend::GPU_ARTISAN) {
     if (model_resources.litert_lm_model_resources == nullptr) {
