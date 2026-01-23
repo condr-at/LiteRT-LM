@@ -46,7 +46,7 @@
 #include "runtime/engine/shared_flags.h"
 #include "runtime/util/status_macros.h"
 
-ABSL_FLAG(std::string, backend, "gpu",
+ABSL_FLAG(std::string, backend, "cpu",
           "Executor backend to use for LLM execution (cpu, gpu, etc.)");
 ABSL_FLAG(std::string, model_path, "", "Model path to use for LLM execution.");
 ABSL_FLAG(std::string, input_prompt, "",
