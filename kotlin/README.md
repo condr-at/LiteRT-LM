@@ -212,7 +212,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 // Within a coroutine scope
-conversation.sendMessageAsync(Contents.of("What is the capital of France?"))
+conversation.sendMessageAsync("What is the capital of France?")
     .catch { ... } // Error during streaming
     .collect { print(it.toString()) }
 ```
@@ -378,6 +378,13 @@ conversation.sendMessageAsync("What's the weather like in London?", callback)
 The model will decide when to call the tool based on the conversation. The
 results from the tool execution are automatically sent back to the model to
 generate the final response.
+
+To try out tool use, clone the repo and run with
+[example/ToolMain.kt](./java/com/google/ai/edge/litertlm/example/ToolMain.kt):
+
+```bazel
+bazel run -c opt //kotlin/java/com/google/ai/edge/litertlm/example:tool -- <abs_model_path>
+```
 
 ## Error Handling
 
