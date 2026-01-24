@@ -104,11 +104,26 @@ the pre-built binary below to run the LiteRT-LM immediately.
 After the download the `lit` binary, just run `lit` to see the options.
 Simple use case is like:
 
+```shell
+# Set the HuggingFace token in the HUGGING_FACE_HUB_TOKEN environment variable
+# so that lit can pull the model from HuggingFace.
+
+# On Linux or MacOS
+export HUGGING_FACE_HUB_TOKEN="**your huggingface token**"
+
+# On Windows Command Prompt
+set HUGGING_FACE_HUB_TOKEN=your_huggingface_token
+
+# On Windows Powershell
+$env:HUGGING_FACE_HUB_TOKEN = "your_huggingface_token"
 ```
+
+```shell
 lit list --show_all
-lit pull gemma3-1b --hf_token="**your huggingface token**"
+lit pull gemma3-1b
 lit run gemma3-1b [--backend=<cpu|gpu>]
 ```
+
 Note: **Running GPU on Windows needs DirectXShaderCompiler**
  <span id="windows_gpu"></span>
  Download the dxc_2025_07_14.zip or the latest zip file from
