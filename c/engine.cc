@@ -315,6 +315,14 @@ void litert_lm_engine_settings_enable_benchmark(
   }
 }
 
+void litert_lm_engine_settings_set_activation_data_type(
+    LiteRtLmEngineSettings* settings, int activation_data_type_int) {
+  if (settings && settings->settings) {
+    settings->settings->GetMutableMainExecutorSettings().SetActivationDataType(
+      static_cast<litert::lm::ActivationDataType>(activation_data_type_int));
+  }
+}
+
 LiteRtLmEngine* litert_lm_engine_create(
     const LiteRtLmEngineSettings* settings) {
   if (!settings || !settings->settings) {

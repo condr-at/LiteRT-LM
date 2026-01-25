@@ -186,6 +186,16 @@ LITERT_LM_C_API_EXPORT
 void litert_lm_engine_settings_set_cache_dir(LiteRtLmEngineSettings* settings,
                                              const char* cache_dir);
 
+// Sets the activation data type.
+//
+// @param settings The engine settings.
+// @param activation_data_type_int The activation data type. See
+// `ActivationDataType` in executor_settings_base.h for the possible values
+// (e.g., 0 for F32, 1 for F16, 2 for I16, 3 for I8).
+LITERT_LM_C_API_EXPORT
+void litert_lm_engine_settings_set_activation_data_type(
+    LiteRtLmEngineSettings* settings, int activation_data_type_int);
+
 // Enables benchmarking for the engine.
 //
 // @param settings The engine settings.
