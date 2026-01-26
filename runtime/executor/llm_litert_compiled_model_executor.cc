@@ -1546,7 +1546,7 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
         auto input_buffer,
         compiled_model.CreateInputBuffer(prefill_signature_key, input_name));
     if (clear_kv_cache_before_prefill) {
-      RETURN_IF_ERROR(ZeroTensorBuffer(input_buffer));
+      LITERT_RETURN_IF_ERROR(input_buffer.Clear());
     }
     if (backend == Backend::CPU) {
       LITERT_ASSIGN_OR_RETURN(auto output_buffer, input_buffer.Duplicate());
@@ -1627,7 +1627,7 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
                                 compiled_model.CreateInputBuffer(
                                     kDecodeSignatureRunner, input_name));
         if (clear_kv_cache_before_prefill) {
-          RETURN_IF_ERROR(ZeroTensorBuffer(input_buffer));
+          LITERT_RETURN_IF_ERROR(input_buffer.Clear());
         }
         (*decode_input_kv_cache_buffers)[input_name] = std::move(input_buffer);
       }
@@ -1734,7 +1734,7 @@ absl::Status LlmLiteRtCompiledModelExecutorDynamic::PrefillInternal(
           auto input_buffer,
           compiled_model_.CreateInputBuffer("prefill", k_cache_input_name));
       if (clear_kv_cache_before_prefill) {
-        RETURN_IF_ERROR(ZeroTensorBuffer(input_buffer));
+        LITERT_RETURN_IF_ERROR(input_buffer.Clear());
       }
       kv_cache_buffers_1_[k_cache_input_name] = std::move(input_buffer);
     }
@@ -1745,7 +1745,7 @@ absl::Status LlmLiteRtCompiledModelExecutorDynamic::PrefillInternal(
           auto input_buffer,
           compiled_model_.CreateInputBuffer("prefill", v_cache_input_name));
       if (clear_kv_cache_before_prefill) {
-        RETURN_IF_ERROR(ZeroTensorBuffer(input_buffer));
+        LITERT_RETURN_IF_ERROR(input_buffer.Clear());
       }
       kv_cache_buffers_1_[v_cache_input_name] = std::move(input_buffer);
     }

@@ -210,11 +210,11 @@ TEST(LlmLiteRtCompiledModelCacheUtilsTest, ExpandBufferNoExpansionAxis) {
       StatusIs(absl::StatusCode::kInvalidArgument, "No expansion axis found."));
 }
 
-TEST(LlmLiteRtCompiledModelCacheUtilsTest, ZeroTensorBufferTest) {
+TEST(LlmLiteRtCompiledModelCacheUtilsTest, ClearTensorBufferTest) {
   std::vector<float> data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   LITERT_ASSERT_OK_AND_ASSIGN(auto tensor_buffer,
                               CopyToTensorBuffer<float>(data, {1, 1, 5, 2}));
-  ASSERT_OK(ZeroTensorBuffer(tensor_buffer));
+  LITERT_ASSERT_OK(tensor_buffer.Clear());
   LITERT_ASSERT_OK_AND_ASSIGN(auto result_data,
                               CopyFromTensorBuffer<float>(tensor_buffer));
   EXPECT_THAT(result_data,
