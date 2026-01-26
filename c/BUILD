@@ -62,6 +62,44 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "engine_cpu",
+    srcs = [
+        "engine.cc",
+        "litert_lm_logging.cc",
+    ],
+    hdrs = [
+        "engine.h",
+        "litert_lm_logging.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/log:initialize",
+        "@com_google_absl//absl/log:log_sink_registry",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@nlohmann_json//:json",
+        "@litert//litert/c/internal:litert_logging",
+        "//runtime/conversation",
+        "//runtime/conversation:io_types",
+        "//runtime/core:engine_impl_cpu_only",
+        "//runtime/engine:engine_factory",
+        "//runtime/engine:engine_interface",
+        "//runtime/engine:engine_settings",
+        "//runtime/engine:io_types",
+        "//runtime/executor:executor_settings_base",
+        "//runtime/proto:engine_cc_proto",
+        "//runtime/proto:sampler_params_cc_proto",
+    ],
+)
+
 cc_test(
     name = "engine_test",
     srcs = ["engine_test.cc"],
