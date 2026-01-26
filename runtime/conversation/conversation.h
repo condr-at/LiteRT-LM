@@ -27,6 +27,8 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "runtime/components/constrained_decoding/constraint.h"
+#include "runtime/components/constrained_decoding/constraint_provider.h"
+#include "runtime/components/constrained_decoding/constraint_provider_config.h"
 #include "runtime/components/prompt_template.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/conversation/model_data_processor/config_registry.h"
@@ -138,11 +140,18 @@ class ConversationConfig {
       return *this;
     }
 
+    // Sets the configuration for the constraint provider.
+    Builder& SetConstraintProviderConfig(
+        const ConstraintProviderConfig& constraint_provider_config) {
+      constraint_provider_config_ = constraint_provider_config;
+      return *this;
+    }
+
     absl::StatusOr<ConversationConfig> Build(const Engine& engine) {
       return ConversationConfig::CreateInternal(
           engine, session_config_, preface_, overwrite_prompt_template_,
           overwrite_processor_config_, enable_constrained_decoding_,
-          prefill_preface_on_init_);
+          prefill_preface_on_init_, constraint_provider_config_);
     }
 
    private:
@@ -152,7 +161,14 @@ class ConversationConfig {
     std::optional<DataProcessorConfig> overwrite_processor_config_;
     bool enable_constrained_decoding_ = false;
     bool prefill_preface_on_init_ = false;
+    std::optional<ConstraintProviderConfig> constraint_provider_config_;
   };
+
+  // Returns the constrained decoding config.
+  const std::optional<ConstraintProviderConfig>& constraint_provider_config()
+      const {
+    return constraint_provider_config_;
+  }
 
  private:
   // Creates a ConversationConfig.
@@ -186,19 +202,24 @@ class ConversationConfig {
       std::optional<DataProcessorConfig> overwrite_processor_config =
           std::nullopt,
       bool enable_constrained_decoding = false,
-      bool prefill_preface_on_init = false);
+      bool prefill_preface_on_init = false,
+      std::optional<ConstraintProviderConfig> constraint_provider_config =
+          std::nullopt);
 
   explicit ConversationConfig(SessionConfig session_config, Preface preface,
                               PromptTemplate prompt_template,
                               DataProcessorConfig processor_config,
                               bool constrained_decoding_enabled = false,
-                              bool prefill_preface_on_init = false)
+                              bool prefill_preface_on_init = false,
+                              std::optional<ConstraintProviderConfig>
+                                  constraint_provider_config = std::nullopt)
       : session_config_(std::move(session_config)),
         preface_(std::move(preface)),
         prompt_template_(std::move(prompt_template)),
         processor_config_(std::move(processor_config)),
         constrained_decoding_enabled_(constrained_decoding_enabled),
-        prefill_preface_on_init_(prefill_preface_on_init) {}
+        prefill_preface_on_init_(prefill_preface_on_init),
+        constraint_provider_config_(std::move(constraint_provider_config)) {}
 
   SessionConfig session_config_;
   Preface preface_;
@@ -206,6 +227,7 @@ class ConversationConfig {
   DataProcessorConfig processor_config_;
   bool constrained_decoding_enabled_;
   bool prefill_preface_on_init_;
+  std::optional<ConstraintProviderConfig> constraint_provider_config_;
 };
 
 // A multi-turn centric stateful Conversation API for high-level user
@@ -272,7 +294,8 @@ class Conversation {
   // - The complete message from the LLM.
   absl::StatusOr<Message> SendMessage(
       const Message& message,
-      std::optional<DataProcessorArguments> args = std::nullopt);
+      std::optional<DataProcessorArguments> args = std::nullopt,
+      std::optional<ConstraintArg> decoding_constraint = std::nullopt);
 
   // Sends a message to the LLM and process the asynchronous message results via
   // the user_callback.
@@ -298,7 +321,8 @@ class Conversation {
   absl::Status SendMessageAsync(
       const Message& message,
       absl::AnyInvocable<void(absl::StatusOr<Message>)> user_callback,
-      std::optional<DataProcessorArguments> args = std::nullopt);
+      std::optional<DataProcessorArguments> args = std::nullopt,
+      std::optional<ConstraintArg> decoding_constraint = std::nullopt);
 
   // Returns the history of the conversation.
   // Note: the return value is a copy of the history, which may be expensive
@@ -352,16 +376,19 @@ class Conversation {
   explicit Conversation(
       std::unique_ptr<Engine::Session> session,
       std::unique_ptr<ModelDataProcessor> model_data_processor, Preface preface,
-      PromptTemplate prompt_template, ConversationConfig config)
+      PromptTemplate prompt_template, ConversationConfig config,
+      std::unique_ptr<ConstraintProvider> constraint_provider = nullptr)
       : session_(std::move(session)),
         model_data_processor_(std::move(model_data_processor)),
         preface_(preface),
         prompt_template_(std::move(prompt_template)),
-        config_(config) {}
+        config_(config),
+        constraint_provider_(std::move(constraint_provider)) {}
 
   absl::StatusOr<std::string> GetSingleTurnText(const Message& message) const;
 
-  absl::StatusOr<DecodeConfig> CreateDecodeConfig();
+  absl::StatusOr<DecodeConfig> CreateDecodeConfig(
+      std::optional<ConstraintArg> decoding_constraint = std::nullopt);
 
   std::unique_ptr<Engine::Session> session_;
   std::unique_ptr<ModelDataProcessor> model_data_processor_;
@@ -371,6 +398,7 @@ class Conversation {
   // if any.
   std::unique_ptr<Constraint> constraint_;
   const ConversationConfig config_;
+  std::unique_ptr<ConstraintProvider> constraint_provider_ = nullptr;
   mutable absl::Mutex history_mutex_;
   std::vector<Message> history_ ABSL_GUARDED_BY(history_mutex_);
 };

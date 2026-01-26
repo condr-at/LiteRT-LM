@@ -34,6 +34,9 @@
 #include "absl/time/clock.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
+#include "runtime/components/constrained_decoding/bitmap.h"
+#include "runtime/components/constrained_decoding/constraint.h"
+#include "runtime/components/constrained_decoding/external_constraint_config.h"
 #include "runtime/components/prompt_template.h"
 #include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
@@ -1161,6 +1164,80 @@ TEST_P(ConversationCancellationTest, CancelProcessWithBenchmarkInfo) {
 INSTANTIATE_TEST_SUITE_P(ConversationCancellationTest,
                          ConversationCancellationTest, testing::Bool(),
                          testing::PrintToStringParamName());
+
+class MockConstraint : public Constraint {
+ public:
+  class MockState : public State {
+   public:
+    ~MockState() override = default;
+  };
+  MOCK_METHOD(std::unique_ptr<State>, Start, (), (const, override));
+  MOCK_METHOD(bool, IsEnded, (const State& state), (const, override));
+  MOCK_METHOD(int, GetVocabularySize, (), (const, override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<State>>, ComputeNext,
+              (const State& state, int token), (const, override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Bitmap>>, ComputeBitmap,
+              (const State& state), (const, override));
+};
+
+TEST_P(ConversationTest, SendMessageWithConstraint) {
+  // Set up mock Session.
+  auto mock_session = std::make_unique<MockSession>();
+  MockSession* mock_session_ptr = mock_session.get();
+  SessionConfig session_config = SessionConfig::CreateDefault();
+  session_config.SetStartTokenId(0);
+  session_config.GetMutableStopTokenIds().push_back({1});
+  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
+  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
+      .WillRepeatedly(testing::ReturnRef(session_config));
+  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
+
+  // Set up mock Engine.
+  auto mock_engine = std::make_unique<MockEngine>();
+  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
+      .WillOnce(testing::Return(std::move(mock_session)));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
+  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
+                                                 model_assets, Backend::CPU));
+  EXPECT_CALL(*mock_engine, GetEngineSettings())
+      .WillRepeatedly(testing::ReturnRef(engine_settings));
+
+  // Create Conversation with ExternalConstraintConfig.
+  ASSERT_OK_AND_ASSIGN(
+      auto conversation_config,
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config)
+          .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
+          .SetConstraintProviderConfig(ExternalConstraintConfig())
+          .Build(*mock_engine));
+  ASSERT_OK_AND_ASSIGN(auto conversation,
+                       Conversation::Create(*mock_engine, conversation_config));
+
+  // Create a mock constraint.
+  auto mock_constraint = std::make_unique<MockConstraint>();
+  Constraint* mock_constraint_ptr = mock_constraint.get();
+  ExternalConstraintArg constraint_arg;
+  constraint_arg.constraint = std::move(mock_constraint);
+
+  // Send a message with the constraint.
+  JsonMessage user_message = {{"role", "user"}, {"content", "How are you?"}};
+
+  EXPECT_CALL(*mock_session_ptr, RunPrefill(testing::_))
+      .WillOnce(testing::Return(absl::OkStatus()));
+
+  // Verify that the constraint is passed to RunDecode.
+  EXPECT_CALL(*mock_session_ptr,
+              RunDecode(testing::Property(&DecodeConfig::GetConstraint,
+                                          mock_constraint_ptr)))
+      .WillOnce(
+          testing::Return(Responses(TaskState::kProcessing, {"I am good."})));
+
+  ASSERT_OK_AND_ASSIGN(const Message response,
+                       conversation->SendMessage(user_message, std::nullopt,
+                                                 std::move(constraint_arg)));
+}
 
 }  // namespace
 }  // namespace litert::lm

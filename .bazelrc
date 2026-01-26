@@ -406,6 +406,9 @@ build:avx_win --copt=/arch:AVX
 build:linux_x86_64 --copt=-mavx2
 build:windows --copt=/arch:AVX2
 
+# Disable whole archive on Windows to avoid symbol conflicts. See b/469455895.
+build:windows --legacy_whole_archive=0
+
 # Enable all targets in XLA
 build:cpu_cross --define=with_cross_compiler_support=true
 

@@ -273,3 +273,37 @@ cc_test(
         "//runtime/util:test_utils",
     ],
 )
+
+cc_library(
+    name = "constraint_provider_factory",
+    srcs = ["constraint_provider_factory.cc"],
+    hdrs = ["constraint_provider_factory.h"],
+    deps = [
+        ":constraint_provider",
+        ":constraint_provider_config",
+        ":external_constraint_config",
+        ":external_constraint_provider",
+        ":llg_constraint_config",
+        ":llg_constraint_provider",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "//runtime/components:tokenizer",
+    ],
+)
+
+cc_test(
+    name = "constraint_provider_factory_test",
+    srcs = ["constraint_provider_factory_test.cc"],
+    deps = [
+        ":constraint_provider_config",
+        ":constraint_provider_factory",
+        ":external_constraint_config",
+        ":llg_constraint_config",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/components:tokenizer",
+        "//runtime/util:test_utils",
+    ],
+)

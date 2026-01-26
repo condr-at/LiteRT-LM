@@ -32,6 +32,9 @@
 #include "absl/time/clock.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
+#include "runtime/components/constrained_decoding/constraint_provider.h"
+#include "runtime/components/constrained_decoding/constraint_provider_config.h"
+#include "runtime/components/constrained_decoding/constraint_provider_factory.h"
 #include "runtime/components/prompt_template.h"
 #include "runtime/conversation/internal_callback_util.h"
 #include "runtime/conversation/io_types.h"
@@ -87,7 +90,8 @@ absl::StatusOr<ConversationConfig> ConversationConfig::CreateInternal(
     std::optional<Preface> preface,
     std::optional<PromptTemplate> overwrite_prompt_template,
     std::optional<DataProcessorConfig> overwrite_processor_config,
-    bool enable_constrained_decoding, bool prefill_preface_on_init) {
+    bool enable_constrained_decoding, bool prefill_preface_on_init,
+    std::optional<ConstraintProviderConfig> constraint_provider_config) {
   if (preface.has_value() && !std::holds_alternative<JsonPreface>(*preface)) {
     return absl::InvalidArgumentError("Only JsonPreface is supported for now.");
   }
@@ -135,7 +139,8 @@ absl::StatusOr<ConversationConfig> ConversationConfig::CreateInternal(
 
   return ConversationConfig(
       session_config_copy, preface.value_or(JsonPreface()), prompt_template,
-      processor_config, enable_constrained_decoding, prefill_preface_on_init);
+      processor_config, enable_constrained_decoding, prefill_preface_on_init,
+      std::move(constraint_provider_config));
 }
 
 absl::StatusOr<std::string> Conversation::GetSingleTurnText(
@@ -198,11 +203,15 @@ absl::StatusOr<std::string> Conversation::GetSingleTurnText(
                             new_string.size() - old_string.size())};
 }
 
-absl::StatusOr<DecodeConfig> Conversation::CreateDecodeConfig() {
+absl::StatusOr<DecodeConfig> Conversation::CreateDecodeConfig(
+    std::optional<ConstraintArg> decoding_constraint) {
   auto decode_config = DecodeConfig::CreateDefault();
-  // Create a constraint from the tools defined in the preface, if any.
-  if (config_.constrained_decoding_enabled() && constraint_ == nullptr &&
-      std::holds_alternative<JsonPreface>(preface_)) {
+  if (decoding_constraint.has_value() && constraint_provider_ != nullptr) {
+    ASSIGN_OR_RETURN(constraint_, constraint_provider_->CreateConstraint(
+                                      std::move(decoding_constraint).value()));
+  } else if (config_.constrained_decoding_enabled() && constraint_ == nullptr &&
+             std::holds_alternative<JsonPreface>(preface_)) {
+    // Create a constraint from the tools defined in the preface, if any.
     auto json_preface = std::get<JsonPreface>(preface_);
     if (!json_preface.tools.is_null()) {
       auto constraint =
@@ -233,9 +242,17 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
                                session->GetSessionConfig().GetStopTokenIds(),
                                config.constrained_decoding_enabled(),
                                config.GetPromptTemplate().GetCapabilities()));
+  std::unique_ptr<ConstraintProvider> constraint_provider;
+  if (config.constraint_provider_config().has_value()) {
+    ASSIGN_OR_RETURN(constraint_provider,
+                     CreateConstraintProvider(
+                         config.constraint_provider_config().value(),
+                         session->GetTokenizer(),
+                         session->GetSessionConfig().GetStopTokenIds()));
+  }
   auto conversation = absl::WrapUnique(new Conversation(
       std::move(session), std::move(model_data_processor), config.GetPreface(),
-      config.GetPromptTemplate(), config));
+      config.GetPromptTemplate(), config, std::move(constraint_provider)));
   if (config.prefill_preface_on_init()) {
     PromptTemplateInput tmpl_input;
     RETURN_IF_ERROR(FillPrefaceForPromptTemplateInput(
@@ -264,7 +281,8 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
 }
 
 absl::StatusOr<Message> Conversation::SendMessage(
-    const Message& message, std::optional<DataProcessorArguments> args) {
+    const Message& message, std::optional<DataProcessorArguments> args,
+    std::optional<ConstraintArg> decoding_constraint) {
   if (!std::holds_alternative<nlohmann::ordered_json>(message)) {
     return absl::InvalidArgumentError("Json message is required for now.");
   }
@@ -285,7 +303,8 @@ absl::StatusOr<Message> Conversation::SendMessage(
           single_turn_text, nlohmann::ordered_json::array({json_message}),
           args.value_or(std::monostate())));
   RETURN_IF_ERROR(session_->RunPrefill(session_inputs));
-  ASSIGN_OR_RETURN(auto decode_config, CreateDecodeConfig());
+  ASSIGN_OR_RETURN(auto decode_config,
+                   CreateDecodeConfig(std::move(decoding_constraint)));
   ASSIGN_OR_RETURN(const Responses& responses,
                    session_->RunDecode(decode_config));
   ASSIGN_OR_RETURN(const Message assistant_message,
@@ -298,7 +317,8 @@ absl::StatusOr<Message> Conversation::SendMessage(
 absl::Status Conversation::SendMessageAsync(
     const Message& message,
     absl::AnyInvocable<void(absl::StatusOr<Message>)> user_callback,
-    std::optional<DataProcessorArguments> args) {
+    std::optional<DataProcessorArguments> args,
+    std::optional<ConstraintArg> decoding_constraint) {
   if (!std::holds_alternative<nlohmann::ordered_json>(message)) {
     return absl::InvalidArgumentError("Json message is required for now.");
   }
@@ -339,7 +359,8 @@ absl::Status Conversation::SendMessageAsync(
           std::move(user_callback), std::move(cancel_callback),
           std::move(complete_message_callback));
 
-  ASSIGN_OR_RETURN(auto decode_config, CreateDecodeConfig());
+  ASSIGN_OR_RETURN(auto decode_config,
+                   CreateDecodeConfig(std::move(decoding_constraint)));
   ASSIGN_OR_RETURN(
       std::ignore,
       session_->RunPrefillAsync(
