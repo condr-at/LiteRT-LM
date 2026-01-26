@@ -253,4 +253,32 @@ ExecutorSettingsBase::GetWeightCacheFile(absl::string_view suffix) const {
   return JoinPath(GetCacheDir(), absl::StrCat(Basename(model_path), suffix));
 }
 
+absl::StatusOr<
+    std::variant<std::string, std::shared_ptr<litert::lm::ScopedFile>>>
+ExecutorSettingsBase::GetProgramCacheFile(absl::string_view suffix) const {
+  // Cache is explicitly disabled.
+  if (GetCacheDir() == ":nocache") {
+    return absl::InvalidArgumentError("Cache is explicitly disabled.");
+  }
+
+  // Prefer to use the scoped cache file if it's set.
+  if (GetScopedProgramCacheFile()) {
+    return GetScopedProgramCacheFile();
+  }
+
+  auto model_path = GetModelAssets().GetPath().value_or("");
+
+  // There is no model path to suffix.
+  if (model_path.empty()) {
+    return absl::InvalidArgumentError(
+        "Cache path cannot be computed without knowing the model path.");
+  }
+
+  if (GetCacheDir().empty()) {
+    return absl::StrCat(model_path, suffix);
+  }
+
+  return JoinPath(GetCacheDir(), absl::StrCat(Basename(model_path), suffix));
+}
+
 }  // namespace litert::lm

@@ -1336,7 +1336,7 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
   // TODO(b/405424188): - Add support for NPU backends.
   LITERT_ASSIGN_OR_RETURN(auto compilation_options,
                           ::litert::Options::Create());
-  std::string weight_cache_path = executor_settings.GetCacheDir();
+  std::string cache_path = executor_settings.GetCacheDir();
   auto activation_data_type = ActivationDataType::FLOAT16;
   // TODO(b/433590109): Some GPUs do not support FP16, so we need to check the
   // capabilities of the GPU and set the activation data type accordingly.
@@ -1392,24 +1392,54 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
 #else   // !__APPLE__
       gpu_compilation_options.SetPreferTextureWeights(true);
 #endif  // !__APPLE__
-      if (weight_cache_path != ":nocache") {
-        ASSIGN_OR_RETURN(auto model_path,
-                         executor_settings.GetModelAssets().GetPath());
-        if (weight_cache_path.empty()) {
-          weight_cache_path = std::filesystem::path(std::string(model_path))
-                                  .parent_path()
-                                  .string();
-          if (weight_cache_path.empty()) {
-            weight_cache_path = std::filesystem::current_path().string();
+      ASSIGN_OR_RETURN(auto model_path,
+                       executor_settings.GetModelAssets().GetPath());
+      absl::string_view model_name = Basename(model_path);
+      gpu_compilation_options.SetModelCacheKey(model_name.data());
+
+      bool serialization_dir_set = false;
+      if (cache_path != ":nocache") {
+        if (cache_path.empty()) {
+          cache_path = std::filesystem::path(std::string(model_path))
+                           .parent_path()
+                           .string();
+          if (cache_path.empty()) {
+            cache_path = std::filesystem::current_path().string();
           }
         }
-        ABSL_LOG(INFO) << "Setting serialization dir: " << weight_cache_path;
-        gpu_compilation_options.SetSerializationDir(weight_cache_path.c_str());
-        absl::string_view model_name = Basename(model_path);
-        gpu_compilation_options.SetModelCacheKey(model_name.data());
-        gpu_compilation_options.SetSerializeProgramCache(true);
+        ABSL_LOG(INFO) << "Setting serialization dir: " << cache_path;
+        gpu_compilation_options.SetSerializationDir(cache_path.c_str());
+        serialization_dir_set = true;
         gpu_compilation_options.SetSerializeExternalTensors(true);
+      } else {
+        gpu_compilation_options.SetSerializeExternalTensors(false);
       }
+
+      auto program_cache_file =
+          executor_settings.GetProgramCacheFile(".mldrift_program_cache.bin");
+      if (program_cache_file.ok()) {
+        if (std::holds_alternative<std::string>(*program_cache_file)) {
+          if (!serialization_dir_set) {
+            cache_path = std::filesystem::path(
+                             std::get<std::string>(*program_cache_file))
+                             .parent_path()
+                             .string();
+            ABSL_LOG(INFO) << "Setting program cache dir: " << cache_path;
+            gpu_compilation_options.SetSerializationDir(cache_path.c_str());
+          }
+        } else {
+          auto scoped_cache_file =
+              std::get<std::shared_ptr<litert::lm::ScopedFile>>(
+                  *program_cache_file);
+          ASSIGN_OR_RETURN(auto duplicated, scoped_cache_file->Duplicate());
+          ASSIGN_OR_RETURN(int fd, duplicated.Release());
+          gpu_compilation_options.SetProgramCacheFd(fd);
+        }
+        gpu_compilation_options.SetSerializeProgramCache(true);
+      } else {
+        gpu_compilation_options.SetSerializeProgramCache(false);
+      }
+
       // Use NoExternalTensorsMode to get better performance.
       bool external_tensor_mode =
           executor_settings.GetBackendConfig<GpuConfig>()->external_tensor_mode;
@@ -1484,9 +1514,8 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
           executor_settings.GetWeightCacheFile(".xnnpack_cache");
       if (weight_cache_file.ok()) {
         if (std::holds_alternative<std::string>(*weight_cache_file)) {
-          weight_cache_path = std::get<std::string>(*weight_cache_file);
-          cpu_compilation_options.SetXNNPackWeightCachePath(
-              weight_cache_path.c_str());
+          cache_path = std::get<std::string>(*weight_cache_file);
+          cpu_compilation_options.SetXNNPackWeightCachePath(cache_path.c_str());
         } else {
           auto scoped_cache_file =
               std::get<std::shared_ptr<ScopedFile>>(*weight_cache_file);
@@ -1666,7 +1695,7 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
       std::move(output_kv_cache_buffers),
       std::move(decode_input_kv_cache_buffers),
       std::move(decode_output_kv_cache_buffers), std::move(prefill_runner_set),
-      signatures, batch_size, std::move(weight_cache_path),
+      signatures, batch_size, std::move(cache_path),
       std::move(embedding_lookup), std::move(per_layer_embedding_lookup),
       use_fp16_precision, activation_data_type));
 }

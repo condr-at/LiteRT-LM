@@ -198,6 +198,21 @@ class ExecutorSettingsBase {
   const std::string& GetLitertDispatchLibDir() const {
     return litert_dispatch_lib_dir_;
   }
+
+  // Should be used by consumers who want to write to a single program cache
+  // file. Returns, in order of preference:
+  //   1. an open file descriptor to the program cache file,
+  //   2. the file path of the program cache file, based on the given cache
+  //      directory and/or model path. Will append `suffix`.
+  //   3. an error if a program cache file could not be determined.
+  absl::StatusOr<
+      std::variant<std::string, std::shared_ptr<litert::lm::ScopedFile>>>
+  GetProgramCacheFile(absl::string_view suffix = ".program_cache") const;
+  // Prefer to use `GetProgramCacheFile()` if possible.
+  std::shared_ptr<litert::lm::ScopedFile> GetScopedProgramCacheFile() const {
+    return scoped_program_cache_file_;
+  }
+
   // Setter APIs.
   void SetCacheDir(const std::string& cache_dir) { cache_dir_ = cache_dir; }
   void SetScopedCacheFile(std::shared_ptr<litert::lm::ScopedFile> cache_file) {
@@ -205,6 +220,11 @@ class ExecutorSettingsBase {
   }
   void SetLitertDispatchLibDir(const std::string& litert_dispatch_lib_dir) {
     litert_dispatch_lib_dir_ = litert_dispatch_lib_dir;
+  }
+
+  void SetScopedProgramCacheFile(
+      std::shared_ptr<litert::lm::ScopedFile> cache_file) {
+    scoped_program_cache_file_ = std::move(cache_file);
   }
 
  protected:
@@ -228,6 +248,10 @@ class ExecutorSettingsBase {
   // Open file for writing the weight cache to and later loading cache from.
   // If set, this should be preferred over the `cache_dir_`.
   std::shared_ptr<litert::lm::ScopedFile> scoped_cache_file_;
+
+  // Open file for writing the program cache to and later loading cache from.
+  // If set, this should be preferred over the `cache_dir_`.
+  std::shared_ptr<litert::lm::ScopedFile> scoped_program_cache_file_;
 
   // Optional setting for specific activation data type. If not set, the
   // default activation data type for each OS & backend will be used. Setting

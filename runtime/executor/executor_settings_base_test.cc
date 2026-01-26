@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -172,6 +173,38 @@ TEST(LlmExecutorConfigTest, ModelAssetsMemoryMapped) {
   oss << *model_assets;
   EXPECT_THAT(oss.str(), testing::HasSubstr("model_file memory mapped file"));
   EXPECT_THAT(oss.str(), testing::HasSubstr("FAKE_WEIGHTS_NONE"));
+}
+
+class TestExecutorSettings : public ExecutorSettingsBase {
+ public:
+  explicit TestExecutorSettings(ModelAssets model_assets)
+      : ExecutorSettingsBase(std::move(model_assets)) {}
+};
+
+TEST(LlmExecutorConfigTest, GetProgramCacheFile) {
+  auto model_assets = ModelAssets::Create("/path/to/model.tflite");
+  ASSERT_OK(model_assets);
+  TestExecutorSettings settings(*model_assets);
+  settings.SetCacheDir("/cache/dir");
+
+  auto result = settings.GetProgramCacheFile();
+  ASSERT_OK(result);
+  EXPECT_TRUE(std::holds_alternative<std::string>(*result));
+  EXPECT_THAT(std::get<std::string>(*result),
+              testing::HasSubstr("model.tflite.program_cache"));
+}
+
+TEST(LlmExecutorConfigTest, GetProgramCacheFileWithSuffix) {
+  auto model_assets = ModelAssets::Create("/path/to/model.tflite");
+  ASSERT_OK(model_assets);
+  TestExecutorSettings settings(*model_assets);
+  settings.SetCacheDir("/cache/dir");
+
+  auto result = settings.GetProgramCacheFile(".mysuffix");
+  ASSERT_OK(result);
+  EXPECT_TRUE(std::holds_alternative<std::string>(*result));
+  EXPECT_THAT(std::get<std::string>(*result),
+              testing::HasSubstr("model.tflite.mysuffix"));
 }
 
 }  // namespace
