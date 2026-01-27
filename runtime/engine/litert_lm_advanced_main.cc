@@ -142,7 +142,8 @@ absl::Status MainHelper(int argc, char** argv) {
            "[--share_constant_tensors=<true|false>]"
            "[--num_iterations=<num_iterations>]"
            "[--litert_dispatch_lib_dir=<litert_dispatch_lib_dir>]"
-           "[--sampler_handles_input=<true|false>]";
+           "[--sampler_handles_input=<true|false>]"
+           "[--disable_cache=<true|false>]";
     ABSL_LOG(INFO)
         << "To provide data for multimodality, use [image:/path/to/image.jpg] "
            "or [audio:/path/to/audio.wav] in the input prompt. e.g. \"Describe "
