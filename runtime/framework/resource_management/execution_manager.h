@@ -38,6 +38,7 @@
 #include "runtime/components/sampler.h"
 #include "runtime/components/stop_token_detector.h"
 #include "runtime/components/tokenizer.h"
+#include "runtime/engine/engine.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/audio_executor_settings.h"
@@ -121,7 +122,9 @@ class ExecutionManager {
       audio_executor_settings,
       ::litert::Environment* absl_nullable litert_env);
 
-  ~ExecutionManager() = default;
+  ~ExecutionManager() {
+    WaitUntilAllDone(Engine::kDefaultTimeout).IgnoreError();
+  };
 
   // Waits until the task is done or the timeout is reached.
   // Returns:

@@ -32,7 +32,6 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_join.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
-#include "absl/synchronization/notification.h"  // from @com_google_absl
 #include "absl/time/clock.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "litert/cc/litert_environment.h"  // from @litert
@@ -238,18 +237,15 @@ CreateAudioExecutorSettings(const std::string& model_path,
 
 absl::AnyInvocable<void(absl::StatusOr<Responses>)> CreateStreamingTestCallback(
     absl::Status& status_ref, TaskState& state_ref,
-    std::vector<std::string>& texts_ref, absl::Notification& done_ref,
-    bool delay_on_next = false) {
-  return [&status_ref, &state_ref, &texts_ref, &done_ref,
+    std::vector<std::string>& texts_ref, bool delay_on_next = false) {
+  return [&status_ref, &state_ref, &texts_ref,
           delay_on_next](absl::StatusOr<Responses> responses) mutable {
     if (!responses.ok()) {
       status_ref = std::move(responses.status());
-      done_ref.Notify();
       return;
     }
     state_ref = responses->GetTaskState();
     if (IsTaskEndState(state_ref)) {
-      done_ref.Notify();
       return;
     }
     if (delay_on_next) {
@@ -743,16 +739,16 @@ TEST_F(SessionAdvancedTest,
   EXPECT_OK(session->RunPrefillAsync(inputs, CreateTestCallback(done_prefill)));
 
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> texts;
-  absl::Notification done_decode = absl::Notification();
   auto decode_config = DecodeConfig::CreateDefault();
   decode_config.SetConstraint(&constraint);
-  EXPECT_OK(session->RunDecodeAsync(
-      CreateStreamingTestCallback(status, task_state, texts, done_decode),
-      decode_config));
+  ASSERT_OK_AND_ASSIGN(auto task_controller,
+                       session->RunDecodeAsync(CreateStreamingTestCallback(
+                                                   status, task_state, texts),
+                                               decode_config));
 
-  done_decode.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDone);
   EXPECT_EQ(texts.size(), 3);
@@ -808,16 +804,16 @@ TEST_F(SessionAdvancedTest,
   EXPECT_OK(session->RunPrefillAsync(inputs, CreateTestCallback(done_prefill)));
 
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> texts;
-  absl::Notification done_decode = absl::Notification();
   auto decode_config = DecodeConfig::CreateDefault();
   decode_config.SetConstraint(&constraint);
-  EXPECT_OK(session->RunDecodeAsync(
-      CreateStreamingTestCallback(status, task_state, texts, done_decode),
-      decode_config));
+  ASSERT_OK_AND_ASSIGN(auto task_controller,
+                       session->RunDecodeAsync(CreateStreamingTestCallback(
+                                                   status, task_state, texts),
+                                               decode_config));
 
-  done_decode.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDone);
   EXPECT_EQ(texts.size(), 3);
@@ -853,14 +849,14 @@ TEST_F(SessionAdvancedTest, RunPrefillAndDecodeAsyncWithInternalSampler) {
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> texts;
-  absl::Notification done = absl::Notification();
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(
-      CreateStreamingTestCallback(status, task_state, texts, done)));
+  ASSERT_OK_AND_ASSIGN(auto task_controller,
+                       session->RunDecodeAsync(CreateStreamingTestCallback(
+                           status, task_state, texts)));
 
-  done.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDone);
   EXPECT_EQ(texts.size(), 7);
@@ -899,14 +895,14 @@ TEST_F(SessionAdvancedTest, RunPrefillAndDecodeAsyncWithExternalSampler) {
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> texts;
-  absl::Notification done = absl::Notification();
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(
-      CreateStreamingTestCallback(status, task_state, texts, done)));
+  ASSERT_OK_AND_ASSIGN(auto task_controller,
+                       session->RunDecodeAsync(CreateStreamingTestCallback(
+                           status, task_state, texts)));
 
-  done.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDone);
   EXPECT_EQ(texts.size(), 7);
@@ -945,11 +941,10 @@ TEST_F(SessionAdvancedTest, GenerateContentStream) {
   absl::Status status;
   TaskState task_state;
   std::vector<std::string> texts;
-  absl::Notification done = absl::Notification();
   EXPECT_OK(session->GenerateContentStream(
-      inputs, CreateStreamingTestCallback(status, task_state, texts, done)));
+      inputs, CreateStreamingTestCallback(status, task_state, texts)));
 
-  done.WaitForNotification();
+  EXPECT_OK(session->WaitUntilDone());
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDone);
   EXPECT_EQ(texts.size(), 7);
@@ -985,9 +980,6 @@ TEST_F(SessionAdvancedTest, RunPrefillEmptyInput) {
                                             session_config, std::nullopt));
 
   std::vector<InputData> inputs;
-  absl::Status status;
-  std::vector<std::string> texts;
-  absl::Notification done;
   EXPECT_THAT(session->RunPrefill(inputs),
               testing::status::StatusIs(absl::StatusCode::kInvalidArgument,
                                         "Input is empty."));
@@ -1028,13 +1020,12 @@ TEST_F(SessionAdvancedTest, RunPrefillAsyncFailed) {
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> texts;
-  absl::Notification done;
   EXPECT_OK(session->RunPrefillAsync(
-      inputs, CreateStreamingTestCallback(status, task_state, texts, done)));
+      inputs, CreateStreamingTestCallback(status, task_state, texts)));
 
-  done.WaitForNotification();
+  EXPECT_OK(execution_manager->WaitUntilAllDone(absl::Seconds(10)));
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(task_state, TaskState::kProcessing);
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kInternal,
@@ -1075,14 +1066,14 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncFailed) {
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> texts;
-  absl::Notification done;
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(
-      CreateStreamingTestCallback(status, task_state, texts, done)));
+  ASSERT_OK_AND_ASSIGN(auto task_controller,
+                       session->RunDecodeAsync(CreateStreamingTestCallback(
+                           status, task_state, texts)));
 
-  done.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(task_state, TaskState::kProcessing);
   EXPECT_THAT(status, testing::status::StatusIs(absl::StatusCode::kInternal,
@@ -1122,13 +1113,14 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncWithCancellationWithInternalSampler) {
   inputs.emplace_back(InputText("Hello World!"));
 
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> responses;
-  absl::Notification done;
 
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(CreateStreamingTestCallback(
-      status, task_state, responses, done, /*delay_on_next=*/true)));
+  ASSERT_OK_AND_ASSIGN(auto task_controller,
+                       session->RunDecodeAsync(CreateStreamingTestCallback(
+                           status, task_state, responses,
+                           /*delay_on_next=*/true)));
 
   // Wait for a short time to ensure the decoding has started.
   absl::SleepFor(absl::Milliseconds(100));
@@ -1137,7 +1129,7 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncWithCancellationWithInternalSampler) {
   session->CancelProcess();
 
   // Wait for the callback to be done.
-  done.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kCancelled);
 }
@@ -1177,13 +1169,14 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncWithCancellationWithExternalSampler) {
   inputs.emplace_back(InputText("Hello World!"));
 
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> responses;
-  absl::Notification done;
 
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(CreateStreamingTestCallback(
-      status, task_state, responses, done, /*delay_on_next=*/true)));
+  ASSERT_OK_AND_ASSIGN(auto task_controller,
+                       session->RunDecodeAsync(CreateStreamingTestCallback(
+                           status, task_state, responses,
+                           /*delay_on_next=*/true)));
 
   // Wait for a short time to ensure the decoding has started.
   absl::SleepFor(absl::Milliseconds(100));
@@ -1192,7 +1185,7 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncWithCancellationWithExternalSampler) {
   session->CancelProcess();
 
   // Wait for the callback to be done.
-  done.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kCancelled);
 }
@@ -1231,15 +1224,14 @@ TEST_F(SessionAdvancedTest,
   inputs.emplace_back(InputText("Hello World!"));
 
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> responses;
-  absl::Notification done;
 
   EXPECT_OK(session->RunPrefill(inputs));
   ASSERT_OK_AND_ASSIGN(
       auto task_controller,
       session->RunDecodeAsync(CreateStreamingTestCallback(
-          status, task_state, responses, done, /*delay_on_next=*/true)));
+          status, task_state, responses, /*delay_on_next=*/true)));
 
   // Wait for a short time to ensure the decoding has started.
   absl::SleepFor(absl::Milliseconds(100));
@@ -1248,7 +1240,7 @@ TEST_F(SessionAdvancedTest,
   EXPECT_OK(task_controller->Cancel());
 
   // Wait for the callback to be done.
-  done.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kCancelled);
 }
@@ -1289,15 +1281,14 @@ TEST_F(SessionAdvancedTest,
   inputs.emplace_back(InputText("Hello World!"));
 
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> responses;
-  absl::Notification done;
 
   EXPECT_OK(session->RunPrefill(inputs));
   ASSERT_OK_AND_ASSIGN(
       auto task_controller,
       session->RunDecodeAsync(CreateStreamingTestCallback(
-          status, task_state, responses, done, /*delay_on_next=*/true)));
+          status, task_state, responses, /*delay_on_next=*/true)));
 
   // Wait for a short time to ensure the decoding has started.
   absl::SleepFor(absl::Milliseconds(100));
@@ -1306,7 +1297,7 @@ TEST_F(SessionAdvancedTest,
   EXPECT_OK(task_controller->Cancel());
 
   // Wait for the callback to be done.
-  done.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kCancelled);
 }
@@ -1323,15 +1314,11 @@ class SessionAdvancedCancellationTest : public testing::TestWithParam<bool> {
     tokenizer_ = std::move(*tokenizer);
     model_resources_ = std::unique_ptr<ModelResources>();
     sampler_params_.set_type(proto::SamplerParameters::TYPE_UNSPECIFIED);
-    // Creating the thread pool of a single thread to execute the works.
-    worker_thread_pool_ = std::make_unique<ThreadPool>(/*name_prefix=*/"engine",
-                                                       /*max_num_threads=*/1);
   }
   bool use_benchmark_info_ = GetParam();
   std::unique_ptr<Tokenizer> tokenizer_;
   std::unique_ptr<ModelResources> model_resources_;
   proto::SamplerParameters sampler_params_;
-  std::unique_ptr<ThreadPool> worker_thread_pool_;
 };
 
 TEST_P(SessionAdvancedCancellationTest,
@@ -1377,19 +1364,20 @@ TEST_P(SessionAdvancedCancellationTest,
   inputs.emplace_back(InputText("Hello World!"));
 
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> responses;
-  absl::Notification done1;
 
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(CreateStreamingTestCallback(
-      status, task_state, responses, done1, /*delay_on_next=*/true)));
+  ASSERT_OK_AND_ASSIGN(
+      auto task_controller,
+      session->RunDecodeAsync(CreateStreamingTestCallback(
+          status, task_state, responses, /*delay_on_next=*/true)));
 
   // Cancel the process.
   session->CancelProcess();
 
   // Wait for the callback to be done.
-  done1.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kCancelled);
 
@@ -1397,15 +1385,14 @@ TEST_P(SessionAdvancedCancellationTest,
   // The second generation should succeed.
   status = absl::OkStatus();
   responses.clear();
-  absl::Notification done2;
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(CreateStreamingTestCallback(
-      status, task_state, responses, done2, /*delay_on_next=*/true)));
-  done2.WaitForNotification();
+  ASSERT_OK_AND_ASSIGN(
+      task_controller,
+      session->RunDecodeAsync(CreateStreamingTestCallback(
+          status, task_state, responses, /*delay_on_next=*/true)));
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDependentTaskCancelled);
-  // Reset worker thread pool to stop accessing session and fake executor.
-  worker_thread_pool_.reset();
 }
 
 TEST_P(SessionAdvancedCancellationTest,
@@ -1453,19 +1440,20 @@ TEST_P(SessionAdvancedCancellationTest,
   inputs.emplace_back(InputText("Hello World!"));
 
   absl::Status status;
-  TaskState task_state;
+  TaskState task_state = TaskState::kUnknown;
   std::vector<std::string> responses;
-  absl::Notification done1;
 
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(CreateStreamingTestCallback(
-      status, task_state, responses, done1, /*delay_on_next=*/true)));
+  ASSERT_OK_AND_ASSIGN(
+      auto task_controller,
+      session->RunDecodeAsync(CreateStreamingTestCallback(
+          status, task_state, responses, /*delay_on_next=*/true)));
 
   // Cancel the process.
   session->CancelProcess();
 
   // Wait for the callback to be done.
-  done1.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kCancelled);
 
@@ -1473,15 +1461,14 @@ TEST_P(SessionAdvancedCancellationTest,
   // The second generation should succeed.
   status = absl::OkStatus();
   responses.clear();
-  absl::Notification done2;
   EXPECT_OK(session->RunPrefill(inputs));
-  EXPECT_OK(session->RunDecodeAsync(CreateStreamingTestCallback(
-      status, task_state, responses, done2, /*delay_on_next=*/true)));
-  done2.WaitForNotification();
+  ASSERT_OK_AND_ASSIGN(
+      task_controller,
+      session->RunDecodeAsync(CreateStreamingTestCallback(
+          status, task_state, responses, /*delay_on_next=*/true)));
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDependentTaskCancelled);
-  // Reset worker thread pool to stop accessing session and fake executor.
-  worker_thread_pool_.reset();
 }
 
 INSTANTIATE_TEST_SUITE_P(SessionAdvancedCancellationTest,
@@ -1522,14 +1509,12 @@ TEST_F(SessionAdvancedTest, RunPrefillAsyncOnCancelledSession) {
   absl::Status status;
   TaskState task_state;
   std::vector<std::string> responses;
-  absl::Notification done;
   // The session is cancelled, so the call should return with a kCancelled
   // error.
   EXPECT_OK(session->RunPrefillAsync(
-      inputs,
-      CreateStreamingTestCallback(status, task_state, responses, done)));
+      inputs, CreateStreamingTestCallback(status, task_state, responses)));
   // Wait for the callback to be done.
-  done.WaitForNotification();
+  EXPECT_OK(execution_manager->WaitUntilAllDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDone);
 }
@@ -1671,16 +1656,16 @@ TEST_F(SessionAdvancedTest,
   TaskState task_state;
   std::vector<std::string> texts;
 
-  absl::Notification done_decode = absl::Notification();
   auto decode_config = DecodeConfig::CreateDefault();
   decode_config.SetConstraint(&constraint);
 
   EXPECT_OK((*session)->RunPrefill(inputs));
-  EXPECT_OK((*session)->RunDecodeAsync(
-      CreateStreamingTestCallback(status, task_state, texts, done_decode),
-      decode_config));
+  ASSERT_OK_AND_ASSIGN(auto task_controller, (*session)->RunDecodeAsync(
+                                                 CreateStreamingTestCallback(
+                                                     status, task_state, texts),
+                                                 decode_config));
 
-  done_decode.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDone);
   EXPECT_EQ(texts.size(), 3);
@@ -1736,16 +1721,16 @@ TEST_F(SessionAdvancedTest,
   absl::Status status;
   TaskState task_state;
   std::vector<std::string> texts;
-  absl::Notification done_decode = absl::Notification();
   auto decode_config = DecodeConfig::CreateDefault();
   decode_config.SetConstraint(&constraint);
 
   EXPECT_OK((*session)->RunPrefill(inputs));
-  EXPECT_OK((*session)->RunDecodeAsync(
-      CreateStreamingTestCallback(status, task_state, texts, done_decode),
-      decode_config));
+  ASSERT_OK_AND_ASSIGN(auto task_controller, (*session)->RunDecodeAsync(
+                                                 CreateStreamingTestCallback(
+                                                     status, task_state, texts),
+                                                 decode_config));
 
-  done_decode.WaitForNotification();
+  EXPECT_OK(task_controller->WaitUntilDone(absl::Seconds(10)));
   EXPECT_OK(status);
   EXPECT_EQ(task_state, TaskState::kDone);
   EXPECT_EQ(texts.size(), 3);
@@ -1976,26 +1961,24 @@ TEST_F(SessionAdvancedTest, RunTextScoringAsyncWithoutTokenLengthsSuccess) {
   std::vector<absl::string_view> target_texts;
   target_texts.push_back("How's it going?");
 
-  absl::Notification done;
   absl::Status status;
   std::optional<Responses> responses;
 
-  auto controller = session->RunTextScoringAsync(
-      target_texts,
-      [&](absl::StatusOr<Responses> r) {
-        if (!r.ok()) {
-          status = r.status();
-          done.Notify();
-          return;
-        }
-        if (IsTaskEndState(r->GetTaskState())) {
-          responses.emplace(*std::move(r));
-          done.Notify();
-        }
-      }, /*store_token_lengths=*/false);
-  EXPECT_OK(controller);
+  ASSERT_OK_AND_ASSIGN(auto controller,
+                       session->RunTextScoringAsync(
+                           target_texts,
+                           [&](absl::StatusOr<Responses> r) {
+                             if (!r.ok()) {
+                               status = r.status();
+                               return;
+                             }
+                             if (IsTaskEndState(r->GetTaskState())) {
+                               responses.emplace(*std::move(r));
+                             }
+                           },
+                           /*store_token_lengths=*/false));
 
-  done.WaitForNotification();
+  EXPECT_OK(controller->WaitUntilDone(absl::Seconds(10)));
 
   EXPECT_OK(status);
   ASSERT_TRUE(responses.has_value());
@@ -2013,26 +1996,24 @@ TEST_F(SessionAdvancedTest, RunTextScoringAsyncWithTokenLengthsSuccess) {
   std::vector<absl::string_view> target_texts;
   target_texts.push_back("How's it going?");
 
-  absl::Notification done;
   absl::Status status;
   std::optional<Responses> responses;
 
-  auto controller = session->RunTextScoringAsync(
-      target_texts,
-      [&](absl::StatusOr<Responses> r) {
-        if (!r.ok()) {
-          status = r.status();
-          done.Notify();
-          return;
-        }
-        if (IsTaskEndState(r->GetTaskState())) {
-          responses.emplace(*std::move(r));
-          done.Notify();
-        }
-      }, /*store_token_lengths=*/true);
-  EXPECT_OK(controller);
+  ASSERT_OK_AND_ASSIGN(auto controller,
+                       session->RunTextScoringAsync(
+                           target_texts,
+                           [&](absl::StatusOr<Responses> r) {
+                             if (!r.ok()) {
+                               status = r.status();
+                               return;
+                             }
+                             if (IsTaskEndState(r->GetTaskState())) {
+                               responses.emplace(*std::move(r));
+                             }
+                           },
+                           /*store_token_lengths=*/true));
 
-  done.WaitForNotification();
+  EXPECT_OK(controller->WaitUntilDone(absl::Seconds(10)));
 
   EXPECT_OK(status);
   ASSERT_TRUE(responses.has_value());

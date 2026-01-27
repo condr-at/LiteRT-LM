@@ -19,7 +19,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
@@ -295,15 +294,12 @@ absl::Status SessionAdvanced::GenerateContentStream(
           return;
         }
         if (prefill_responses->GetTaskState() == TaskState::kDone) {
-          std::thread([this, stream_callback = std::move(stream_callback),
-                       decode_config]() mutable {
             auto decode_task_controller =
                 RunDecodeAsync(std::move(stream_callback), decode_config);
             if (!decode_task_controller.ok()) {
               ABSL_LOG(ERROR) << "Failed to start decode task: "
                               << decode_task_controller.status();
             }
-          }).detach();
         } else if (IsTaskEndState(prefill_responses->GetTaskState())) {
           stream_callback(absl::CancelledError(
               "Prefill task finished in cancelled state."));

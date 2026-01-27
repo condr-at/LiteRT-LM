@@ -175,13 +175,19 @@ absl::Status ExecutionManager::CreateTask(
   }
 
   TaskState task_state = TaskState::kCreated;
-  for (TaskId dep_task_id : dependent_tasks) {
-    if (!task_lookup_.contains(dep_task_id)) {
+  for (auto it = dependent_tasks.begin(); it != dependent_tasks.end();) {
+    TaskId dep_task_id = *it;
+
+    auto task_it = task_lookup_.find(dep_task_id);
+    if (task_it == task_lookup_.end()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Dependency task ", dep_task_id, " not found in task list."));
     }
-    if (IsTaskEndState(task_lookup_.at(dep_task_id).task_state)) {
-      switch (task_lookup_.at(dep_task_id).task_state) {
+    TaskInfo& dep_task_info = task_it->second;
+
+    bool erase_dependency = false;
+    if (IsTaskEndState(dep_task_info.task_state)) {
+      switch (dep_task_info.task_state) {
         case TaskState::kFailed:
           ABSL_FALLTHROUGH_INTENDED;
         case TaskState::kDependentTaskFailed:
@@ -190,27 +196,35 @@ absl::Status ExecutionManager::CreateTask(
         case TaskState::kCancelled:
           ABSL_FALLTHROUGH_INTENDED;
         case TaskState::kDependentTaskCancelled:
-          task_state = TaskState::kDependentTaskCancelled;
+          if (task_state != TaskState::kDependentTaskFailed) {
+            task_state = TaskState::kDependentTaskCancelled;
+          }
           break;
         case TaskState::kDone:
           break;
         case TaskState::kMaxNumTokensReached:
-          task_state = TaskState::kMaxNumTokensReached;
+          if (task_state == TaskState::kCreated) {
+            task_state = TaskState::kMaxNumTokensReached;
+          }
           break;
         default:
           return absl::InvalidArgumentError(
               absl::StrCat("Dependency task ", dep_task_id, " is in end state ",
-                           task_lookup_.at(dep_task_id).task_state,
+                           dep_task_info.task_state,
                            " but not in Done or Cancelled or Failed state."));
       }
-      dependent_tasks.erase(dep_task_id);
+      erase_dependency = true;
+    } else if (dep_task_info.task_state == TaskState::kLastCallbackQueued) {
+      erase_dependency = true;
     } else {
-      if (task_lookup_.at(dep_task_id).task_state ==
-          TaskState::kLastCallbackQueued) {
-        dependent_tasks.erase(dep_task_id);
-      } else {
-        task_lookup_.at(dep_task_id).following_tasks.insert(task_id);
-      }
+      // Dependency task is not finished, so this new task must follow it.
+      dep_task_info.following_tasks.insert(task_id);
+    }
+
+    // `erase()` will invalidate `it`, so advance `it` first.
+    auto copy_it = it++;
+    if (erase_dependency) {
+      dependent_tasks.erase(copy_it);
     }
   }
 
@@ -258,7 +272,12 @@ absl::Status ExecutionManager::QueueTask(TaskId task_id) {
 
   auto task = std::move(task_lookup_.at(task_id).task);
 
-  RETURN_IF_ERROR(execution_thread_pool_->Schedule(std::move(task)));
+  if (execution_thread_pool_ != nullptr) {
+    RETURN_IF_ERROR(execution_thread_pool_->Schedule(std::move(task)));
+  } else {
+    ABSL_LOG(ERROR) << "Execution thread pool is null, skipping task: "
+                    << task_id;
+  }
 
   task_lookup_.at(task_id).callback(Responses(TaskState::kQueued));
   RETURN_IF_ERROR(UpdateTaskState(task_id, TaskState::kQueued));
@@ -377,24 +396,32 @@ absl::Status ExecutionManager::FinishTask(
 
     TaskState next_task_state =
         responses.ok() ? responses->GetTaskState() : TaskState::kFailed;
-    RETURN_IF_ERROR(callback_thread_pool_->Schedule(
-        [callback = std::move(callback), responses = std::move(responses),
-         task_id = task_id, next_task_state = std::move(next_task_state),
-         this]() mutable {
-          callback(std::move(responses));
-          absl::MutexLock lock(session_and_task_lookup_mutex_);
-          auto status = UpdateTaskState(task_id, next_task_state);
-          if (!status.ok()) {
-            ABSL_LOG(ERROR) << "Failed to update task state: " << status
-                            << " with task id: " << task_id;
-          }
-        }));
-    RETURN_IF_ERROR(UpdateTaskState(task_id, TaskState::kLastCallbackQueued));
+    if (callback_thread_pool_ != nullptr) {
+      RETURN_IF_ERROR(callback_thread_pool_->Schedule(
+          [callback = std::move(callback), responses = std::move(responses),
+           task_id = task_id, next_task_state = std::move(next_task_state),
+           this]() mutable {
+            callback(std::move(responses));
+            absl::MutexLock lock(session_and_task_lookup_mutex_);
+            auto status = UpdateTaskState(task_id, next_task_state);
+            if (!status.ok()) {
+              ABSL_LOG(ERROR) << "Failed to update task state: " << status
+                              << " with task id: " << task_id;
+            }
+          }));
+      RETURN_IF_ERROR(UpdateTaskState(task_id, TaskState::kLastCallbackQueued));
+    } else {
+      callback(
+          absl::InternalError("Callback thread pool is null, skipping "
+                              "callback and ignoring task state."));
+    }
   }
 
-  // TODO b/476205457 - Consider to use a asynchronous approach to handle the
-  // callback, and remove this WaitUntilDone.
-  RETURN_IF_ERROR(callback_thread_pool_->WaitUntilDone(absl::Seconds(10)));
+  if (callback_thread_pool_ != nullptr) {
+    // TODO b/476205457 - Consider to use a asynchronous approach to handle the
+    // callback, and remove this WaitUntilDone.
+    RETURN_IF_ERROR(callback_thread_pool_->WaitUntilDone(absl::Seconds(10)));
+  }
 
   return absl::OkStatus();
 }
