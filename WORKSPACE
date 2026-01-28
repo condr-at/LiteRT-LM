@@ -34,87 +34,13 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_platform/releases/download/0.1.0/rules_platform-0.1.0.tar.gz",
 )
 
-# Rust (for HuggingFace Tokenizers)
+# Lower the version from 1.24.5 that tensorflow uses to 1.23.1, the highest version which don't have
+# issues with missing LC_UUID, DEVELOPER_DIR or SDKROOT on MacOS Tahoe.
 http_archive(
-    name = "rules_rust",
-    patches = ["@//:PATCH.rules_rust"],
-    sha256 = "53c1bac7ec48f7ce48c4c1c6aa006f27515add2aeb05725937224e6e00ec7cea",
-    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.61.0/rules_rust-0.61.0.tar.gz",
+    name = "build_bazel_apple_support",
+    sha256 = "ee20cc5c0bab47065473c8033d462374dd38d172406ecc8de5c8f08487943f2f",
+    url = "https://github.com/bazelbuild/apple_support/releases/download/1.23.1/apple_support.1.23.1.tar.gz",
 )
-
-load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_register_toolchains")
-
-rules_rust_dependencies()
-
-rust_register_toolchains(
-    edition = "2021",
-    extra_target_triples = [
-        # Explicitly add toolchains for mobile. Desktop platforms are supported by default.
-        "aarch64-linux-android",
-        "aarch64-apple-ios",
-        "aarch64-apple-ios-sim",
-    ],
-)
-
-load("@rules_rust//crate_universe:repositories.bzl", "crate_universe_dependencies")
-
-crate_universe_dependencies()
-
-load("@rules_rust//crate_universe:defs.bzl", "crate", "crates_repository")
-
-crates_repository(
-    name = "crate_index",
-    annotations = {
-        "llguidance": [
-            crate.annotation(
-                additive_build_file = "@//:BUILD.llguidance",
-                gen_build_script = False,
-                patches = [
-                    "@//:PATCH.llguidance_regexvec",
-                    "@//:PATCH.llguidance_numeric",
-                    "@//:PATCH.llguidance_grammar",
-                    "@//:PATCH.llguidance_parser",
-                    "@//:PATCH.llguidance_perf",
-                ],
-            ),
-        ],
-        "toktrie": [
-            crate.annotation(
-                patches = ["@//:PATCH.toktrie"],
-            ),
-        ],
-    },
-    cargo_lockfile = "//:Cargo.lock",
-    lockfile = "//:cargo-bazel-lock.json",
-    manifests = [
-        "//:Cargo.toml",
-    ],
-)
-
-load("@crate_index//:defs.bzl", "crate_repositories")
-
-crate_repositories()
-
-# cxxbridge-cmd is a binary-only package so we follow the steps in
-# https://bazelbuild.github.io/rules_rust/crate_universe_workspace.html#binary-dependencies.
-http_archive(
-    name = "cxxbridge_cmd",
-    build_file = "//cxxbridge_cmd:BUILD.cxxbridge_cmd.bazel",
-    integrity = "sha256-pf/3kWu94FwtuZRp8J3PryA78lsJbMv052GgR5JBLhA=",
-    strip_prefix = "cxxbridge-cmd-1.0.149",
-    type = "tar.gz",
-    urls = ["https://static.crates.io/crates/cxxbridge-cmd/cxxbridge-cmd-1.0.149.crate"],
-)
-
-crates_repository(
-    name = "cxxbridge_cmd_deps",
-    cargo_lockfile = "//cxxbridge_cmd:Cargo.lock",
-    manifests = ["@cxxbridge_cmd//:Cargo.toml"],
-)
-
-load("@cxxbridge_cmd_deps//:defs.bzl", cxxbridge_cmd_deps = "crate_repositories")
-
-cxxbridge_cmd_deps()
 
 # TensorFlow
 http_archive(
@@ -141,9 +67,7 @@ http_archive(
     name = "rules_ml_toolchain",
     sha256 = "9dbee8f24cc1b430bf9c2a6661ab70cbca89979322ddc7742305a05ff637ab6b",
     strip_prefix = "rules_ml_toolchain-545c80f1026d526ea9c7aaa410bf0b52c9a82e74",
-    urls = [
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/545c80f1026d526ea9c7aaa410bf0b52c9a82e74.tar.gz",
-    ],
+    url = "https://github.com/google-ml-infra/rules_ml_toolchain/archive/545c80f1026d526ea9c7aaa410bf0b52c9a82e74.tar.gz",
 )
 
 load(
@@ -296,6 +220,88 @@ load("@rules_kotlin//kotlin:core.bzl", "kt_register_toolchains")
 
 kt_register_toolchains()  # to use the default toolchain, otherwise see toolchains below
 
+# Rust (for HuggingFace Tokenizers)
+http_archive(
+    name = "rules_rust",
+    patches = ["@//:PATCH.rules_rust"],
+    sha256 = "53c1bac7ec48f7ce48c4c1c6aa006f27515add2aeb05725937224e6e00ec7cea",
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.61.0/rules_rust-0.61.0.tar.gz",
+)
+
+load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_register_toolchains")
+
+rules_rust_dependencies()
+
+rust_register_toolchains(
+    edition = "2021",
+    extra_target_triples = [
+        # Explicitly add toolchains for mobile. Desktop platforms are supported by default.
+        "aarch64-linux-android",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+    ],
+)
+
+load("@rules_rust//crate_universe:repositories.bzl", "crate_universe_dependencies")
+
+crate_universe_dependencies()
+
+load("@rules_rust//crate_universe:defs.bzl", "crate", "crates_repository")
+
+crates_repository(
+    name = "crate_index",
+    annotations = {
+        "llguidance": [
+            crate.annotation(
+                additive_build_file = "@//:BUILD.llguidance",
+                gen_build_script = False,
+                patches = [
+                    "@//:PATCH.llguidance_regexvec",
+                    "@//:PATCH.llguidance_numeric",
+                    "@//:PATCH.llguidance_grammar",
+                    "@//:PATCH.llguidance_parser",
+                    "@//:PATCH.llguidance_perf",
+                ],
+            ),
+        ],
+        "toktrie": [
+            crate.annotation(
+                patches = ["@//:PATCH.toktrie"],
+            ),
+        ],
+    },
+    cargo_lockfile = "//:Cargo.lock",
+    lockfile = "//:cargo-bazel-lock.json",
+    manifests = [
+        "//:Cargo.toml",
+    ],
+)
+
+load("@crate_index//:defs.bzl", "crate_repositories")
+
+crate_repositories()
+
+# cxxbridge-cmd is a binary-only package so we follow the steps in
+# https://bazelbuild.github.io/rules_rust/crate_universe_workspace.html#binary-dependencies.
+http_archive(
+    name = "cxxbridge_cmd",
+    build_file = "//cxxbridge_cmd:BUILD.cxxbridge_cmd.bazel",
+    integrity = "sha256-pf/3kWu94FwtuZRp8J3PryA78lsJbMv052GgR5JBLhA=",
+    strip_prefix = "cxxbridge-cmd-1.0.149",
+    type = "tar.gz",
+    url = "https://static.crates.io/crates/cxxbridge-cmd/cxxbridge-cmd-1.0.149.crate",
+)
+
+crates_repository(
+    name = "cxxbridge_cmd_deps",
+    cargo_lockfile = "//cxxbridge_cmd:Cargo.lock",
+    manifests = ["@cxxbridge_cmd//:Cargo.toml"],
+)
+
+load("@cxxbridge_cmd_deps//:defs.bzl", cxxbridge_cmd_deps = "crate_repositories")
+
+cxxbridge_cmd_deps()
+
 # Same one downloaded by tensorflow, but refer contrib/minizip.
 http_archive(
     name = "minizip",
@@ -354,16 +360,14 @@ http_archive(
     name = "absl_py",
     sha256 = "8a3d0830e4eb4f66c4fa907c06edf6ce1c719ced811a12e26d9d3162f8471758",
     strip_prefix = "abseil-py-2.1.0",
-    urls = [
-        "https://github.com/abseil/abseil-py/archive/refs/tags/v2.1.0.tar.gz",
-    ],
+    url = "https://github.com/abseil/abseil-py/archive/refs/tags/v2.1.0.tar.gz",
 )
 
 http_archive(
     name = "nlohmann_json",
     sha256 = "34660b5e9a407195d55e8da705ed26cc6d175ce5a6b1fb957e701fb4d5b04022",
     strip_prefix = "json-3.12.0",
-    urls = ["https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.zip"],
+    url = "https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.zip",
 )
 
 http_archive(
@@ -372,7 +376,7 @@ http_archive(
     patches = ["@//:PATCH.minja"],
     sha256 = "752f47dd2a2f4920a66f497c952785073c1983f12f084b99e5c12bf89f96acfe",
     strip_prefix = "minja-58568621432715b0ed38efd16238b0e7ff36c3ba",
-    urls = ["https://github.com/google/minja/archive/58568621432715b0ed38efd16238b0e7ff36c3ba.zip"],
+    url = "https://github.com/google/minja/archive/58568621432715b0ed38efd16238b0e7ff36c3ba.zip",
 )
 
 http_archive(
@@ -380,7 +384,7 @@ http_archive(
     build_file = "@//:BUILD.miniaudio",
     sha256 = "bcb07bfb27e6fa94d34da73ba2d5642d4940b208ec2a660dbf4e52e6b7cd492f",
     strip_prefix = "miniaudio-0.11.22",
-    urls = ["https://github.com/mackron/miniaudio/archive/refs/tags/0.11.22.tar.gz"],
+    url = "https://github.com/mackron/miniaudio/archive/refs/tags/0.11.22.tar.gz",
 )
 
 http_archive(
@@ -388,7 +392,7 @@ http_archive(
     build_file = "@//:BUILD.stb",
     sha256 = "119b9f3cca3e50225dc946ed1acd1b7a160943bc8bf549760109cea4e4e7c836",
     strip_prefix = "stb-f58f558c120e9b32c217290b80bad1a0729fbb2c",
-    urls = ["https://github.com/nothings/stb/archive/f58f558c120e9b32c217290b80bad1a0729fbb2c.zip"],
+    url = "https://github.com/nothings/stb/archive/f58f558c120e9b32c217290b80bad1a0729fbb2c.zip",
 )
 
 http_jar(
