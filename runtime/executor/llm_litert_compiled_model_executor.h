@@ -284,10 +284,6 @@ class LlmLiteRtCompiledModelExecutorBase : public LlmExecutor {
   // 3. The processed tokens.(e.g. KVCache)
   std::unique_ptr<LlmContext> llm_context_;
 
-  // Whether decode has been run ever after prefill.
-  // TODO: b/409401231 - Make sure this state is session dependent.
-  bool ran_decode_ = false;
-
   // Sampler for sampling logits.
   // For now, only CPU sampler is supported.
   std::unique_ptr<Sampler> sampler_;

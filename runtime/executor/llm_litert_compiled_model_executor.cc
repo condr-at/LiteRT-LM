@@ -502,11 +502,11 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::RollBackProcessedTokens() {
 
 absl::Status LlmLiteRtCompiledModelExecutorBase::PrepareFirstPrefillAfterDecode(
     int token_index_to_reduce) {
-  if (!ran_decode_) {
+  if (!llm_context_->runtime_state().ran_decode) {
     return absl::OkStatus();
   }
 
-  ran_decode_ = false;
+  llm_context_->runtime_state().ran_decode = false;
 
   int output_heads = 1;
   if (llm_context_->runtime_config().output_heads.has_value()) {
@@ -939,11 +939,11 @@ int LlmLiteRtCompiledModelExecutorBase::BindTensorsAndRunDecodeStatic(
 }
 
 absl::Status LlmLiteRtCompiledModelExecutorBase::PrepareFirstDecode() {
-  if (ran_decode_) {
+  if (llm_context_->runtime_state().ran_decode) {
     return absl::OkStatus();
   }
   // Mark that we have run decode at least once.
-  ran_decode_ = true;
+  llm_context_->runtime_state().ran_decode = true;
 
   int output_heads = 1;
   if (llm_context_->runtime_config().output_heads.has_value()) {
@@ -1050,7 +1050,7 @@ LlmLiteRtCompiledModelExecutorBase::DecodeLogits(
       auto output_logits,
       decode_output_buffers_[signatures_.output_logits].Duplicate());
 
-  bool last_run_is_decode = ran_decode_;
+  bool last_run_is_decode = llm_context_->runtime_state().ran_decode;
   RETURN_IF_ERROR(PrepareFirstDecode());
   ASSIGN_OR_RETURN(auto step_and_token, GetTokenToDecode(inputs));
   RETURN_IF_ERROR(DecodeInternal(step_and_token.token, output_logits));
