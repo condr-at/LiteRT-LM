@@ -236,11 +236,6 @@ class Engine {
     virtual const Tokenizer& GetTokenizer() const = 0;
   };
 
-  // Method to create Engine. An input prompt can be given as a hint to adjust
-  // engine optimized for that prompt.
-  static absl::StatusOr<std::unique_ptr<Engine>> CreateEngine(
-      EngineSettings settings, absl::string_view input_prompt_as_hint = "");
-
   // Method to create the Session.
   virtual absl::StatusOr<std::unique_ptr<Session>> CreateSession(
       const SessionConfig& session_config) = 0;

@@ -28,6 +28,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "runtime/engine/engine.h"
+#include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
@@ -60,7 +61,7 @@ TEST(EngineTest, CreateEngine_WithoutCache) {
   engine_settings->GetMutableMainExecutorSettings().SetCacheDir(":nocache");
 
   absl::StatusOr<std::unique_ptr<Engine>> llm =
-      Engine::CreateEngine(*engine_settings);
+      EngineFactory::CreateAny(*engine_settings);
   ABSL_CHECK_OK(llm);
 
   absl::StatusOr<std::unique_ptr<Engine::Session>> session =
@@ -112,7 +113,7 @@ TEST(EngineTest, CreateEngine_WithCache) {
 
   // 1st run to populate the cache.
   absl::StatusOr<std::unique_ptr<Engine>> llm =
-      Engine::CreateEngine(*engine_settings);
+      EngineFactory::CreateAny(*engine_settings);
   ABSL_CHECK_OK(llm);
 
   absl::StatusOr<std::unique_ptr<Engine::Session>> session =
@@ -143,7 +144,7 @@ TEST(EngineTest, CreateEngine_WithCache) {
   // 3rd run with a new engine and the same cache.
   session->reset();  // Destroy the previous first.
   llm->reset();
-  llm = Engine::CreateEngine(*engine_settings);
+  llm = EngineFactory::CreateAny(*engine_settings);
   ABSL_CHECK_OK(llm);
 
   session = (*llm)->CreateSession(SessionConfig::CreateDefault());
@@ -191,7 +192,7 @@ TEST(EngineTest, CreateEngine_WithModelAndCacheFromFileDescriptor) {
       shared_scoped_cache_file);
 
   absl::StatusOr<std::unique_ptr<Engine>> llm =
-      Engine::CreateEngine(*engine_settings);
+      EngineFactory::CreateAny(*engine_settings);
   ABSL_CHECK_OK(llm);
 
   absl::StatusOr<std::unique_ptr<Engine::Session>> session =
@@ -220,7 +221,7 @@ TEST(EngineTest, CreateEngine_FailsNoVisionModel) {
   engine_settings->GetMutableMainExecutorSettings().SetMaxNumTokens(
       kMaxNumTokens);
   engine_settings->GetMutableMainExecutorSettings().SetCacheDir(":nocache");
-  EXPECT_THAT(Engine::CreateEngine(*engine_settings),
+  EXPECT_THAT(EngineFactory::CreateAny(*engine_settings),
               testing::status::StatusIs(
                   absl::StatusCode::kNotFound,
                   "TF_LITE_VISION_ENCODER not found in the model."));
@@ -238,7 +239,7 @@ TEST(EngineTest, CreateEngine_FailsNoAudioModel) {
   engine_settings->GetMutableMainExecutorSettings().SetMaxNumTokens(
       kMaxNumTokens);
   engine_settings->GetMutableMainExecutorSettings().SetCacheDir(":nocache");
-  EXPECT_THAT(Engine::CreateEngine(*engine_settings),
+  EXPECT_THAT(EngineFactory::CreateAny(*engine_settings),
               testing::status::StatusIs(
                   absl::StatusCode::kNotFound,
                   "TF_LITE_AUDIO_ENCODER_HW not found in the model."));

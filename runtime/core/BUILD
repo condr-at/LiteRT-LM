@@ -93,12 +93,14 @@ cc_library(
     ] + select({
         "//conditions:default": [],
     }),
+    alwayslink = 1,
 )
 
 cc_library(
     name = "engine_impl_cpu_only",
     srcs = ["engine_impl.cc"],
     deps = ENGINE_IMPL_COMMON_DEPS,
+    alwayslink = 1,
 )
 
 cc_test(
@@ -116,6 +118,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "//runtime/engine:engine_factory",
         "//runtime/engine:engine_interface",
         "//runtime/engine:engine_settings",
         "//runtime/engine:io_types",

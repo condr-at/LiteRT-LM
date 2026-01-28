@@ -150,6 +150,7 @@ cc_test(
         "//runtime/components/constrained_decoding:constraint",
         "//runtime/components/constrained_decoding:external_constraint_config",
         "//runtime/core:session_factory",  # buildcleaner: keep
+        "//runtime/engine:engine_factory",
         "//runtime/engine:engine_interface",
         "//runtime/engine:engine_settings",
         "//runtime/engine:io_types",

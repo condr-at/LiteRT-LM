@@ -66,6 +66,9 @@ class EngineAdvancedLegacyImpl : public Engine {
  public:
   ~EngineAdvancedLegacyImpl() override;
 
+  static absl::StatusOr<std::unique_ptr<Engine>> Create(
+      EngineSettings engine_settings, absl::string_view input_prompt_as_hint);
+
   absl::StatusOr<std::unique_ptr<Session>> CreateSession(
       const SessionConfig& session_config) override;
 
@@ -74,9 +77,6 @@ class EngineAdvancedLegacyImpl : public Engine {
   const EngineSettings& GetEngineSettings() const override;
 
  private:
-  friend absl::StatusOr<std::unique_ptr<Engine>>
-  litert::lm::CreateEngineAdvancedLegacy(EngineSettings engine_settings);
-
   explicit EngineAdvancedLegacyImpl(
       EngineSettings engine_settings,
       std::unique_ptr<odml::infra::ExecutorModelResources> model_resources,
@@ -179,17 +179,9 @@ const EngineSettings& EngineAdvancedLegacyImpl::GetEngineSettings() const {
   return engine_settings_;
 }
 
-}  // namespace
-
 // Method to create Engine.
-absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
-    EngineSettings settings, absl::string_view input_prompt_as_hint) {
-  return CreateEngineAdvancedLegacy(std::move(settings));
-}
-
-// Method to create Engine.
-absl::StatusOr<std::unique_ptr<Engine>> CreateEngineAdvancedLegacy(
-    EngineSettings engine_settings) {
+absl::StatusOr<std::unique_ptr<Engine>> EngineAdvancedLegacyImpl::Create(
+    EngineSettings engine_settings, absl::string_view input_prompt_as_hint) {
   ABSL_LOG(INFO) << "Constructing legacy EngineImpl...";
   std::optional<BenchmarkInfo> benchmark_info;
   if (engine_settings.IsBenchmarkEnabled()) {
@@ -306,8 +298,8 @@ absl::StatusOr<std::unique_ptr<Engine>> CreateEngineAdvancedLegacy(
 LITERT_LM_REGISTER_ENGINE(EngineFactory::EngineType::kAdvancedLegacyTfLite,
                           [](EngineSettings settings,
                              absl::string_view input_prompt_as_hint) {
-                            return Engine::CreateEngine(std::move(settings),
-                                                        input_prompt_as_hint);
+                            return EngineAdvancedLegacyImpl::Create(
+                                std::move(settings), input_prompt_as_hint);
                           });
-
+}  // namespace
 }  // namespace litert::lm

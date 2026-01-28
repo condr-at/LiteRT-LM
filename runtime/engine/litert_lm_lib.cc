@@ -50,6 +50,7 @@
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/engine/engine.h"
+#include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
@@ -590,8 +591,8 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
                    CreateEngineSettings(settings));
   ABSL_LOG(INFO) << "Creating engine";
   ASSIGN_OR_RETURN(auto engine,
-                   litert::lm::Engine::CreateEngine(std::move(engine_settings),
-                                                    settings.input_prompt));
+                   litert::lm::EngineFactory::CreateAny(
+                       std::move(engine_settings), settings.input_prompt));
   // Get the session config.
   SessionConfig session_config = CreateSessionConfig(settings);
 

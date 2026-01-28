@@ -60,8 +60,8 @@ namespace {
 // with the provided settings. This ensure we maintain the same LiteRT
 // environment during the whole application lifetime. This is required for GPU
 // LiteRT environment. See b/454383477 for more details.
-absl::StatusOr<Environment&> GetEnvironment(
-    EngineSettings& engine_settings, ModelResources& model_resources) {
+absl::StatusOr<Environment&> GetEnvironment(EngineSettings& engine_settings,
+                                            ModelResources& model_resources) {
   // Helper must be available until LlmLiteRtCompiledModelExecutor::Create() is
   // called. Since env is used multiple times, it should also be static.
   static absl::NoDestructor<MagicNumberConfigsHelper> helper;
@@ -116,8 +116,8 @@ absl::StatusOr<Environment&> GetEnvironment(
             static const absl::NoDestructor<std::string> kDispatchLibraryPath(
                 path.parent_path().string());
             if (!kDispatchLibraryPath->empty()) {
-              ABSL_LOG(INFO) << "Setting dispatch library path: "
-                            << *kDispatchLibraryPath;
+              ABSL_LOG(INFO)
+                  << "Setting dispatch library path: " << *kDispatchLibraryPath;
               env_options.push_back(::litert::Environment::Option{
                   ::litert::Environment::OptionTag::DispatchLibraryDir,
                   absl::string_view(*kDispatchLibraryPath)});
@@ -136,20 +136,22 @@ absl::StatusOr<Environment&> GetEnvironment(
   return **kEnvironment;
 }
 
-}  // namespace
-
 class EngineImpl : public Engine {
  public:
   ~EngineImpl() override {
     ABSL_QCHECK_OK(WaitUntilDone(Engine::kDefaultTimeout));
   }
-  explicit EngineImpl(EngineSettings engine_settings,
-                      std::unique_ptr<ModelResources> litert_model_resources,
-                      std::unique_ptr<LlmExecutor> executor,
-                      std::unique_ptr<VisionExecutor> vision_executor,
-                      std::unique_ptr<AudioExecutor> audio_executor,
-                      std::optional<BenchmarkInfo> benchmark_info,
-                      std::unique_ptr<ThreadPool> worker_thread_pool)
+
+  static absl::StatusOr<std::unique_ptr<Engine>> Create(
+      EngineSettings engine_settings, absl::string_view input_prompt_as_hint);
+
+  EngineImpl(EngineSettings engine_settings,
+             std::unique_ptr<ModelResources> litert_model_resources,
+             std::unique_ptr<LlmExecutor> executor,
+             std::unique_ptr<VisionExecutor> vision_executor,
+             std::unique_ptr<AudioExecutor> audio_executor,
+             std::optional<BenchmarkInfo> benchmark_info,
+             std::unique_ptr<ThreadPool> worker_thread_pool)
       : engine_settings_(std::move(engine_settings)),
         litert_model_resources_(std::move(litert_model_resources)),
         executor_(std::move(executor)),
@@ -225,7 +227,7 @@ class EngineImpl : public Engine {
 };
 
 // Method to create Engine.
-absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
+absl::StatusOr<std::unique_ptr<Engine>> EngineImpl::Create(
     EngineSettings engine_settings, absl::string_view input_prompt_as_hint) {
   std::optional<BenchmarkInfo> benchmark_info =
       engine_settings.IsBenchmarkEnabled()
@@ -333,8 +335,8 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
 LITERT_LM_REGISTER_ENGINE(EngineFactory::EngineType::kLiteRTCompiledModel,
                           [](EngineSettings settings,
                              absl::string_view input_prompt_as_hint) {
-                            return Engine::CreateEngine(std::move(settings),
-                                                        input_prompt_as_hint);
+                            return EngineImpl::Create(std::move(settings),
+                                                      input_prompt_as_hint);
                           });
-
+}  // namespace
 }  // namespace litert::lm

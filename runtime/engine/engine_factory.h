@@ -16,6 +16,7 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_ENGINE_ENGINE_FACTORY_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -59,10 +60,37 @@ class EngineFactory {
     kLiteRTCompiledModel,
   };
 
+  // Returns the string representation of the engine type.
+  static std::string EngineTypeToString(EngineType engine_type) {
+    switch (engine_type) {
+      case EngineType::kLiteRTCompiledModel:
+        return "kLiteRTCompiledModel";
+      default:
+        return "Unknown";
+    }
+  }
+
   // Creates a default Engine instance of type kLiteRTCompiledModel.
   static absl::StatusOr<std::unique_ptr<Engine>> CreateDefault(
       EngineSettings settings, absl::string_view input_prompt_as_hint = "") {
     return Create(EngineType::kLiteRTCompiledModel, std::move(settings),
+                  input_prompt_as_hint);
+  }
+
+  // Creates an Engine instance of any registered type.
+  // If multiple engine types are registered, the first one is used.
+  // The ordering of the engine can be observed using ListEngineTypes().
+  static absl::StatusOr<std::unique_ptr<Engine>> CreateAny(
+      EngineSettings settings, absl::string_view input_prompt_as_hint = "") {
+    auto& instance = Instance();
+    if (instance.registry_.size() != 1) {
+      ABSL_LOG(WARNING) << "Multiple engine types are registered. "
+                        << "Using the first one with type: "
+                        << EngineTypeToString(
+                               instance.registry_.begin()->first);
+    }
+
+    return Create(instance.registry_.begin()->first, std::move(settings),
                   input_prompt_as_hint);
   }
 

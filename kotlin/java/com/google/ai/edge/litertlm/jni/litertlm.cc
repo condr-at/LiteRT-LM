@@ -33,6 +33,7 @@
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/engine/engine.h"
+#include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
@@ -60,6 +61,7 @@ using litert::lm::Backend;
 using litert::lm::Conversation;
 using litert::lm::ConversationConfig;
 using litert::lm::Engine;
+using litert::lm::EngineFactory;
 using litert::lm::EngineSettings;
 using litert::lm::InputAudio;
 using litert::lm::InputData;
@@ -435,7 +437,7 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(
     settings->GetMutableBenchmarkParams();
   }
 
-  auto engine = Engine::CreateEngine(*settings);
+  auto engine = EngineFactory::CreateAny(*settings);
   if (!engine.ok()) {
     ThrowLiteRtLmJniException(
         env, "Failed to create engine: " + engine.status().ToString());

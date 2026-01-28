@@ -130,13 +130,15 @@ absl::StatusOr<Environment&> GetEnvironment() {
   }
   return **kEnvironment;
 }
-}  // namespace
 
 class EngineImpl : public Engine {
  public:
   ~EngineImpl() override {
     ABSL_QCHECK_OK(WaitUntilDone(Engine::kDefaultTimeout));
   }
+
+  static absl::StatusOr<std::unique_ptr<Engine>> Create(
+      EngineSettings engine_settings, absl::string_view input_prompt_as_hint);
 
   // Constructor for EngineImpl.
   //
@@ -152,15 +154,14 @@ class EngineImpl : public Engine {
   //   audio_executor: The audio executor for audio tasks.
   //   benchmark_info: The benchmark info for the engine.
   //   worker_thread_pool: The thread pool for the engine to execute the works.
-  explicit EngineImpl(
-      EngineSettings engine_settings,
-      std::unique_ptr<oi::ExecutorModelResources> model_resources,
-      std::unique_ptr<LlmExecutor> executor,
-      std::unique_ptr<Tokenizer> task_tokenizer, Tokenizer* tokenizer,
-      std::unique_ptr<VisionExecutor> vision_executor,
-      std::unique_ptr<AudioExecutor> audio_executor,
-      std::optional<BenchmarkInfo> benchmark_info,
-      std::unique_ptr<ThreadPool> worker_thread_pool)
+  EngineImpl(EngineSettings engine_settings,
+             std::unique_ptr<oi::ExecutorModelResources> model_resources,
+             std::unique_ptr<LlmExecutor> executor,
+             std::unique_ptr<Tokenizer> task_tokenizer, Tokenizer* tokenizer,
+             std::unique_ptr<VisionExecutor> vision_executor,
+             std::unique_ptr<AudioExecutor> audio_executor,
+             std::optional<BenchmarkInfo> benchmark_info,
+             std::unique_ptr<ThreadPool> worker_thread_pool)
       : engine_settings_(std::move(engine_settings)),
         model_resources_(std::move(model_resources)),
         executor_(std::move(executor)),
@@ -232,7 +233,7 @@ class EngineImpl : public Engine {
 };
 
 // Method to create Engine.
-absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
+absl::StatusOr<std::unique_ptr<Engine>> EngineImpl::Create(
     EngineSettings engine_settings, absl::string_view input_prompt_as_hint) {
   ABSL_LOG(INFO) << "Constructing legacy EngineImpl...";
   std::optional<BenchmarkInfo> benchmark_info;
@@ -373,8 +374,9 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
 LITERT_LM_REGISTER_ENGINE(EngineFactory::EngineType::kLegacyTfLite,
                           [](EngineSettings settings,
                              absl::string_view input_prompt_as_hint) {
-                            return Engine::CreateEngine(std::move(settings),
-                                                        input_prompt_as_hint);
+                            return EngineImpl::Create(std::move(settings),
+                                                      input_prompt_as_hint);
                           });
 
+}  // namespace
 }  // namespace litert::lm

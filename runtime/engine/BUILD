@@ -120,6 +120,7 @@ cc_library(
     srcs = ["litert_lm_lib.cc"],
     hdrs = ["litert_lm_lib.h"],
     deps = [
+        ":engine_factory",
         ":engine_impl_selected",
         ":engine_interface",
         ":engine_settings",
@@ -192,6 +193,7 @@ cc_binary(
         "//conditions:default": [],
     }),
     deps = [
+        ":engine_factory",
         ":engine_impl_selected",
         ":engine_interface",
         ":engine_settings",

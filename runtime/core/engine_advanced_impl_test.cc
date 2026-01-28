@@ -28,12 +28,14 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "runtime/engine/engine.h"
+#include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/proto/sampler_params.pb.h"
 #include "runtime/util/scoped_file.h"
+#include "runtime/util/status_macros.h"
 #include "runtime/util/test_utils.h"  // IWYU pragma: keep
 
 namespace litert::lm {
@@ -45,6 +47,17 @@ constexpr int kMaxNumTokens = 8;
 #else
 constexpr int kMaxNumTokens = 16;
 #endif
+
+absl::StatusOr<std::unique_ptr<Engine>> CreateEngine(
+    EngineSettings engine_settings) {
+  ASSIGN_OR_RETURN(std::vector<EngineFactory::EngineType> engine_types,
+                   EngineFactory::Instance().ListEngineTypes());
+  RET_CHECK_EQ(engine_types.size(), 1);
+  RET_CHECK(engine_types[0] ==
+            EngineFactory::EngineType::kAdvancedLegacyTfLite);
+  return EngineFactory::Create(EngineFactory::EngineType::kAdvancedLegacyTfLite,
+                               std::move(engine_settings));
+}
 
 TEST(EngineTest, CreateEngine_WithoutCache) {
   auto task_path =
@@ -59,8 +72,7 @@ TEST(EngineTest, CreateEngine_WithoutCache) {
       kMaxNumTokens);
   engine_settings->GetMutableMainExecutorSettings().SetCacheDir(":nocache");
 
-  absl::StatusOr<std::unique_ptr<Engine>> llm =
-      Engine::CreateEngine(*engine_settings);
+  absl::StatusOr<std::unique_ptr<Engine>> llm = CreateEngine(*engine_settings);
   ABSL_CHECK_OK(llm);
 
   absl::StatusOr<std::unique_ptr<Engine::Session>> session =
@@ -111,8 +123,7 @@ TEST(EngineTest, CreateEngine_WithCache) {
       cache_path.string());
 
   // 1st run to populate the cache.
-  absl::StatusOr<std::unique_ptr<Engine>> llm =
-      Engine::CreateEngine(*engine_settings);
+  absl::StatusOr<std::unique_ptr<Engine>> llm = CreateEngine(*engine_settings);
   ABSL_CHECK_OK(llm);
 
   absl::StatusOr<std::unique_ptr<Engine::Session>> session =
@@ -143,7 +154,7 @@ TEST(EngineTest, CreateEngine_WithCache) {
   // 3rd run with a new engine and the same cache.
   session->reset();  // Destroy the previous first.
   llm->reset();
-  llm = Engine::CreateEngine(*engine_settings);
+  llm = CreateEngine(*engine_settings);
   ABSL_CHECK_OK(llm);
 
   session = (*llm)->CreateSession(SessionConfig::CreateDefault());
@@ -190,8 +201,7 @@ TEST(EngineTest, CreateEngine_WithModelAndCacheFromFileDescriptor) {
   engine_settings->GetMutableMainExecutorSettings().SetScopedCacheFile(
       shared_scoped_cache_file);
 
-  absl::StatusOr<std::unique_ptr<Engine>> llm =
-      Engine::CreateEngine(*engine_settings);
+  absl::StatusOr<std::unique_ptr<Engine>> llm = CreateEngine(*engine_settings);
   ABSL_CHECK_OK(llm);
 
   absl::StatusOr<std::unique_ptr<Engine::Session>> session =
@@ -220,7 +230,7 @@ TEST(EngineTest, CreateEngine_FailsNoVisionModel) {
   engine_settings->GetMutableMainExecutorSettings().SetMaxNumTokens(
       kMaxNumTokens);
   engine_settings->GetMutableMainExecutorSettings().SetCacheDir(":nocache");
-  ASSERT_OK_AND_ASSIGN(auto llm, Engine::CreateEngine(*engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto llm, CreateEngine(*engine_settings));
   SessionConfig session_config = SessionConfig::CreateDefault();
   session_config.SetVisionModalityEnabled(true);
   EXPECT_THAT(llm->CreateSession(session_config),
@@ -241,7 +251,7 @@ TEST(EngineTest, CreateEngine_FailsNoAudioModel) {
   engine_settings->GetMutableMainExecutorSettings().SetMaxNumTokens(
       kMaxNumTokens);
   engine_settings->GetMutableMainExecutorSettings().SetCacheDir(":nocache");
-  ASSERT_OK_AND_ASSIGN(auto llm, Engine::CreateEngine(*engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto llm, CreateEngine(*engine_settings));
   SessionConfig session_config = SessionConfig::CreateDefault();
   session_config.SetAudioModalityEnabled(true);
   EXPECT_THAT(llm->CreateSession(session_config),

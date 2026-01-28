@@ -41,6 +41,7 @@
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/engine/engine.h"
+#include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
@@ -134,16 +135,16 @@ absl::Status MainHelper(int argc, char** argv) {
       litert::lm::proto::BenchmarkParams();
 
   // Create the engine.
-  ASSIGN_OR_RETURN(auto engine, litert::lm::Engine::CreateEngine(
+  ASSIGN_OR_RETURN(auto engine, litert::lm::EngineFactory::CreateAny(
                                     std::move(engine_settings)));
 
   // Create the conversation.
   std::unique_ptr<Conversation> conversation;
   auto session_config = litert::lm::SessionConfig::CreateDefault();
-  ASSIGN_OR_RETURN(
-      auto conversation_config, ConversationConfig::Builder()
-                                    .SetSessionConfig(session_config)
-                                    .Build(*engine));
+  ASSIGN_OR_RETURN(auto conversation_config,
+                   ConversationConfig::Builder()
+                       .SetSessionConfig(session_config)
+                       .Build(*engine));
   ASSIGN_OR_RETURN(conversation,
                    Conversation::Create(*engine, conversation_config));
 

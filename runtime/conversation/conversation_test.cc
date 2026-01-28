@@ -44,6 +44,7 @@
 #include "runtime/components/tokenizer.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/engine/engine.h"
+#include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
@@ -184,7 +185,7 @@ TEST(ConversationConfigTest, CreateDefault) {
                                                  model_assets, Backend::CPU));
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(auto config, ConversationConfig::CreateDefault(*engine));
   EXPECT_OK(Conversation::Create(*engine, config));
 }
@@ -196,7 +197,7 @@ TEST(ConversationConfigTest, CreateDefaultWithOverwritePromptTemplate) {
                                                  model_assets, Backend::CPU));
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(auto config, ConversationConfig::Builder()
                                         .SetOverwritePromptTemplate(
                                             PromptTemplate("Hello world!"))
@@ -214,7 +215,7 @@ TEST(ConversationConfigTest, CreateWithBuilder) {
                                                  model_assets, Backend::CPU));
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
 
   auto session_config = SessionConfig::CreateDefault();
   session_config.GetMutableLlmModelType().mutable_gemma3n();
@@ -247,7 +248,7 @@ TEST(ConversationConfigTest, OverwritePromptTemplate) {
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
 
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
       ConversationConfig::Builder()
@@ -297,7 +298,7 @@ TEST_P(ConversationTest, SendMessage) {
                                                  model_assets, Backend::CPU));
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
       ConversationConfig::Builder()
@@ -588,7 +589,7 @@ TEST_P(ConversationTest, SendMessageAsync) {
                                                  model_assets, Backend::CPU));
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
       ConversationConfig::Builder()
@@ -954,7 +955,7 @@ TEST_P(ConversationTest, SendMessageWithPreface) {
                                                  model_assets, Backend::CPU));
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(15);
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
       ConversationConfig::Builder()
@@ -997,7 +998,7 @@ TEST_P(ConversationTest, GetBenchmarkInfo) {
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(15);
   proto::BenchmarkParams benchmark_params;
   engine_settings.GetMutableBenchmarkParams() = benchmark_params;
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(
       auto config,
       ConversationConfig::Builder()
@@ -1064,7 +1065,7 @@ TEST(ConversationAccessHistoryTest, AccessHistory) {
                                                  model_assets, Backend::CPU));
   engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
   engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(auto config, ConversationConfig::CreateDefault(*engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*engine, config));
@@ -1122,7 +1123,7 @@ TEST_P(ConversationCancellationTest, CancelProcessWithBenchmarkInfo) {
     proto::BenchmarkParams benchmark_params;
     engine_settings.GetMutableBenchmarkParams() = benchmark_params;
   }
-  ASSERT_OK_AND_ASSIGN(auto engine, Engine::CreateEngine(engine_settings));
+  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
   ASSERT_OK_AND_ASSIGN(auto config, ConversationConfig::CreateDefault(*engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
                        Conversation::Create(*engine, config));
