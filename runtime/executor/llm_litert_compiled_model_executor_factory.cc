@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 
+#include "absl/algorithm/container.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/match.h"  // from @com_google_absl
@@ -76,9 +77,21 @@ absl::StatusOr<bool> IsDynamicModel(const Model& model) {
   {
     std::string kv_cache_k_root_name;
     std::string kv_cache_v_root_name;
-    RETURN_IF_ERROR(GetKVCacheRootNames(prefill_signature.InputNames(),
-                                        kv_cache_k_root_name,
-                                        kv_cache_v_root_name));
+    RETURN_IF_ERROR(GetKVCacheRootNames(
+        prefill_signature.InputNames(), prefill_signature.OutputNames(),
+        kv_cache_k_root_name, kv_cache_v_root_name));
+
+    // TODO(b/477657050): Investigate support for dynamic model with optimized
+    // gpu cache.
+    if (!absl::c_any_of(prefill_signature.InputNames(),
+                        [&](absl::string_view input_name) {
+                          return absl::StartsWith(input_name,
+                                                  kv_cache_k_root_name) ||
+                                 absl::StartsWith(input_name,
+                                                  kv_cache_v_root_name);
+                        })) {
+      return false;
+    }
 
     std::string first_kv_cache_k_input_name = kv_cache_k_root_name + "0";
     LITERT_ASSIGN_OR_RETURN(

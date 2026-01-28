@@ -358,6 +358,7 @@ cc_library(
         ":llm_executor_settings",
         ":llm_litert_compiled_model_executor",
         ":llm_litert_npu_compiled_model_executor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

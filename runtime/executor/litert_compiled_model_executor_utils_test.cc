@@ -136,28 +136,46 @@ TEST(LlmLiteRTCompiledModelExecutorUtilsTest,
 
 TEST(LlmLiteRTCompiledModelExecutorUtilsTest, GetKVCacheRootNames_KvCache) {
   std::vector<absl::string_view> input_names = {"kv_cache_k_0", "kv_cache_v_0"};
+  std::vector<absl::string_view> output_names = {};
   std::string k_root_name;
   std::string v_root_name;
-  ASSERT_OK(GetKVCacheRootNames(input_names, k_root_name, v_root_name));
+  ASSERT_OK(
+      GetKVCacheRootNames(input_names, output_names, k_root_name, v_root_name));
   EXPECT_EQ(k_root_name, "kv_cache_k_");
   EXPECT_EQ(v_root_name, "kv_cache_v_");
 }
 
 TEST(LlmLiteRTCompiledModelExecutorUtilsTest, GetKVCacheRootNames_KCache) {
   std::vector<absl::string_view> input_names = {"k_cache_0", "v_cache_0"};
+  std::vector<absl::string_view> output_names = {};
   std::string k_root_name;
   std::string v_root_name;
-  ASSERT_OK(GetKVCacheRootNames(input_names, k_root_name, v_root_name));
+  ASSERT_OK(
+      GetKVCacheRootNames(input_names, output_names, k_root_name, v_root_name));
+  EXPECT_EQ(k_root_name, "k_cache_");
+  EXPECT_EQ(v_root_name, "v_cache_");
+}
+
+TEST(LlmLiteRTCompiledModelExecutorUtilsTest,
+     GetKVCacheRootNames_KCacheOutput) {
+  std::vector<absl::string_view> input_names = {};
+  std::vector<absl::string_view> output_names = {"k_cache_0", "v_cache_0"};
+  std::string k_root_name;
+  std::string v_root_name;
+  ASSERT_OK(
+      GetKVCacheRootNames(input_names, output_names, k_root_name, v_root_name));
   EXPECT_EQ(k_root_name, "k_cache_");
   EXPECT_EQ(v_root_name, "v_cache_");
 }
 
 TEST(LlmLiteRTCompiledModelExecutorUtilsTest, GetKVCacheRootNames_NotFound) {
   std::vector<absl::string_view> input_names = {"other_input"};
+  std::vector<absl::string_view> output_names = {};
   std::string k_root_name;
   std::string v_root_name;
-  EXPECT_THAT(GetKVCacheRootNames(input_names, k_root_name, v_root_name),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(
+      GetKVCacheRootNames(input_names, output_names, k_root_name, v_root_name),
+      StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(LlmLiteRTCompiledModelExecutorUtilsTest,

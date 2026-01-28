@@ -1365,9 +1365,9 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
                           litert_model->FindSignature(prefill_signature_key));
   std::string kv_cache_k_root_name;
   std::string kv_cache_v_root_name;
-  RETURN_IF_ERROR(GetKVCacheRootNames(prefill_signature.InputNames(),
-                                      kv_cache_k_root_name,
-                                      kv_cache_v_root_name));
+  RETURN_IF_ERROR(GetKVCacheRootNames(
+      prefill_signature.InputNames(), prefill_signature.OutputNames(),
+      kv_cache_k_root_name, kv_cache_v_root_name));
   LITERT_ASSIGN_OR_RETURN(auto decode_signature,
                           litert_model->FindSignature(kDecodeSignatureRunner));
   ASSIGN_OR_RETURN(
@@ -1941,9 +1941,9 @@ LlmLiteRtCompiledModelExecutorDynamic::Create(
                           litert_model->FindSignature(kDecodeSignatureRunner));
   std::string kv_cache_k_root_name;
   std::string kv_cache_v_root_name;
-  RETURN_IF_ERROR(GetKVCacheRootNames(decode_signature.InputNames(),
-                                      kv_cache_k_root_name,
-                                      kv_cache_v_root_name));
+  RETURN_IF_ERROR(GetKVCacheRootNames(
+      decode_signature.InputNames(), decode_signature.OutputNames(),
+      kv_cache_k_root_name, kv_cache_v_root_name));
   ASSIGN_OR_RETURN(
       ModelSignatures signatures,
       GetModelSignaturesFromInputOutputNames(decode_signature.InputNames(),

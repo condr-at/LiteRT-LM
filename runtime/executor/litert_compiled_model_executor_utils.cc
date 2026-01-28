@@ -163,6 +163,7 @@ absl::StatusOr<ModelSignatures> GetModelSignaturesFromInputOutputNames(
 }
 
 absl::Status GetKVCacheRootNames(std::vector<absl::string_view> input_names,
+                                 std::vector<absl::string_view> output_names,
                                  std::string& k_root_name,
                                  std::string& v_root_name) {
   for (auto input_name : input_names) {
@@ -171,6 +172,17 @@ absl::Status GetKVCacheRootNames(std::vector<absl::string_view> input_names,
       v_root_name = "kv_cache_v_";
       return absl::OkStatus();
     } else if (input_name == "k_cache_0") {
+      k_root_name = "k_cache_";
+      v_root_name = "v_cache_";
+      return absl::OkStatus();
+    }
+  }
+  for (auto output_name : output_names) {
+    if (output_name == "kv_cache_k_0") {
+      k_root_name = "kv_cache_k_";
+      v_root_name = "kv_cache_v_";
+      return absl::OkStatus();
+    } else if (output_name == "k_cache_0") {
       k_root_name = "k_cache_";
       v_root_name = "v_cache_";
       return absl::OkStatus();
