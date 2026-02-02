@@ -38,7 +38,7 @@ namespace litert::lm {
 // end of audio or end of image embeddings.
 class EndOfMultiModalEmbedding : public EmbeddingLookup {
  public:
-  ~EndOfMultiModalEmbedding() = default;
+  ~EndOfMultiModalEmbedding() override = default;
 
   // Creates a EndOfMultiModalEmbedding instance.
   // Special token is the token that indicates when to insert the end of

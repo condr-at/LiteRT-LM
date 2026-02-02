@@ -47,7 +47,7 @@ namespace litert::lm {
 // to tell a delegate to move embedding lookups to the CPU.
 class EmbeddingLookupText : public EmbeddingLookup {
  public:
-  ~EmbeddingLookupText() = default;
+  ~EmbeddingLookupText() override = default;
 
   // Creates a EmbeddingLookupText instance. The reference of |model| is kept
   // in the returned instance, so the caller must ensure that |model| outlives
