@@ -127,6 +127,7 @@ cc_library(
         "//runtime/util:memory_mapped_file",
         "//runtime/util:model_asset_bundle_resources",
         "//runtime/util:scoped_file",
+        "@litert//tflite/types:half",
     ] + select({
         "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_api_with_dynamic_runtime",
@@ -163,6 +164,7 @@ cc_test(
         "//runtime/util:memory_mapped_file",
         "//runtime/util:scoped_file",
         "//runtime/util:test_utils",
+        "@litert//tflite/types:half",
     ],
 )
 

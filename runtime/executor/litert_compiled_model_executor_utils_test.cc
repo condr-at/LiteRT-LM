@@ -37,6 +37,7 @@
 #include "runtime/util/memory_mapped_file.h"
 #include "runtime/util/scoped_file.h"
 #include "runtime/util/test_utils.h"  // IWYU pragma: keep
+#include "tflite/types/half.h"  // from @litert
 
 namespace litert::lm {
 namespace {
@@ -294,6 +295,27 @@ TEST(LlmLiteRTCompiledModelExecutorUtilsTest, InitializeAttentionMask_Float32) {
     for (int i = 0; i < count_float; ++i) {
       EXPECT_EQ(mask_ptr[i], expected_val);
     }
+  }
+}
+
+TEST(LlmLiteRTCompiledModelExecutorUtilsTest, InitializeAttentionMask_Float16) {
+  LITERT_ASSERT_OK_AND_ASSIGN(auto env, ::litert::Environment::Create({}));
+  auto layout = ::litert::Layout(::litert::Dimensions({1, 1, 1, 128}));
+  RankedTensorType ranked_tensor_type(ElementType::Float16, std::move(layout));
+  auto mask_buffer = TensorBuffer::CreateManaged(
+      env, ::litert::TensorBufferType::kHostMemory, ranked_tensor_type,
+      sizeof(tflite::half) * 128);
+  ASSERT_TRUE(mask_buffer);
+
+  ASSERT_OK(InitializeAttentionMask(*mask_buffer, /*is_f16=*/true));
+  auto lock = litert::TensorBufferScopedLock::Create(
+      *mask_buffer, litert::TensorBuffer::LockMode::kRead);
+  ASSERT_TRUE(lock);
+  tflite::half* mask_ptr = static_cast<tflite::half*>(lock->second);
+  float expected_val = -45824.0f;
+  int count_float = 128;
+  for (int i = 0; i < count_float; ++i) {
+    EXPECT_FLOAT_EQ(static_cast<float>(mask_ptr[i]), expected_val);
   }
 }
 
