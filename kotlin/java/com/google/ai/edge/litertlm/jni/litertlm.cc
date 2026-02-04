@@ -145,13 +145,22 @@ jobject CreateBenchmarkInfoJni(
     }
   }
 
+  double last_prefill_tokens_per_second = benchmark_info.GetPrefillTokensPerSec(
+      benchmark_info.GetTotalPrefillTurns() - 1);
+
+  double last_decode_tokens_per_second = benchmark_info.GetDecodeTokensPerSec(
+      benchmark_info.GetTotalDecodeTurns() - 1);
+
   jclass benchmark_info_cls =
       env->FindClass("com/google/ai/edge/litertlm/BenchmarkInfo");
   jmethodID benchmark_info_ctor =
-      env->GetMethodID(benchmark_info_cls, "<init>", "(II)V");
+      env->GetMethodID(benchmark_info_cls, "<init>", "(DIIDD)V");
 
   return env->NewObject(benchmark_info_cls, benchmark_info_ctor,
-                        last_prefill_token_count, last_decode_token_count);
+                        benchmark_info.GetTimeToFirstToken(),
+                        last_prefill_token_count, last_decode_token_count,
+                        last_prefill_tokens_per_second,
+                        last_decode_tokens_per_second);
 }
 
 // Converts a Java InputData array to a C++ vector of InputData.

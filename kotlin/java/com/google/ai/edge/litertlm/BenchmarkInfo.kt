@@ -18,10 +18,20 @@ package com.google.ai.edge.litertlm
 /**
  * Data class to hold benchmark information.
  *
+ * @property timeToFirstTokenInSecond The time in seconds to the first token.
  * @property lastPrefillTokenCount The number of tokens in the last prefill. Returns 0 if there was
  *   no prefill.
  * @property lastDecodeTokenCount The number of tokens in the last decode. Returns 0 if there was no
  *   decode.
+ * @property lastPrefillTokensPerSecond The number of tokens processed per second in the last
+ *   prefill.
+ * @property lastDecodeTokensPerSecond The number of tokens processed per second in the last decode.
  */
 @OptIn(ExperimentalApi::class)
-data class BenchmarkInfo(val lastPrefillTokenCount: Int, val lastDecodeTokenCount: Int)
+data class BenchmarkInfo(
+  val timeToFirstTokenInSecond: Double,
+  val lastPrefillTokenCount: Int,
+  val lastDecodeTokenCount: Int,
+  val lastPrefillTokensPerSecond: Double,
+  val lastDecodeTokensPerSecond: Double,
+)
