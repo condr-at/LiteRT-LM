@@ -78,6 +78,13 @@ constexpr absl::string_view kTestModelPathDecodeBatch =
 //   test_decode_1280: context_length = 1280
 constexpr absl::string_view kTestModelPathMulti = "magic_test_multi.tflite";
 
+// Helper to get the idx-th element of the array. It's to avoid static array
+// bounds check on Windows.
+template <typename T>
+T& Get(T* ptr, int idx) {
+  return ptr[idx];
+}
+
 absl::StatusOr<Model> LoadModelFromFile(absl::string_view model_path) {
   auto model_path_in_srcdir =
       std::filesystem::path(::testing::SrcDir()) /
@@ -167,7 +174,7 @@ TEST(MagicNumberConfigsHelperTest, ContextLength_DefaultSettings) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 1);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 8192);
   EXPECT_EQ(config0.signature_prefix, nullptr);
@@ -191,7 +198,7 @@ TEST(MagicNumberConfigsHelperTest, ContextLength_ExplictSettings) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 1);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
@@ -216,7 +223,7 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 1);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 8192);
   EXPECT_EQ(config0.signature_prefix, nullptr);
@@ -243,7 +250,7 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 1);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
@@ -252,13 +259,13 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_EQ(helper.magic_number_verifications()->num_verifications, 2);
 
   const auto& verification0 =
-      helper.magic_number_verifications()->verifications[0];
+      Get(helper.magic_number_verifications()->verifications, 0);
   EXPECT_EQ(std::string(verification0.signature), "decode");
   EXPECT_EQ(std::string(verification0.test_signature), "test_decode_1280");
   EXPECT_EQ(verification0.is_superset, true);
 
   const auto& verification1 =
-      helper.magic_number_verifications()->verifications[1];
+      Get(helper.magic_number_verifications()->verifications, 1);
   EXPECT_EQ(std::string(verification1.signature), "prefill");
   EXPECT_EQ(std::string(verification1.test_signature), "test_prefill_1280");
   EXPECT_EQ(verification1.is_superset, true);
@@ -278,12 +285,12 @@ TEST(MagicNumberConfigsHelperTest, Both_DefaultSettings) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 2);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 8192);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 4099);
   EXPECT_EQ(config1.target_number, 4096);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
@@ -309,12 +316,12 @@ TEST(MagicNumberConfigsHelperTest, Both_ExplictSettings) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 2);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 4099);
   EXPECT_EQ(config1.target_number, 1024);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
@@ -340,12 +347,12 @@ TEST(MagicNumberConfigsHelperTest, Both_ExplictSettingsLargerThanMagicNumbers) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 2);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 8192);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 4099);
   EXPECT_EQ(config1.target_number, 4096);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
@@ -372,12 +379,12 @@ TEST(MagicNumberConfigsHelperTest, Both_ExplictSettingsWithVerifications) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 2);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 4099);
   EXPECT_EQ(config1.target_number, 1024);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
@@ -386,13 +393,13 @@ TEST(MagicNumberConfigsHelperTest, Both_ExplictSettingsWithVerifications) {
   EXPECT_EQ(helper.magic_number_verifications()->num_verifications, 2);
 
   const auto& verification0 =
-      helper.magic_number_verifications()->verifications[0];
+      Get(helper.magic_number_verifications()->verifications, 0);
   EXPECT_EQ(std::string(verification0.signature), "decode");
   EXPECT_EQ(std::string(verification0.test_signature), "test_decode_1280");
   EXPECT_EQ(verification0.is_superset, true);
 
   const auto& verification1 =
-      helper.magic_number_verifications()->verifications[1];
+      Get(helper.magic_number_verifications()->verifications, 1);
   EXPECT_EQ(std::string(verification1.signature), "prefill");
   EXPECT_EQ(std::string(verification1.test_signature), "test_prefill_1280");
   EXPECT_EQ(verification1.is_superset, true);
@@ -418,12 +425,12 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 2);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 4099);
   EXPECT_EQ(config1.target_number, 512);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
@@ -432,7 +439,7 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_EQ(helper.magic_number_verifications()->num_verifications, 1);
 
   const auto& verification0 =
-      helper.magic_number_verifications()->verifications[0];
+      Get(helper.magic_number_verifications()->verifications, 0);
   EXPECT_EQ(std::string(verification0.signature), "decode");
   EXPECT_EQ(std::string(verification0.test_signature), "test_decode_1280");
   EXPECT_EQ(verification0.is_superset, true);
@@ -455,17 +462,17 @@ TEST(MagicNumberConfigsHelperTest, DecodeBatch_DefaultSettings) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 3);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 8192);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 11);
   EXPECT_EQ(config1.target_number, 1);
   EXPECT_EQ(std::string(config1.signature_prefix), "decode");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 4099);
   EXPECT_EQ(config2.target_number, 4096);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
@@ -492,17 +499,17 @@ TEST(MagicNumberConfigsHelperTest, DecodeBatch_ExplictSettings) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 3);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 11);
   EXPECT_EQ(config1.target_number, 3);
   EXPECT_EQ(std::string(config1.signature_prefix), "decode");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 4099);
   EXPECT_EQ(config2.target_number, 1024);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
@@ -530,17 +537,17 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 3);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 8192);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 11);
   EXPECT_EQ(config1.target_number, 8);
   EXPECT_EQ(std::string(config1.signature_prefix), "decode");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 4099);
   EXPECT_EQ(config2.target_number, 4096);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
@@ -569,17 +576,17 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 3);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 11);
   EXPECT_EQ(config1.target_number, 3);
   EXPECT_EQ(std::string(config1.signature_prefix), "decode");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 4099);
   EXPECT_EQ(config2.target_number, 1024);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
@@ -588,13 +595,13 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_EQ(helper.magic_number_verifications()->num_verifications, 2);
 
   const auto& verification0 =
-      helper.magic_number_verifications()->verifications[0];
+      Get(helper.magic_number_verifications()->verifications, 0);
   EXPECT_EQ(std::string(verification0.signature), "decode");
   EXPECT_EQ(std::string(verification0.test_signature), "test_decode_1280");
   EXPECT_EQ(verification0.is_superset, true);
 
   const auto& verification1 =
-      helper.magic_number_verifications()->verifications[1];
+      Get(helper.magic_number_verifications()->verifications, 1);
   EXPECT_EQ(std::string(verification1.signature), "prefill");
   EXPECT_EQ(std::string(verification1.test_signature), "test_prefill_1280");
   EXPECT_EQ(verification1.is_superset, true);
@@ -621,17 +628,17 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 3);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 11);
   EXPECT_EQ(config1.target_number, 3);
   EXPECT_EQ(std::string(config1.signature_prefix), "decode");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 4099);
   EXPECT_EQ(config2.target_number, 512);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
@@ -640,7 +647,7 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_EQ(helper.magic_number_verifications()->num_verifications, 1);
 
   const auto& verification0 =
-      helper.magic_number_verifications()->verifications[0];
+      Get(helper.magic_number_verifications()->verifications, 0);
   EXPECT_EQ(std::string(verification0.signature), "decode");
   EXPECT_EQ(std::string(verification0.test_signature), "test_decode_1280");
   EXPECT_EQ(verification0.is_superset, true);
@@ -663,27 +670,27 @@ TEST(MagicNumberConfigsHelperTest, Multi_DefaultSettings) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 5);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 8192);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 67);
   EXPECT_EQ(config1.target_number, 64);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 257);
   EXPECT_EQ(config2.target_number, 256);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
 
-  const auto& config3 = helper.magic_number_configs()->configs[3];
+  const auto& config3 = Get(helper.magic_number_configs()->configs, 3);
   EXPECT_EQ(config3.magic_number, 1031);
   EXPECT_EQ(config3.target_number, 1024);
   EXPECT_EQ(std::string(config3.signature_prefix), "prefill");
 
-  const auto& config4 = helper.magic_number_configs()->configs[4];
+  const auto& config4 = Get(helper.magic_number_configs()->configs, 4);
   EXPECT_EQ(config4.magic_number, 4099);
   EXPECT_EQ(config4.target_number, 4096);
   EXPECT_EQ(std::string(config4.signature_prefix), "prefill");
@@ -709,28 +716,28 @@ TEST(MagicNumberConfigsHelperTest, Multi_LessExplictSettings) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 5);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 67);
   EXPECT_EQ(config1.target_number, 64);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 257);
   EXPECT_EQ(config2.target_number, 128);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
 
-  const auto& config3 = helper.magic_number_configs()->configs[3];
+  const auto& config3 = Get(helper.magic_number_configs()->configs, 3);
   EXPECT_EQ(config3.magic_number, 1031);
   EXPECT_EQ(config3.target_number, 1024);
   EXPECT_EQ(std::string(config3.signature_prefix), "prefill");
 
   // Last prefill_batch_size is capped by the context length, 1280.
-  const auto& config4 = helper.magic_number_configs()->configs[4];
+  const auto& config4 = Get(helper.magic_number_configs()->configs, 4);
   EXPECT_EQ(config4.magic_number, 4099);
   EXPECT_EQ(config4.target_number, 1280);
   EXPECT_EQ(std::string(config4.signature_prefix), "prefill");
@@ -757,27 +764,27 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 5);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 8192);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 67);
   EXPECT_EQ(config1.target_number, 64);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 257);
   EXPECT_EQ(config2.target_number, 256);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
 
-  const auto& config3 = helper.magic_number_configs()->configs[3];
+  const auto& config3 = Get(helper.magic_number_configs()->configs, 3);
   EXPECT_EQ(config3.magic_number, 1031);
   EXPECT_EQ(config3.target_number, 512);
   EXPECT_EQ(std::string(config3.signature_prefix), "prefill");
 
-  const auto& config4 = helper.magic_number_configs()->configs[4];
+  const auto& config4 = Get(helper.magic_number_configs()->configs, 4);
   EXPECT_EQ(config4.magic_number, 4099);
   EXPECT_EQ(config4.target_number, 4096);
   EXPECT_EQ(std::string(config4.signature_prefix), "prefill");
@@ -806,27 +813,27 @@ TEST(MagicNumberConfigsHelperTest, Multi_MoreExplictSettings) {
 
   // Since 5 batch sizes are given and 4 magic numbers are available, the first
   // small batch size, 8, is skipped.
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 3072);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 67);
   EXPECT_EQ(config1.target_number, 32);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 257);
   EXPECT_EQ(config2.target_number, 128);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
 
-  const auto& config3 = helper.magic_number_configs()->configs[3];
+  const auto& config3 = Get(helper.magic_number_configs()->configs, 3);
   EXPECT_EQ(config3.magic_number, 1031);
   EXPECT_EQ(config3.target_number, 1024);
   EXPECT_EQ(std::string(config3.signature_prefix), "prefill");
 
-  const auto& config4 = helper.magic_number_configs()->configs[4];
+  const auto& config4 = Get(helper.magic_number_configs()->configs, 4);
   EXPECT_EQ(config4.magic_number, 4099);
   EXPECT_EQ(config4.target_number, 2048);
   EXPECT_EQ(std::string(config4.signature_prefix), "prefill");
@@ -853,7 +860,7 @@ TEST(MagicNumberConfigsHelperTest, Multi_MoreExplictSettings_SkipLast) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 5);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 3072);
   EXPECT_EQ(config0.signature_prefix, nullptr);
@@ -862,22 +869,22 @@ TEST(MagicNumberConfigsHelperTest, Multi_MoreExplictSettings_SkipLast) {
   // 2 small batch sizes, 32, 128, are skipped and the first 256 doesn't fit in
   // 67, the default target number 64 is used. The last 2048 is also skipped
   // because no more magic numbers are available.
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 67);
   EXPECT_EQ(config1.target_number, 64);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 257);
   EXPECT_EQ(config2.target_number, 256);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
 
-  const auto& config3 = helper.magic_number_configs()->configs[3];
+  const auto& config3 = Get(helper.magic_number_configs()->configs, 3);
   EXPECT_EQ(config3.magic_number, 1031);
   EXPECT_EQ(config3.target_number, 512);
   EXPECT_EQ(std::string(config3.signature_prefix), "prefill");
 
-  const auto& config4 = helper.magic_number_configs()->configs[4];
+  const auto& config4 = Get(helper.magic_number_configs()->configs, 4);
   EXPECT_EQ(config4.magic_number, 4099);
   EXPECT_EQ(config4.target_number, 1024);
   EXPECT_EQ(std::string(config4.signature_prefix), "prefill");
@@ -905,7 +912,7 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 5);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 256);
   EXPECT_EQ(config0.signature_prefix, nullptr);
@@ -914,22 +921,22 @@ TEST(MagicNumberConfigsHelperTest,
   // small batch size, 64 is skipped and the first 256 doesn't fit in 67, the
   // default target number 64 is used. The last 2 lengths, 512, 1024 are larger
   // than the context length 256, so they are also capped to 256.
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 67);
   EXPECT_EQ(config1.target_number, 64);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 257);
   EXPECT_EQ(config2.target_number, 128);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
 
-  const auto& config3 = helper.magic_number_configs()->configs[3];
+  const auto& config3 = Get(helper.magic_number_configs()->configs, 3);
   EXPECT_EQ(config3.magic_number, 1031);
   EXPECT_EQ(config3.target_number, 256);
   EXPECT_EQ(std::string(config3.signature_prefix), "prefill");
 
-  const auto& config4 = helper.magic_number_configs()->configs[4];
+  const auto& config4 = Get(helper.magic_number_configs()->configs, 4);
   EXPECT_EQ(config4.magic_number, 4099);
   EXPECT_EQ(config4.target_number, 256);
   EXPECT_EQ(std::string(config4.signature_prefix), "prefill");
@@ -956,28 +963,28 @@ TEST(MagicNumberConfigsHelperTest, Multi_LessExplictSettingsWithVerifications) {
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 5);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 67);
   EXPECT_EQ(config1.target_number, 64);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 257);
   EXPECT_EQ(config2.target_number, 256);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
 
-  const auto& config3 = helper.magic_number_configs()->configs[3];
+  const auto& config3 = Get(helper.magic_number_configs()->configs, 3);
   EXPECT_EQ(config3.magic_number, 1031);
   EXPECT_EQ(config3.target_number, 1024);
   EXPECT_EQ(std::string(config3.signature_prefix), "prefill");
 
   // Last prefill_batch_size is capped by the context length, 1280.
-  const auto& config4 = helper.magic_number_configs()->configs[4];
+  const auto& config4 = Get(helper.magic_number_configs()->configs, 4);
   EXPECT_EQ(config4.magic_number, 4099);
   EXPECT_EQ(config4.target_number, 1280);
   EXPECT_EQ(std::string(config4.signature_prefix), "prefill");
@@ -986,19 +993,19 @@ TEST(MagicNumberConfigsHelperTest, Multi_LessExplictSettingsWithVerifications) {
   EXPECT_EQ(helper.magic_number_verifications()->num_verifications, 3);
 
   const auto& verification0 =
-      helper.magic_number_verifications()->verifications[0];
+      Get(helper.magic_number_verifications()->verifications, 0);
   EXPECT_EQ(std::string(verification0.signature), "decode");
   EXPECT_EQ(std::string(verification0.test_signature), "test_decode_1280");
   EXPECT_EQ(verification0.is_superset, true);
 
   const auto& verification1 =
-      helper.magic_number_verifications()->verifications[1];
+      Get(helper.magic_number_verifications()->verifications, 1);
   EXPECT_EQ(std::string(verification1.signature), "prefill_1031");
   EXPECT_EQ(std::string(verification1.test_signature), "test_prefill_1024");
   EXPECT_EQ(verification1.is_superset, true);
 
   const auto& verification2 =
-      helper.magic_number_verifications()->verifications[2];
+      Get(helper.magic_number_verifications()->verifications, 2);
   EXPECT_EQ(std::string(verification2.signature), "prefill_257");
   EXPECT_EQ(std::string(verification2.test_signature), "test_prefill_256");
   EXPECT_EQ(verification2.is_superset, true);
@@ -1023,27 +1030,27 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_NE(helper.magic_number_configs(), nullptr);
   EXPECT_EQ(helper.magic_number_configs()->num_configs, 5);
 
-  const auto& config0 = helper.magic_number_configs()->configs[0];
+  const auto& config0 = Get(helper.magic_number_configs()->configs, 0);
   EXPECT_EQ(config0.magic_number, 8209);
   EXPECT_EQ(config0.target_number, 1280);
   EXPECT_EQ(config0.signature_prefix, nullptr);
 
-  const auto& config1 = helper.magic_number_configs()->configs[1];
+  const auto& config1 = Get(helper.magic_number_configs()->configs, 1);
   EXPECT_EQ(config1.magic_number, 67);
   EXPECT_EQ(config1.target_number, 64);
   EXPECT_EQ(std::string(config1.signature_prefix), "prefill");
 
-  const auto& config2 = helper.magic_number_configs()->configs[2];
+  const auto& config2 = Get(helper.magic_number_configs()->configs, 2);
   EXPECT_EQ(config2.magic_number, 257);
   EXPECT_EQ(config2.target_number, 128);
   EXPECT_EQ(std::string(config2.signature_prefix), "prefill");
 
-  const auto& config3 = helper.magic_number_configs()->configs[3];
+  const auto& config3 = Get(helper.magic_number_configs()->configs, 3);
   EXPECT_EQ(config3.magic_number, 1031);
   EXPECT_EQ(config3.target_number, 512);
   EXPECT_EQ(std::string(config3.signature_prefix), "prefill");
 
-  const auto& config4 = helper.magic_number_configs()->configs[4];
+  const auto& config4 = Get(helper.magic_number_configs()->configs, 4);
   EXPECT_EQ(config4.magic_number, 4099);
   EXPECT_EQ(config4.target_number, 1024);
   EXPECT_EQ(std::string(config4.signature_prefix), "prefill");
@@ -1052,13 +1059,13 @@ TEST(MagicNumberConfigsHelperTest,
   EXPECT_EQ(helper.magic_number_verifications()->num_verifications, 2);
 
   const auto& verification0 =
-      helper.magic_number_verifications()->verifications[0];
+      Get(helper.magic_number_verifications()->verifications, 0);
   EXPECT_EQ(std::string(verification0.signature), "decode");
   EXPECT_EQ(std::string(verification0.test_signature), "test_decode_1280");
   EXPECT_EQ(verification0.is_superset, true);
 
   const auto& verification1 =
-      helper.magic_number_verifications()->verifications[1];
+      Get(helper.magic_number_verifications()->verifications, 1);
   EXPECT_EQ(std::string(verification1.signature), "prefill_4099");
   EXPECT_EQ(std::string(verification1.test_signature), "test_prefill_1024");
   EXPECT_EQ(verification1.is_superset, true);
