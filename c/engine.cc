@@ -97,7 +97,6 @@ using ::litert::lm::EngineFactory;
 using ::litert::lm::EngineSettings;
 using ::litert::lm::InputText;
 using ::litert::lm::JsonMessage;
-using ::litert::lm::EngineFactory;
 using ::litert::lm::Message;
 using ::litert::lm::ModelAssets;
 using ::litert::lm::Responses;
@@ -192,7 +191,7 @@ void litert_lm_session_config_delete(LiteRtLmSessionConfig* config) {
 LiteRtLmConversationConfig* litert_lm_conversation_config_create(
     LiteRtLmEngine* engine, const LiteRtLmSessionConfig* session_config,
     const char* system_message_json, const char* tools_json,
-    bool enable_constrained_decoding) {
+    const char* messages_json, bool enable_constrained_decoding) {
   if (!engine || !engine->engine) {
     return nullptr;
   }
@@ -210,6 +209,23 @@ LiteRtLmConversationConfig* litert_lm_conversation_config_create(
       system_message["content"] = content;
     }
     json_preface.messages = nlohmann::ordered_json::array({system_message});
+  }
+
+  if (messages_json) {
+    auto messages =
+        nlohmann::ordered_json::parse(messages_json, nullptr, false);
+    if (messages.is_discarded()) {
+      ABSL_LOG(ERROR) << "Failed to parse messages JSON.";
+    } else if (!messages.is_array()) {
+      ABSL_LOG(ERROR) << "Messages JSON is not an array.";
+    } else {
+      if (json_preface.messages.is_array()) {
+        json_preface.messages.insert(json_preface.messages.end(),
+                                     messages.begin(), messages.end());
+      } else {
+        json_preface.messages = std::move(messages);
+      }
+    }
   }
 
   std::unique_ptr<SessionConfig> default_session_config;
@@ -346,7 +362,6 @@ LiteRtLmEngine* litert_lm_engine_create(
 
   absl::StatusOr<std::unique_ptr<Engine>> engine;
     engine = EngineFactory::CreateDefault(*settings->settings);
-
 
   if (!engine.ok()) {
     ABSL_LOG(ERROR) << "Failed to create engine: " << engine.status();

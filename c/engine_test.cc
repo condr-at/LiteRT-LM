@@ -181,7 +181,8 @@ TEST(EngineCTest, CreateConversationConfig) {
   ConversationConfigPtr conversation_config(
       litert_lm_conversation_config_create(
           engine.get(), session_config.get(), system_message.c_str(),
-          /*tools_json=*/nullptr, /*enable_constrained_decoding=*/false),
+          /*tools_json=*/nullptr, /*messages_json=*/nullptr,
+          /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
 
@@ -230,7 +231,8 @@ TEST(EngineCTest, CreateConversationConfigWithNoSamplerParams) {
   ConversationConfigPtr conversation_config(
       litert_lm_conversation_config_create(
           engine.get(), session_config.get(), system_message.c_str(),
-          /*tools_json=*/nullptr, /*enable_constrained_decoding=*/false),
+          /*tools_json=*/nullptr, /*messages_json=*/nullptr,
+          /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
 
@@ -272,6 +274,7 @@ TEST(EngineCTest, CreateConversationConfigWithNoSamplerParamsNoSystemMessage) {
           /*session_config=*/session_config.get(),
           /*system_message_json=*/nullptr,
           /*tools_json=*/nullptr,
+          /*messages_json=*/nullptr,
           /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
@@ -322,6 +325,7 @@ TEST(EngineCTest, CreateConversationConfigWithTools) {
       litert_lm_conversation_config_create(
           engine.get(), /*session_config=*/nullptr,
           /*system_message_json=*/nullptr, tools_json.c_str(),
+          /*messages_json=*/nullptr,
           /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
@@ -356,6 +360,7 @@ TEST(EngineCTest, CreateConversationConfigWithInvalidTools) {
       litert_lm_conversation_config_create(
           engine.get(), /*session_config=*/nullptr,
           /*system_message_json=*/nullptr, tools_json.c_str(),
+          /*messages_json=*/nullptr,
           /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
@@ -390,6 +395,7 @@ TEST(EngineCTest, CreateConversationConfigWithEmptyToolsArray) {
       litert_lm_conversation_config_create(
           engine.get(), /*session_config=*/nullptr,
           /*system_message_json=*/nullptr, tools_json.c_str(),
+          /*messages_json=*/nullptr,
           /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
@@ -425,6 +431,7 @@ TEST(EngineCTest, CreateConversationConfigWithMalformedToolsJson) {
       litert_lm_conversation_config_create(
           engine.get(), /*session_config=*/nullptr,
           /*system_message_json=*/nullptr, tools_json.c_str(),
+          /*messages_json=*/nullptr,
           /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
@@ -469,7 +476,8 @@ TEST(EngineCTest, CreateConversationConfigWithNoSystemMessage) {
   ConversationConfigPtr conversation_config(
       litert_lm_conversation_config_create(
           engine.get(), session_config.get(), /*system_message_json=*/nullptr,
-          /*tools_json=*/nullptr, /*enable_constrained_decoding=*/false),
+          /*tools_json=*/nullptr, /*messages_json=*/nullptr,
+          /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
 
@@ -671,7 +679,8 @@ TEST(EngineCTest, ConversationSendMessageWithConfig) {
   ConversationConfigPtr conversation_config(
       litert_lm_conversation_config_create(
           engine.get(), session_config.get(), system_message.c_str(),
-          /*tools_json=*/nullptr, /*enable_constrained_decoding=*/false),
+          /*tools_json=*/nullptr, /*messages_json=*/nullptr,
+          /*enable_constrained_decoding=*/false),
       &litert_lm_conversation_config_delete);
   ASSERT_NE(conversation_config, nullptr);
 

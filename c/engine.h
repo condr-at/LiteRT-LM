@@ -123,7 +123,7 @@ LITERT_LM_C_API_EXPORT
 LiteRtLmConversationConfig* litert_lm_conversation_config_create(
     LiteRtLmEngine* engine, const LiteRtLmSessionConfig* session_config,
     const char* system_message_json, const char* tools_json,
-    bool enable_constrained_decoding);
+    const char* messages_json, bool enable_constrained_decoding);
 
 // Destroys a LiteRT LM Conversation Config.
 // @param config The config to destroy.
