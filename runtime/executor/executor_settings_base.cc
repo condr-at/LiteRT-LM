@@ -143,7 +143,7 @@ absl::StatusOr<ModelAssets> ModelAssets::Create(absl::string_view model_path) {
 // static
 absl::StatusOr<ModelAssets> ModelAssets::Create(
     std::shared_ptr<litert::lm::ScopedFile> model_file) {
-  return ModelAssets(std::move(model_file));
+  return ModelAssets(std::move(model_file), /*model_path=*/"");
 }
 
 // static
@@ -156,25 +156,23 @@ absl::StatusOr<ModelAssets> ModelAssets::Create(
 absl::StatusOr<ModelAssets> ModelAssets::Create(
     std::shared_ptr<litert::lm::ScopedFile> model_file,
     absl::string_view model_path) {
-  if (model_file) {
-    return Create(std::move(model_file));
-  }
-  return Create(model_path);
+  return ModelAssets(std::move(model_file), model_path);
 }
 
-ModelAssets::ModelAssets(std::shared_ptr<litert::lm::ScopedFile> model_file)
-    : path_or_file_(std::move(model_file)) {}
+ModelAssets::ModelAssets(std::shared_ptr<litert::lm::ScopedFile> model_file,
+                         absl::string_view model_path)
+    : path_(model_path), scoped_file_(std::move(model_file)) {}
 
 ModelAssets::ModelAssets(absl::string_view model_path)
-    : path_or_file_(std::string(model_path)) {}
+    : path_(std::string(model_path)) {}
 
 ModelAssets::ModelAssets(
     std::shared_ptr<litert::lm::MemoryMappedFile> model_file)
-    : path_or_file_(std::move(model_file)) {}
+    : memory_mapped_file_(std::move(model_file)) {}
 
 absl::StatusOr<absl::string_view> ModelAssets::GetPath() const {
-  if (std::holds_alternative<std::string>(path_or_file_)) {
-    return std::get<std::string>(path_or_file_);
+  if (!path_.empty()) {
+    return path_;
   }
   return absl::InvalidArgumentError("Assets were not created with a path.");
 }
@@ -184,7 +182,7 @@ absl::StatusOr<std::shared_ptr<ScopedFile>> ModelAssets::GetScopedFile() const {
     return absl::InvalidArgumentError(
         "Assets were not created with a scoped file.");
   }
-  return std::get<std::shared_ptr<ScopedFile>>(path_or_file_);
+  return scoped_file_;
 }
 
 absl::StatusOr<std::shared_ptr<MemoryMappedFile>>
@@ -193,21 +191,20 @@ ModelAssets::GetMemoryMappedFile() const {
     return absl::InvalidArgumentError(
         "Assets were not created with a memory mapped file.");
   }
-  return std::get<std::shared_ptr<MemoryMappedFile>>(path_or_file_);
+  return memory_mapped_file_;
 }
 
 absl::StatusOr<std::shared_ptr<ScopedFile>> ModelAssets::GetOrCreateScopedFile()
     const {
   if (HasScopedFile()) {
-    return std::get<std::shared_ptr<ScopedFile>>(path_or_file_);
+    return scoped_file_;
   }
   if (HasMemoryMappedFile()) {
     return absl::InvalidArgumentError(
         "Cannot create ScopedFile from MemoryMappedFile.");
   }
 
-  ASSIGN_OR_RETURN(  // NOLINT
-      auto scoped_file, ScopedFile::Open(std::get<std::string>(path_or_file_)));
+  ASSIGN_OR_RETURN(auto scoped_file, ScopedFile::Open(path_));
   return std::make_shared<ScopedFile>(std::move(scoped_file));
 }
 

@@ -20,7 +20,6 @@
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -118,13 +117,8 @@ class ModelAssets {
   static absl::StatusOr<ModelAssets> Create(
       std::shared_ptr<ScopedFile> model_file, absl::string_view model_path);
 
-  bool HasScopedFile() const {
-    return std::holds_alternative<std::shared_ptr<ScopedFile>>(path_or_file_);
-  }
-  bool HasMemoryMappedFile() const {
-    return std::holds_alternative<std::shared_ptr<MemoryMappedFile>>(
-        path_or_file_);
-  }
+  bool HasScopedFile() const { return scoped_file_ != nullptr; }
+  bool HasMemoryMappedFile() const { return memory_mapped_file_ != nullptr; }
 
   // Returns the model file if it was created with the respective variant,
   // otherwise returns an error.
@@ -143,15 +137,16 @@ class ModelAssets {
   }
 
  private:
-  explicit ModelAssets(std::shared_ptr<ScopedFile> model_file);
+  explicit ModelAssets(std::shared_ptr<ScopedFile> model_file,
+                       absl::string_view model_path);
   explicit ModelAssets(absl::string_view model_path);
   explicit ModelAssets(std::shared_ptr<MemoryMappedFile> model_file);
 
   // TODO: b/417814685 - Consider supporting multiple model files if the need
   // case arises.
-  std::variant<std::string, std::shared_ptr<ScopedFile>,
-               std::shared_ptr<MemoryMappedFile>>
-      path_or_file_;
+  std::string path_;
+  std::shared_ptr<ScopedFile> scoped_file_;
+  std::shared_ptr<MemoryMappedFile> memory_mapped_file_;
 
   FakeWeightsMode fake_weights_mode_ = FakeWeightsMode::FAKE_WEIGHTS_NONE;
 };
