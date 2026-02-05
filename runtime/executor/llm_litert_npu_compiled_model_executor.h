@@ -322,6 +322,11 @@ class LlmLiteRtNpuCompiledModelExecutor : public LlmExecutor {
       const InferenceContext& mask_inference_context,
       const InferenceContext& cache_update_inference_context);
 
+  // Clears all buffers in the provided 'buffers' map that belong to the KV
+  // cache.
+  static absl::Status ClearKVCache(
+      absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>& buffers);
+
   bool UseEmbeddingLookupManager() const {
     return embedding_lookup_manager_.has_value();
   }

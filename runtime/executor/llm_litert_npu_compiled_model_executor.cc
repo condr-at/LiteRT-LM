@@ -75,6 +75,9 @@ constexpr char cache_v23[] = "kv_cache_v_23";
 constexpr char cache_k17[] = "kv_cache_k_17";
 constexpr char cache_v17[] = "kv_cache_v_17";
 
+constexpr absl::string_view kv_cache_k_root_name = "kv_cache_k_";
+constexpr absl::string_view kv_cache_v_root_name = "kv_cache_v_";
+
 // Signature names for the embedder.
 struct EmbedderSignatures {
   static constexpr absl::string_view kPrefillEmbedder = "prefill_embedder_128";
@@ -620,8 +623,7 @@ absl::Status LlmLiteRtNpuCompiledModelExecutor::AllocateTransformerBuffers(
     absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>&
         decode_output_kv_cache_slice_buffers) {
   auto prefill_signature = transformer_model->FindSignature(kPrefillSignature);
-  constexpr absl::string_view kv_cache_k_root_name = "kv_cache_k_";
-  constexpr absl::string_view kv_cache_v_root_name = "kv_cache_v_";
+
   constexpr absl::string_view kv_cache_slice_k_root_name = "kv_slice_k_";
   constexpr absl::string_view kv_cache_slice_v_root_name = "kv_slice_v_";
 
@@ -892,6 +894,9 @@ absl::Status LlmLiteRtNpuCompiledModelExecutor::WarmupInference(
   RET_CHECK(result)
       << "Inference warmup run for cache update signature (decode) failed."
       << result.Error().Message();
+
+  // Clear the KV cache buffers after warmup.
+  RETURN_IF_ERROR(ClearKVCache(llm_inference_context.prefill_input_buffers));
   return absl::OkStatus();
 }
 
@@ -1415,11 +1420,7 @@ absl::Status LlmLiteRtNpuCompiledModelExecutor::Reset() {
   sampled_ids_.clear();
   latency_stats_ = {};
 
-  for (auto& buf : llm_inference_context_.prefill_input_buffers) {
-    buf.second.Clear();
-  }
-  // Decode buffers are cleared by clearing the prefill buffers due to buffer
-  // sharing.
+  RETURN_IF_ERROR(ClearKVCache(llm_inference_context_.prefill_input_buffers));
   return absl::OkStatus();
 }
 
@@ -1751,6 +1752,17 @@ LlmLiteRtNpuCompiledModelExecutor::CreateForGemma3(
       std::move(maybe_embedding_lookup_manager),
       /*embedder_per_layer_context=*/std::nullopt));
   return executor;
+}
+
+absl::Status LlmLiteRtNpuCompiledModelExecutor::ClearKVCache(
+    absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>& buffers) {
+  for (auto& [buffer_name, buffer] : buffers) {
+    if (buffer_name.starts_with(kv_cache_k_root_name) ||
+        buffer_name.starts_with(kv_cache_v_root_name)) {
+      LITERT_RETURN_IF_ERROR(buffer.Clear());
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace litert::lm
