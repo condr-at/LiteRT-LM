@@ -48,6 +48,12 @@ std::string GetSentencePieceModelPath() {
       .string();
 }
 
+std::string GetGemma3TokenizerModelPath() {
+  return (std::filesystem::path(::testing::SrcDir()) / kTestdataDir /
+          "gemma3_sentencepiece.model")
+      .string();
+}
+
 absl::StatusOr<std::string> GetContents(absl::string_view path) {
 #ifdef _WIN32
   int fd = open(path.data(), O_RDONLY | O_BINARY);
@@ -148,6 +154,62 @@ TEST(SentencePieceTokenizerTest, TokenIdsToText) {
   EXPECT_TRUE(text_or.ok());
 
   EXPECT_EQ(text_or.value(), "▁Hello▁World!");
+}
+
+TEST(SentencePieceTokenizerTest, TokenIdsToTextConsecutiveByteTokens) {
+  auto tokenizer_or =
+      SentencePieceTokenizer::CreateFromFile(GetGemma3TokenizerModelPath());
+  EXPECT_TRUE(tokenizer_or.ok());
+  auto tokenizer = std::move(tokenizer_or.value());
+
+  std::vector<std::string> tokens = tokenizer->GetTokens();
+  EXPECT_EQ(tokens.size(), 262144);
+
+  // Consecutive byte token combination
+  // <0xC2><0xB0> --> °
+  EXPECT_EQ(tokens[432], "<0xC2>");
+  EXPECT_EQ(tokens[414], "<0xB0>");
+
+  // Pass to tokenizer in two separate calls to TokenIdsToText.
+  auto text_id283_or = tokenizer->TokenIdsToText({432});
+  EXPECT_EQ(text_id283_or.value(), "");
+  auto text_id414_or = tokenizer->TokenIdsToText({414});
+  EXPECT_EQ(text_id414_or.value(), "°");
+}
+
+TEST(SentencePieceTokenizerTest,
+     TokenIdsToTextConsecutiveByteTokensWithNonByteTokens) {
+  auto tokenizer_or =
+      SentencePieceTokenizer::CreateFromFile(GetGemma3TokenizerModelPath());
+  EXPECT_TRUE(tokenizer_or.ok());
+  auto tokenizer = std::move(tokenizer_or.value());
+
+  std::vector<std::string> tokens = tokenizer->GetTokens();
+  EXPECT_EQ(tokens.size(), 262144);
+
+  for (int i = 0; i < tokens.size(); ++i) {
+    auto text_or = tokenizer->TokenIdsToText({i});
+  }
+
+  // Consecutive byte token combination
+  // <0x6B><0x6D><0xC2><0xB2> --> km²
+  EXPECT_EQ(tokens[345], "<0x6B>");
+  EXPECT_EQ(tokens[347], "<0x6D>");
+  EXPECT_EQ(tokens[432], "<0xC2>");
+  EXPECT_EQ(tokens[416], "<0xB2>");
+
+  // Pass as streaming mode with separate calls to TokenIdsToText.
+  auto km_token_ids = {345, 347};
+  auto text_km_or = tokenizer->TokenIdsToText(km_token_ids);
+  EXPECT_EQ(text_km_or.value(), "km");
+  auto text_id283_or = tokenizer->TokenIdsToText({432});
+  EXPECT_EQ(text_id283_or.value(), "");
+  auto text_id416_or = tokenizer->TokenIdsToText({416});
+  EXPECT_EQ(text_id416_or.value(), "²");
+
+  // Pass all as a single call with a single call to TokenIdsToText.
+  auto combined_text_or = tokenizer->TokenIdsToText({345, 347, 432, 416});
+  EXPECT_EQ(combined_text_or.value(), "km²");
 }
 
 TEST(SentencePieceTokenizerTest, GetTokens) {

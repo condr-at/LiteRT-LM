@@ -73,6 +73,14 @@ class SentencePieceTokenizer : public Tokenizer {
       std::unique_ptr<sentencepiece::SentencePieceProcessor> processor)
       : processor_(std::move(processor)) {};
 
+  // Number of bytes expected for the current multi-byte UTF-8 sequence.
+  // Determined by the lead byte (e.g., <0xE2> implies a 3-byte sequence).
+  int size_of_token_chunk_ = 0;
+
+  // Temporary storage for byte-fallback token IDs until a complete UTF-8
+  // character sequence is formed for decoding.
+  std::vector<int> buffered_token_ids_;
+
   // SentencePiece processor.
   std::unique_ptr<sentencepiece::SentencePieceProcessor> processor_;
 };

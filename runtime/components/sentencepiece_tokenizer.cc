@@ -14,6 +14,7 @@
 
 #include "runtime/components/sentencepiece_tokenizer.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -28,6 +29,36 @@
 #include "sentencepiece_processor.h"  // from @sentencepiece
 
 namespace litert::lm {
+
+namespace {
+
+// Returns the expected total length of a UTF-8 character starting with
+// byte_val.
+int GetUtf8Length(unsigned char byte_val) {
+  if ((byte_val & 0x80) == 0) {
+    return 1;  // ASCII
+  } else if ((byte_val & 0xE0) == 0xC0) {
+    return 2;  // Starts with 110
+  } else if ((byte_val & 0xF0) == 0xE0) {
+    return 3;  // Starts with 1110
+  } else if ((byte_val & 0xF8) == 0xF0) {
+    return 4;  // Starts with 11110
+  } else if ((byte_val & 0xC0) == 0x80) {
+    return 0;  // It's a continuation byte (not a lead)
+  }
+  return -1;  // Invalid UTF-8
+}
+
+int GetUtf8LengthFromByteToken(const std::string& token_piece) {
+  unsigned int hex_val;
+  if (token_piece.length() == 6 &&
+      std::sscanf(token_piece.c_str(), "<0x%x>", &hex_val) == 1) {
+    return GetUtf8Length(static_cast<unsigned char>(hex_val));
+  }
+  return -1;
+}
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<SentencePieceTokenizer>>
 SentencePieceTokenizer::CreateFromFile(absl::string_view model_path) {
@@ -85,12 +116,26 @@ absl::StatusOr<std::string> SentencePieceTokenizer::TokenIdsToText(
   std::string text = "";
   for (const auto& token_id : token_ids) {
     if (processor_->IsByte(token_id)) {
-      // If the token is a byte, we need to decode it using DecodeIds.
-      // Otherwise, the output would be a hexdecimal representation of the byte.
-      // Note: This is not ideal as certain tokens are only meaningful when
-      // multiple bytes are put together (e.g., emoji). This is a limitation of
-      // processing IDs as singletons.
-      text += processor_->DecodeIds({token_id});
+      std::string piece = processor_->IdToPiece(token_id);
+      int utf8_length = GetUtf8LengthFromByteToken(piece);
+      // If the token is a single byte or invalid/continuation byte and not
+      // bundled with other tokens, decode it immediately.
+      if (size_of_token_chunk_ == 0 && utf8_length <= 1) {
+        text += processor_->DecodeIds({token_id});
+        continue;
+      }
+
+      // Update the expected chunk size based on the new byte.
+      size_of_token_chunk_ = std::max(size_of_token_chunk_, utf8_length);
+      buffered_token_ids_.push_back(token_id);
+
+      // If the buffer satisfies the expected chunk size, decode chunk.
+      // Clear the buffer and reset the expected chunk size.
+      if (buffered_token_ids_.size() >= size_of_token_chunk_) {
+        text += processor_->DecodeIds(buffered_token_ids_);
+        buffered_token_ids_.clear();
+        size_of_token_chunk_ = 0;
+      }
     } else {
       // We are forced to use IdToPiece to account for leading whitespace.
       // Otherwise, the normalizer (depending on the configuration) would
