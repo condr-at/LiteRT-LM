@@ -239,6 +239,7 @@ absl::StatusOr<std::unique_ptr<TaskController>> SessionAdvanced::RunDecodeAsync(
       RETURN_IF_ERROR(execution_manager_lock->AddPrefillTask(
           session_id_, task_id, std::move(preprocessed_contents),
           last_task_ids_, cancelled, std::move(noop_callback)));
+      last_task_ids_ = {task_id};
     }
   }
   session_state_ = SessionState::kDecoded;
