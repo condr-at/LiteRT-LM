@@ -84,6 +84,11 @@ absl::StatusOr<std::string> SentencePieceTokenizer::TokenIdsToText(
     const std::vector<int>& token_ids) {
   std::string text = "";
   for (const auto& token_id : token_ids) {
+    if (token_id >= vocab_size_ || token_id < 0) {
+      return absl::NotFoundError(
+          absl::StrCat("Token id ", token_id,
+                       " is out of range. Vocab size is ", vocab_size_));
+    }
     if (processor_->IsByte(token_id)) {
       // If the token is a byte, we need to decode it using DecodeIds.
       // Otherwise, the output would be a hexdecimal representation of the byte.

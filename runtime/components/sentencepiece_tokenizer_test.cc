@@ -164,5 +164,13 @@ TEST(SentencePieceTokenizerTest, GetTokens) {
   EXPECT_EQ(tokens[2295], "?");
 }
 
+TEST(SentencePieceTokenizerTest, TokensTokenIdsToTextOutOfRange) {
+  ASSERT_OK_AND_ASSIGN(auto tokenizer, SentencePieceTokenizer::CreateFromFile(
+                                           GetSentencePieceModelPath()));
+  std::vector<std::string> tokens = tokenizer->GetTokens();
+  EXPECT_THAT(tokenizer->TokenIdsToText({10000}),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
 }  // namespace
 }  // namespace litert::lm

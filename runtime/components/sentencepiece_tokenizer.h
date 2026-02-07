@@ -71,10 +71,15 @@ class SentencePieceTokenizer : public Tokenizer {
   // Constructor.
   explicit SentencePieceTokenizer(
       std::unique_ptr<sentencepiece::SentencePieceProcessor> processor)
-      : processor_(std::move(processor)) {};
+      : processor_(std::move(processor)),
+        vocab_size_(processor_->GetPieceSize()) {};
 
   // SentencePiece processor.
   std::unique_ptr<sentencepiece::SentencePieceProcessor> processor_;
+
+  // The size of the vocabulary. Used to avoid decoding the invalid IDs that are
+  // out of the range of the vocabulary.
+  int vocab_size_;
 };
 
 }  // namespace litert::lm

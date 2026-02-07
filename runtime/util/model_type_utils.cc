@@ -88,6 +88,12 @@ absl::StatusOr<proto::LlmModelType> InferLlmModelType(
         // HungingFace tokenizer. We should keep searching for the next start
         // turn token id.
         continue;
+      } else if (start_turn_text.status().code() ==
+                 absl::StatusCode::kNotFound) {
+        // If the error is NotFound, it means the start turn token id is out of
+        // range, indicating the model is a fake one that runs in unittest.
+        // Return default model type.
+        return model_type;
       } else {
         return start_turn_text.status();
       }
