@@ -329,11 +329,7 @@ TEST(AudioPreprocessorMiniAudioTest, UsmPreprocessingTwice) {
 
   // Preprocess the same audio data again without resetting the preprocessor.
   auto result = preprocessor->Preprocess(InputAudio(raw_audio_data));
-  EXPECT_THAT(result, ::testing::status::StatusIs(absl::StatusCode::kInternal));
-  EXPECT_THAT(
-      result.status().message(),
-      ::testing::HasSubstr(
-          "Windowed signals size is not equal to expected number of frames"));
+  EXPECT_THAT(result, ::testing::status::StatusIs(absl::StatusCode::kOk));
 
   // Preprocess the same audio data again after resetting the preprocessor.
   preprocessor->Reset();

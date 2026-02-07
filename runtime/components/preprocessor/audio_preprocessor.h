@@ -44,6 +44,18 @@ class AudioPreprocessorConfig {
         /* mel_floor= */ 1e-6);
   }
 
+  static AudioPreprocessorConfig Create(int sample_rate_hz, int num_channels,
+                                        int frame_length, int hop_length,
+                                        int fft_length, float input_scale,
+                                        float pre_emphasis_factor,
+                                        int num_mel_bins, float mel_low_hz,
+                                        float mel_high_hz, float mel_floor) {
+    return AudioPreprocessorConfig(sample_rate_hz, num_channels, frame_length,
+                                   hop_length, fft_length, input_scale,
+                                   pre_emphasis_factor, num_mel_bins,
+                                   mel_low_hz, mel_high_hz, mel_floor);
+  }
+
   // Allows logging of the config.
   friend std::ostream& operator<<(std::ostream& os,
                                   const AudioPreprocessorConfig& config) {
