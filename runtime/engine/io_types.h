@@ -463,10 +463,19 @@ class DecodeConfig {
   // Returns a pointer to the constraint, or nullptr if no constraint is set.
   Constraint* absl_nullable GetConstraint() const { return constraint_; }
 
+  // Sets the max output tokens.
+  void SetMaxOutputTokens(int max_output_tokens) {
+    max_output_tokens_ = max_output_tokens;
+  }
+
+  // Returns the max output tokens.
+  std::optional<int> GetMaxOutputTokens() const { return max_output_tokens_; }
+
  private:
   DecodeConfig() = default;
 
   Constraint* absl_nullable constraint_ = nullptr;
+  std::optional<int> max_output_tokens_ = std::nullopt;
 };
 
 // The properties of the audio model. These properties are populated by

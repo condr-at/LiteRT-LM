@@ -16,6 +16,7 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_FRAMEWORK_RESOURCE_MANAGEMENT_EXECUTION_MANAGER_H_
 
 #include <atomic>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -207,7 +208,8 @@ class ExecutionManager {
       absl::flat_hash_set<TaskId> dep_tasks,
       Constraint* absl_nullable constraint,
       std::shared_ptr<std::atomic<bool>> absl_nonnull cancelled,
-      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback)
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+      int max_output_tokens = std::numeric_limits<int>::max())
       ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
 
   // Adds a clone session task to the execution manager.

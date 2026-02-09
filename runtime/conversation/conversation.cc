@@ -221,8 +221,12 @@ absl::StatusOr<std::string> Conversation::GetSingleTurnText(
 }
 
 absl::StatusOr<DecodeConfig> Conversation::CreateDecodeConfig(
-    std::optional<ConstraintArg> decoding_constraint) {
+    std::optional<ConstraintArg> decoding_constraint,
+    std::optional<int> max_output_tokens) {
   auto decode_config = DecodeConfig::CreateDefault();
+  if (max_output_tokens.has_value()) {
+    decode_config.SetMaxOutputTokens(max_output_tokens.value());
+  }
   if (decoding_constraint.has_value() && constraint_provider_ != nullptr) {
     ASSIGN_OR_RETURN(constraint_, constraint_provider_->CreateConstraint(
                                       std::move(decoding_constraint).value()));
@@ -340,7 +344,8 @@ absl::StatusOr<Message> Conversation::SendMessage(const Message& message,
   } else {
     ASSIGN_OR_RETURN(
         auto decode_config,
-        CreateDecodeConfig(std::move(optional_args.decoding_constraint)));
+        CreateDecodeConfig(std::move(optional_args.decoding_constraint),
+                           optional_args.max_output_tokens));
     ASSIGN_OR_RETURN(const Responses& responses,
                      session_->RunDecode(decode_config));
     ASSIGN_OR_RETURN(
@@ -398,7 +403,8 @@ absl::Status Conversation::SendMessageAsync(
 
   ASSIGN_OR_RETURN(
       auto decode_config,
-      CreateDecodeConfig(std::move(optional_args.decoding_constraint)));
+      CreateDecodeConfig(std::move(optional_args.decoding_constraint),
+                         optional_args.max_output_tokens));
   if (is_appending_message_) {
     ASSIGN_OR_RETURN(
         std::ignore,

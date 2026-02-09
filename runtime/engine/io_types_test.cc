@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -903,6 +904,7 @@ TEST(BenchmarkInfoTests, OperatorOutputWithData) {
 TEST(DecodeConfigTest, CreateDefault) {
   DecodeConfig decode_config = DecodeConfig::CreateDefault();
   EXPECT_EQ(decode_config.GetConstraint(), nullptr);
+  EXPECT_EQ(decode_config.GetMaxOutputTokens(), std::nullopt);
 }
 
 TEST(DecodeConfigTest, SetAndGetConstraint) {
@@ -910,6 +912,14 @@ TEST(DecodeConfigTest, SetAndGetConstraint) {
   auto constraint = FakeConstraint({1, 2, 3}, /*vocabulary_size=*/10);
   decode_config.SetConstraint(&constraint);
   EXPECT_EQ(decode_config.GetConstraint(), &constraint);
+}
+
+TEST(DecodeConfigTest, SetAndGetMaxOutputTokens) {
+  DecodeConfig decode_config = DecodeConfig::CreateDefault();
+  EXPECT_EQ(decode_config.GetMaxOutputTokens(), std::nullopt);
+
+  decode_config.SetMaxOutputTokens(42);
+  EXPECT_EQ(decode_config.GetMaxOutputTokens(), 42);
 }
 
 }  // namespace

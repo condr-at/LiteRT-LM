@@ -18,6 +18,7 @@
 #include <fstream>
 #include <ios>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -1344,6 +1345,57 @@ TEST_P(ConversationTest, SendMessageWithConstraint) {
           user_message, {
                             .decoding_constraint = std::move(constraint_arg),
                         }));
+}
+
+TEST_P(ConversationTest, SendMessageWithMaxOutputTokens) {
+  // Set up mock Session.
+  auto mock_session = std::make_unique<MockSession>();
+  MockSession* mock_session_ptr = mock_session.get();
+  SessionConfig session_config = SessionConfig::CreateDefault();
+  session_config.SetStartTokenId(0);
+  session_config.GetMutableStopTokenIds().push_back({1});
+  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
+  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
+      .WillRepeatedly(testing::ReturnRef(session_config));
+  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
+
+  // Set up mock Engine.
+  auto mock_engine = std::make_unique<MockEngine>();
+  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
+      .WillOnce(testing::Return(std::move(mock_session)));
+  ASSERT_OK_AND_ASSIGN(auto model_assets,
+                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
+  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
+                                                 model_assets, Backend::CPU));
+  EXPECT_CALL(*mock_engine, GetEngineSettings())
+      .WillRepeatedly(testing::ReturnRef(engine_settings));
+
+  // Create Conversation with default config.
+  ASSERT_OK_AND_ASSIGN(
+      auto conversation_config,
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config)
+          .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
+          .Build(*mock_engine));
+  ASSERT_OK_AND_ASSIGN(auto conversation,
+                       Conversation::Create(*mock_engine, conversation_config));
+
+  JsonMessage user_message = {{"role", "user"}, {"content", "How are you?"}};
+
+  EXPECT_CALL(*mock_session_ptr, RunPrefill(testing::_))
+      .WillOnce(testing::Return(absl::OkStatus()));
+
+  // Verify that the max_output_tokens is passed to RunDecode.
+  EXPECT_CALL(*mock_session_ptr,
+              RunDecode(testing::Property(&DecodeConfig::GetMaxOutputTokens,
+                                          std::make_optional(42))))
+      .WillOnce(
+          testing::Return(Responses(TaskState::kProcessing, {"I am good."})));
+
+  ASSERT_OK_AND_ASSIGN(
+      const Message response,
+      conversation->SendMessage(user_message, {.max_output_tokens = 42}));
 }
 
 TEST(AppendMessageTest, Gemma3Sync) {

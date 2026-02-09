@@ -375,11 +375,13 @@ absl::StatusOr<Responses> SessionBasic::DecodeInternal(
   session_state_ = SessionState::kDecoded;
 
   if (sampler_ == nullptr) {
-    ASSIGN_OR_RETURN(auto responses,
-                     Decode(executor_, tokenizer_, stop_token_detector_,
-                            session_config_.GetNumOutputCandidates(),
-                            decode_config.GetConstraint(), benchmark_info_,
-                            &cancelled_, session_config_.GetMaxOutputTokens()));
+    ASSIGN_OR_RETURN(
+        auto responses,
+        Decode(executor_, tokenizer_, stop_token_detector_,
+               session_config_.GetNumOutputCandidates(),
+               decode_config.GetConstraint(), benchmark_info_, &cancelled_,
+               decode_config.GetMaxOutputTokens().value_or(
+                   session_config_.GetMaxOutputTokens())));
     return responses;
   } else {
     std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
@@ -388,13 +390,15 @@ absl::StatusOr<Responses> SessionBasic::DecodeInternal(
         auto decoded_ids_buffer,
         CopyToTensorBuffer<int>(decoded_ids,
                                 {session_config_.GetNumOutputCandidates(), 1}));
-    ASSIGN_OR_RETURN(auto responses,
-                     DecodeCustomSampling(
-                         executor_, tokenizer_, stop_token_detector_,
-                         session_config_.GetNumOutputCandidates(), *sampler_,
-                         std::move(decoded_ids_buffer),
-                         decode_config.GetConstraint(), benchmark_info_,
-                         &cancelled_, session_config_.GetMaxOutputTokens()));
+    ASSIGN_OR_RETURN(
+        auto responses,
+        DecodeCustomSampling(executor_, tokenizer_, stop_token_detector_,
+                             session_config_.GetNumOutputCandidates(),
+                             *sampler_, std::move(decoded_ids_buffer),
+                             decode_config.GetConstraint(), benchmark_info_,
+                             &cancelled_,
+                             decode_config.GetMaxOutputTokens().value_or(
+                                 session_config_.GetMaxOutputTokens())));
     return responses;
   }
 }
@@ -407,7 +411,8 @@ absl::Status SessionBasic::DecodeInternalStreaming(
         executor_, tokenizer_, stop_token_detector_,
         session_config_.GetNumOutputCandidates(), decode_config.GetConstraint(),
         benchmark_info_, std::move(callback), &cancelled_,
-        session_config_.GetMaxOutputTokens()));
+        decode_config.GetMaxOutputTokens().value_or(
+            session_config_.GetMaxOutputTokens())));
   } else {
     std::vector<int> decoded_ids(session_config_.GetNumOutputCandidates(),
                                  last_prefill_token_id_);
@@ -421,7 +426,8 @@ absl::Status SessionBasic::DecodeInternalStreaming(
         session_config_.GetNumOutputCandidates(), *sampler_,
         std::move(decoded_ids_buffer), decode_config.GetConstraint(),
         benchmark_info_, std::move(callback), &cancelled_,
-        session_config_.GetMaxOutputTokens()));
+        decode_config.GetMaxOutputTokens().value_or(
+            session_config_.GetMaxOutputTokens())));
   }
   return absl::OkStatus();
 }

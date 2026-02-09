@@ -283,6 +283,9 @@ struct OptionalArgs {
   // The arguments for the model data processor. Most of the time, the users
   // don't need to provide this argument.
   std::optional<DataProcessorArguments> args = std::nullopt;
+
+  // The maximum number of tokens to generate during decode.
+  std::optional<int> max_output_tokens = std::nullopt;
 };
 
 // A multi-turn centric stateful Conversation API for high-level user
@@ -472,7 +475,8 @@ class Conversation {
       const JsonMessage& json_message, const OptionalArgs& optional_args);
 
   absl::StatusOr<DecodeConfig> CreateDecodeConfig(
-      std::optional<ConstraintArg> decoding_constraint = std::nullopt);
+      std::optional<ConstraintArg> decoding_constraint = std::nullopt,
+      std::optional<int> max_output_tokens = std::nullopt);
 
   std::unique_ptr<Engine::Session> session_;
   std::unique_ptr<ModelDataProcessor> model_data_processor_;

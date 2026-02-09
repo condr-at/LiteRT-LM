@@ -363,6 +363,46 @@ TEST_F(SessionAdvancedTest, RunDecodeWithInternalSampler) {
   EXPECT_EQ(responses->GetTexts()[0], " How's it going?");
 }
 
+TEST_F(SessionAdvancedTest, RunDecodeWithMaxOutputTokens) {
+  const std::vector<std::vector<int>> stop_token_ids = {{2294}};
+  SessionConfig session_config = SessionConfig::CreateDefault();
+  session_config.GetMutableSamplerParams() = sampler_params_;
+  session_config.GetMutableStopTokenIds() = stop_token_ids;
+  session_config.SetStartTokenId(2);
+  ASSERT_OK_AND_ASSIGN(
+      auto executor,
+      CreateFakeLlmExecutor(
+          // "Hello World!"
+          /*prefill_tokens=*/{{2, 90, 547, 58, 735, 210, 466, 2294}},
+          // "How's it going?"
+          /*decode_tokens=*/{
+              {224}, {24}, {8}, {66}, {246}, {18}, {2295}, {2294}}));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<ExecutionManager> execution_manager,
+      ExecutionManager::Create(tokenizer_.get(), model_resources_.get(),
+                               std::move(executor),
+                               /*vision_executor_settings=*/nullptr,
+                               /*audio_executor_settings=*/nullptr,
+                               /*litert_env=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto session,
+      SessionAdvanced::Create(execution_manager, tokenizer_.get(),
+                              session_config, /*benchmark_info=*/std::nullopt,
+                              /*audio_executor_properties=*/std::nullopt));
+  std::vector<InputData> inputs;
+  inputs.emplace_back(InputText("Hello World!"));
+  EXPECT_OK(session->RunPrefill(inputs));
+
+  auto decode_config = DecodeConfig::CreateDefault();
+  decode_config.SetMaxOutputTokens(2);
+  auto responses = session->RunDecode(decode_config);
+  EXPECT_OK(responses);
+  // Expect a single output candidate.
+  EXPECT_EQ(responses->GetTexts().size(), 1);
+  EXPECT_EQ(responses->GetTexts()[0], " How'");
+}
+
 TEST_F(SessionAdvancedTest, RunDecodeWithExternalSampler) {
   const std::vector<std::vector<int>> stop_token_ids = {{2294}};
   SessionConfig session_config = SessionConfig::CreateDefault();
