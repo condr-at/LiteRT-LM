@@ -29,38 +29,73 @@ project(LiteRT-LM LANGUAGES C CXX)
 set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(LITERTLM_ROOT_DIR "${PROJECT_ROOT}" CACHE PATH "LiteRT-LM: Root of the LiteRT-LM workspace")
+
 set(LITERTLM_PACKAGES_DIR "${LITERTLM_ROOT_DIR}/cmake/packages" CACHE PATH "LiteRT-LM: Directory for build packages")
-include("${LITERTLM_PACKAGES_DIR}/packages.cmake")
+
 
 set(LITERTLM_PATCHES_DIR "${LITERTLM_ROOT_DIR}/cmake/patches"
     CACHE PATH "LiteRT-LM: Directory for build patches")
 
+# set(LITERTLM_SHIMS_DIR "${LITERTLM_PATCHES_DIR}/shims"
+    # CACHE PATH "LiteRT-LM: Directory for virtualization shims")
+
 set(LITERTLM_MODULES_DIR "${LITERTLM_ROOT_DIR}/cmake/modules"
     CACHE PATH "LiteRT-LM: Modules path, appended to CMAKE_MODULE_PATH")
-list(APPEND CMAKE_MODULE_PATH   "${LITERTLM_MODULES_DIR}")
 
 set(LITERTLM_SCRIPTS_DIR "${LITERTLM_ROOT_DIR}/cmake/scripts"
     CACHE PATH "LiteRT-LM: Directory for internal build and automation scripts")
 
-set(LITERTLM_EXTERNAL_PROJECT_BINARY_DIR "${CMAKE_BINARY_DIR}/external"
-    CACHE PATH "LiteRT-LM: Directory for external projects")
-set(LITERTLM_THIRD_PARTY_DIR             "${CMAKE_BINARY_DIR}/third_party"
-    CACHE PATH "LiteRT-LM: Directory for third-party dependencies")
-
 set(LITERTLM_LOCAL_STAGING_DIR "${CMAKE_BINARY_DIR}/staging/lib" CACHE INTERNAL "")
-set(LITERTLM_GENERATED_SRC_DIR "${CMAKE_BINARY_DIR}/generated/src" CACHE INTERNAL "")
+file(MAKE_DIRECTORY "${LITERTLM_LOCAL_STAGING_DIR}")
+
+set(LITERTLM_RUST_TARGET "" CACHE STRING "Rust target triple (e.g., aarch64-linux-android). Leave empty for host.")
+
+set(LITERTLM_RUST_FILES
+    "${PROJECT_ROOT}/runtime/components/rust/minijinja_template.rs"
+    "${PROJECT_ROOT}/runtime/components/tool_use/rust/parsers.rs"
+
+    CACHE INTERNAL "Rust files to include in the cxx bridge")
+
+set(LITERTLM_CARGO_TOML "${PROJECT_ROOT}/Cargo.toml" CACHE INTERNAL "Path to LiteRT-LM's Cargo.toml")
+
+set(LITERTLM_PROTO_FILES
+  "${PROJECT_ROOT}/runtime/proto/engine.proto"
+  "${PROJECT_ROOT}/runtime/proto/llm_metadata.proto"
+  "${PROJECT_ROOT}/runtime/proto/llm_model_type.proto"
+  "${PROJECT_ROOT}/runtime/proto/sampler_params.proto"
+  "${PROJECT_ROOT}/runtime/proto/token.proto"
+  "${PROJECT_ROOT}/runtime/executor/proto/constrained_decoding_options.proto"
+  "${PROJECT_ROOT}/runtime/util/external_file.proto"
+  CACHE INTERNAL
+  "Protobuf files that will be processed with protoc"
+)
+
+set(LITERTLM_FLATBUFFERS_FILES
+    "${PROJECT_ROOT}/schema/litertlm_header_schema.fbs"
+    CACHE INTERNAL
+    "FlatBuffers files that will be processed with flatc"
+)
+
+
+
+### TODO(totero): Replace references to these with the namespaced versions.
+set(SCRIPTS_DIR      "${LITERTLM_SCRIPTS_DIR}")
+set(PATCHES_DIR      "${LITERTLM_PATCHES_DIR}")
+
+set(MODULES_DIR        "${LITERTLM_MODULES_DIR}")
+list(APPEND CMAKE_MODULE_PATH   "${LITERTLM_MODULES_DIR}")
+###
+
+set(EXTERNAL_PROJECT_BINARY_DIR "${CMAKE_BINARY_DIR}/external")
+set(THIRD_PARTY_DIR             "${CMAKE_BINARY_DIR}/third_party")
+
+set(GENERATED_SRC_DIR           "${CMAKE_BINARY_DIR}/generated/src" CACHE PATH "Root for generated code")
+
 set(LITERTLM_INCLUDE_PATHS
   "${GENERATED_SRC_DIR}"
   "${CMAKE_BINARY_DIR}"
+  CACHE INTERNAL ""
 )
-
-### TODO(totero): Replace references to these with the namespaced versions.
-set(EXTERNAL_PROJECT_BINARY_DIR "${LITERTLM_EXTERNAL_PROJECT_BINARY_DIR}")
-set(THIRD_PARTY_DIR             "${LITERTLM_THIRD_PARTY_DIR}")
-set(GENERATED_SRC_DIR           "${LITERTLM_GENERATED_SRC_DIR}")
-###
-
-
 
 option(_unverified_targets "Builds executables that are still in progress" OFF)
 
@@ -78,8 +113,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive" CACHE STRING "Required CXX
 set_property(GLOBAL PROPERTY LITERTLM_LOCAL_ARCHIVE_REGISTRY "")
 set_property(GLOBAL PROPERTY LITERTLM_LOCAL_TARGET_REGISTRY "")
 
-file(MAKE_DIRECTORY "${LITERTLM_LOCAL_STAGING_DIR}")
-
 # --- Optimization
 option(ENABLE_CCACHE "Enables the use of ccache" OFF)
 if(${ENABLE_CCACHE} STREQUAL "ON")
@@ -94,26 +127,37 @@ if(${ENABLE_CCACHE} STREQUAL "ON")
 endif()
 
 # --- Utilities
-include(utils)
+include("${LITERTLM_MODULES_DIR}/utils.cmake")
 include(macros)
 
 # --- Dependencies
-include(fetch_content)
-include(external_project)
+include("${LITERTLM_MODULES_DIR}/fetch_content.cmake")
+include("${LITERTLM_MODULES_DIR}/external_project.cmake")
 
+include("${LITERTLM_MODULES_DIR}/collect_dependencies.cmake")
 
-
-include(collect_dependencies)
 if(TARGET LITERTLM_DEPS)
-    message(STATUS "✅ DEBUG: LITERTLM_DEPS exists!")
+    message(DEBUG "✅ DEBUG: LITERTLM_DEPS exists!")
 else()
     message(FATAL_ERROR "❌ DEBUG: LITERTLM_DEPS is MISSING!")
 endif()
 
-# --- LiteRT-LM Targets
-include(setup_generated_src_files)
-generate_src_files(ALL_GENERATED_FILES ${ALL_SOURCE_FILES} ${ALL_HEADER_FILES})
 
+# --- LiteRT-LM Targets
+include("${LITERTLM_MODULES_DIR}/generators.cmake")
+generate_src_files(LITERTLM_CORE_FILES ${ALL_SOURCE_FILES} ${ALL_HEADER_FILES})
+generate_src_files(LITERTLM_FLATBUFFER_FILES ${ALL_SCHEMA_FILES})
+# generate_flatbuffers(litertlm_generated_flatbuffers)
+
+if(LITERTLM_CORE_FILES)
+    include("${LITERTLM_MODULES_DIR}/patcher.cmake")
+    set_property(
+        DIRECTORY
+        APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${LITERTLM_PATCHES_DIR}/litertlm_patches.json"
+    )
+    apply_patches_from_json("${LITERTLM_PATCHES_DIR}/litertlm_patches.json")
+endif()
 
 
 add_compile_definitions(
@@ -176,6 +220,7 @@ target_link_libraries(litert_lm_main
         minja_lib
         zlib_lib
         antlr_lib
+
         LiteRTLM::nlohmann_json::nlohmann_json
         opencl_headers_lib
         "-lz" "-lrt" "-lpthread" "-ldl"

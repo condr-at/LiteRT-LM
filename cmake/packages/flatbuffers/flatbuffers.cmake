@@ -25,7 +25,7 @@ set(FLATBUFFERS_LIB_DIR ${FLATBUFFERS_INSTALL_PREFIX}/lib CACHE INTERNAL "")
 
 set(FLATBUFFERS_DIR ${FLATBUFFERS_LIB_DIR}/cmake/flatbuffers CACHE INTERNAL "")
 set(FLATBUFFERS_CMAKE_CONFIG_FILE ${FLATBUFFERS_LIB_DIR}/cmake/flatbuffers/flatbuffers-config.cmake CACHE INTERNAL "")
-set(FLATC_EXECUTABLE ${FLATBUFFERS_BIN_DIR}/flatc CACHE INTERNAL "" FORCE)
+set(FLATC_EXECUTABLE "${FLATBUFFERS_BIN_DIR}/flatc" CACHE INTERNAL "")
 
 setup_external_install_structure("${FLATBUFFERS_INSTALL_PREFIX}")
 
@@ -59,6 +59,17 @@ if(NOT EXISTS "${FLATBUFFERS_CMAKE_CONFIG_FILE}")
     STEP_TARGETS
       step_verify_install
   )
+  ExternalProject_Add_Step(flatbuffers_external compile_schemas
+    COMMAND ${CMAKE_COMMAND}
+        -D FLATC_BIN=${FLATC_EXECUTABLE}
+        -D SCHEMA_DIR=${GENERATED_SRC_DIR}/schema
+        -P ${LITERTLM_SCRIPTS_DIR}/compile_flatbuffers.cmake
+
+    DEPENDEES install
+
+    COMMENT "[LiteRTLM] Batch compiling all Flatbuffer schemas..."
+    ALWAYS 1 # Force check on every build in case schemas changed
+)
   verify_install(flatbuffers_external ${FLATBUFFERS_CMAKE_CONFIG_FILE})
 else()
     message(STATUS "Flatbuffers already installed at: ${FLATBUFFERS_INSTALL_PREFIX}")
@@ -69,11 +80,4 @@ endif()
 
 include(${FLATBUFFERS_PACKAGE_DIR}/flatbuffers_aggregate.cmake)
 generate_flatbuffers_aggregate()
-
-
-
-
-set(schema_fbs
-  "${PROJECT_ROOT}/schema/core/litertlm_header_schema.fbs"
-)
-compile_flatbuffer_files(${schema_fbs})
+generate_flatc_aggregate()

@@ -40,6 +40,6 @@ foreach(_target ${ABSL_MOCK_TARGETS})
         set_target_properties(${_target} PROPERTIES
             INTERFACE_LINK_LIBRARIES LiteRTLM::absl::absl
         )
-        message(STATUS "[LITERTLM-SHIM] Aliased ${_target} -> LiteRTLM::absl::absl")
+        message(STATUS "[LiteRTLM] Aliased ${_target} -> LiteRTLM::absl::absl")
     endif()
 endforeach()

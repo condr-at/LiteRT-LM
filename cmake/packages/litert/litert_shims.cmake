@@ -32,14 +32,11 @@ generate_tflite_aggregate()
 
 set(VENDOR_SHIM_PATH "${LITERT_PACKAGE_DIR}/shims/vendor_shim.cmake")
 
-message(STATUS "[LITERTLM-SHIM] Initializing Dependency Virtualization...")
-
 if(NOT TARGET nlohmann_json::nlohmann_json)
     add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED GLOBAL)
     set_target_properties(nlohmann_json::nlohmann_json PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${JSON_INCLUDE_DIR}/include"
     )
-    message(STATUS "[LITERTLM-SHIM] Virtualized nlohmann_json::nlohmann_json")
 endif()
 
 if(NOT TARGET flatc)

@@ -14,6 +14,7 @@
 
 
 include(${LITERTLM_MODULES_DIR}/utils.cmake)
+include(${LITERTLM_MODULES_DIR}/generators/generate_protobuf.cmake)
 
 set(_tflite_shims_dir "${LITERTLM_PACKAGES_DIR}/tflite/shims")
 include("${_tflite_shims_dir}/build_tree_shim.cmake")
@@ -60,7 +61,7 @@ else()
     endif()
 endif()
 
-set(PROTO_FILES
+set(LITERTLM_PROTO_FILES
     "${TFLITE_SRC_DIR}/profiling/proto/profiling_info.proto"
     "${TFLITE_SRC_DIR}/profiling/proto/model_runtime_info.proto"
 )

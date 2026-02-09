@@ -70,6 +70,27 @@ target_link_libraries(runtime_executor_audio_executor_settings
     LITERTLM_DEPS
 )
 
+
+
+add_litertlm_library(runtime_executor_audio_executor_utils STATIC
+  audio_executor_utils.cc
+)
+add_library(LiteRTLM::Runtime::Executor::AudioExecutorUtils ALIAS runtime_executor_audio_executor_utils)
+
+target_include_directories(runtime_executor_audio_executor_utils
+  PRIVATE
+    ${GENERATED_SRC_DIR}
+    ${LITERT_INCLUDE_DIR}
+    ${LITERTLM_INCLUDE_PATHS}
+)
+
+target_link_libraries(runtime_executor_audio_executor_utils
+  PUBLIC
+    LiteRTLM::Runtime::Executor::ExecutorSettingsBase
+    runtime_util_litert_status_util
+)
+    
+
 # ==============================================================================
 # 4. Audio LiteRT Compiled Model Executor
 # ==============================================================================
@@ -284,6 +305,29 @@ target_link_libraries(runtime_executor_llm_executor_settings
     runtime_util_logging
     LITERTLM_DEPS
 )
+
+
+# add_litertlm_library(runtime_executor_llm_executor_settings_utils STATIC
+#   llm_executor_settings_utils.cc
+# )
+# add_library(LiteRTLM::Runtime::Executor::LLMExecutorSettingsUtils ALIAS runtime_executor_llm_executor_settings_utils)
+
+# target_include_directories(runtime_executor_llm_executor_settings_utils
+#   PUBLIC
+#     ${GENERATED_SRC_DIR}
+#     ${LITERT_INCLUDE_DIR}
+#     ${LITERTLM_INCLUDE_PATHS}
+# )
+
+# target_link_libraries(runtime_executor_llm_executor_settings_utils
+#   PUBLIC
+#     LiteRTLM::Runtime::Executor::ExecutorSettingsBase
+#     runtime_util_litert_status_util
+#     runtime_util_logging
+#     LITERTLM_DEPS
+# )
+
+
 
 # ==============================================================================
 # 13. LLM LiteRT Compiled Model Cache Utils
@@ -546,6 +590,7 @@ add_library(LiteRTLM::Runtime::Executor ALIAS runtime_executor_libs)
 target_link_libraries(runtime_executor_libs INTERFACE
   LiteRTLM::Runtime::Executor::AudioExecutor
   LiteRTLM::Runtime::Executor::AudioExecutorSettings
+  LiteRTLM::Runtime::Executor::AudioExecutorUtils
   LiteRTLM::Runtime::Executor::AudioLiteRTCompiledModel
   LiteRTLM::Runtime::Executor::ExecutorSettingsBase
   LiteRTLM::Runtime::Executor::LLMFakeExecutor
@@ -553,6 +598,7 @@ target_link_libraries(runtime_executor_libs INTERFACE
   LiteRTLM::Runtime::Executor::LLMExecutorIoTypes
   LiteRTLM::Runtime::Executor::LLMExecutorProcessedTokens
   LiteRTLM::Runtime::Executor::LLMExecutorSettings
+  # LiteRTLM::Runtime::Executor::LLMExecutorSettingsUtils
   LiteRTLM::Runtime::Executor::LLMLiteRTCompiledModelExecutorFactory
   LiteRTLM::Runtime::Executor::LLMLiteRTCompiledModelCacheUtils
   LiteRTLM::Runtime::Executor::LLM::CompiledModelExecutor
@@ -561,4 +607,5 @@ target_link_libraries(runtime_executor_libs INTERFACE
   LiteRTLM::Runtime::Executor::Vision::Settings
   LiteRTLM::Runtime::Executor::Vision::CompiledModel
   runtime_executor_default_static_gpu_accelerator
+  LiteRTLM::Runtime::Executor::AudioExecutorUtils
 )

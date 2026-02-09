@@ -22,9 +22,9 @@ if(EXISTS "${CONFIG_GEN_H}")
     file(WRITE "${CONFIG_GEN_H}" "${CONTENT}")
 endif()
 
-if(EXISTS "${LITERTLM_PROJECT_ROOT}/cmake/patches/litert_converter.zip")
-    message(STATUS "[LITERTLM PATCHER] Extracting litert_converter.zip...")
-    file(ARCHIVE_EXTRACT INPUT "${LITERTLM_PROJECT_ROOT}/cmake/patches/litert_converter.zip" DESTINATION "${TFLITE_SRC_DIR}")
+if(EXISTS "${LITERTLM_PROJECT_ROOT}/cmake/patches/converter.zip")
+    message(STATUS "[LITERTLM] Extracting converter.zip...")
+    file(ARCHIVE_EXTRACT INPUT "${LITERTLM_PROJECT_ROOT}/cmake/patches/converter.zip" DESTINATION "${TFLITE_SRC_DIR}")
 endif()
 
 set(TFLITE_CMAKELISTS "${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/CMakeLists.txt")
@@ -107,7 +107,7 @@ set(XNNPACK_MOD_FILE "${TFLITE_SRC_DIR}/tools/cmake/modules/xnnpack/CMakeLists.t
 
 if(EXISTS "${XNNPACK_MOD_FILE}")
     message(STATUS "[LITERTLM] Automating XNNPACK path neutralization...")
-    file(APPEND "${XNNPACK_MOD_FILE}" \
+    file(APPEND "${XNNPACK_MOD_FILE}"
     "# --- LiteRT-LM Automated Fix ---
     execute_process(
         COMMAND find \"\${xnnpack_SOURCE_DIR}\" -type f -exec sed -i \"s|flatbuffers-flatc/bin/flatc|\${FLATBUFFERS_FLATC_EXECUTABLE}|g\" {} +

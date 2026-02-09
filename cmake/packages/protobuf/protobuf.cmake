@@ -25,15 +25,7 @@ set(PROTO_LITE_LIBRARY ${PROTO_INSTALL_PREFIX}/lib/libprotobuf-lite.a CACHE INTE
 set(PROTO_BIN_DIR ${PROTO_INSTALL_PREFIX}/bin CACHE INTERNAL "")
 set(PROTO_PROTOC_EXECUTABLE ${PROTO_BIN_DIR}/protoc CACHE INTERNAL "")
 set(protobuf_generate_PROTOC_EXE ${PROTO_BIN_DIR}/protoc CACHE INTERNAL "")
-set(PROTO_FILES
-  ${PROJECT_ROOT}/runtime/proto/engine.proto
-  ${PROJECT_ROOT}/runtime/proto/llm_metadata.proto
-  ${PROJECT_ROOT}/runtime/proto/llm_model_type.proto
-  ${PROJECT_ROOT}/runtime/proto/sampler_params.proto
-  ${PROJECT_ROOT}/runtime/proto/token.proto
-  ${PROJECT_ROOT}/runtime/executor/proto/constrained_decoding_options.proto
-  ${PROJECT_ROOT}/runtime/util/external_file.proto
-CACHE INTERNAL "")
+
 
 setup_external_install_structure("${PROTO_INSTALL_PREFIX}")
 
@@ -94,30 +86,3 @@ endif()
 
 include(${PROTOBUF_PACKAGE_DIR}/protobuf_aggregate.cmake)
 generate_protobuf_aggregate()
-
-add_litertlm_library(litertlm_generated_protobuf STATIC)
-add_dependencies(litertlm_generated_protobuf protobuf_external)
-
-target_include_directories(litertlm_generated_protobuf
-  PUBLIC
-    ${CMAKE_BINARY_DIR}
-    ${PROJECT_ROOT}
-    ${PROTO_SRC_DIR}
-    ${PROTO_INCLUDE_DIR}
-    ${ABSL_INCLUDE_DIR}
-)
-
-target_link_libraries(litertlm_generated_protobuf
-  PUBLIC
-    protobuf::libprotobuf
-    LiteRTLM::absl::absl
-)
-
-if(NOT TARGET protobuf::protoc)
-    add_executable(protobuf::protoc IMPORTED GLOBAL)
-    set_target_properties(protobuf::protoc PROPERTIES
-        IMPORTED_LOCATION "${PROTO_PROTOC_EXECUTABLE}"
-    )
-endif()
-
-generate_protobuf(litertlm_generated_protobuf ${PROJECT_ROOT})

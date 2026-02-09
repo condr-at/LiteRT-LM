@@ -109,28 +109,43 @@ macro(literlm_configure_component_interface prefix main_targets dependency_targe
 endmacro()
 
 
-macro(add_litertlm_library target_name lib_type)
-    add_library(${target_name} ${lib_type} ${ARGN})
 
-    # Lock External Deps
+macro(add_litertlm_library target_name lib_type)
+    file(RELATIVE_PATH _rel_path "${PROJECT_ROOT}" "${CMAKE_CURRENT_SOURCE_DIR}")
+    
+    set(_redirected_sources "")
+
+    foreach(_src ${ARGN})
+        if(NOT IS_ABSOLUTE "${_src}")
+
+            list(APPEND _redirected_sources "${GENERATED_SRC_DIR}/${_rel_path}/${_src}")
+        else()
+            list(APPEND _redirected_sources "${_src}")
+        endif()
+    endforeach()
+
+    set_source_files_properties(${_redirected_sources} PROPERTIES GENERATED TRUE)
+
+    add_library(${target_name} ${lib_type} ${_redirected_sources})
+
+    if(TARGET generator_complete)
+        add_dependencies(${target_name} generator_complete)
+    endif()
+
     if(TARGET litert_external)
         add_dependencies(${target_name} litert_external)
     endif()
 
     if("${lib_type}" STREQUAL "STATIC")
-        # 1. Stage the File
         set_target_properties(${target_name} PROPERTIES
             ARCHIVE_OUTPUT_DIRECTORY "${LITERTLM_LOCAL_STAGING_DIR}"
         )
         set(_phys_path "${LITERTLM_LOCAL_STAGING_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}${target_name}${CMAKE_STATIC_LIBRARY_SUFFIX}")
 
-        # 2. Add to Global Registry (The Map)
         set_property(GLOBAL APPEND PROPERTY LITERTLM_LOCAL_ARCHIVE_REGISTRY "${_phys_path}")
         set_property(GLOBAL APPEND PROPERTY LITERTLM_LOCAL_TARGET_REGISTRY "${target_name}")
     endif()
 endmacro()
-
-
 
 
 # TODO(totero): Refactor to remove aggregate logic from macro, and create a

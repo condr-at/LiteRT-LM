@@ -47,7 +47,7 @@ ExternalProject_Add(
   GIT_REPOSITORY
     https://github.com/google-ai-edge/LiteRT.git
   GIT_TAG
-    v2.1.0
+    v2.1.2
   GIT_SUBMODULES ""
   GIT_SUBMODULES_RECURSE FALSE
   PREFIX
@@ -132,7 +132,7 @@ ExternalProject_Add(
     -DXNNPACK_SET_VERBOSITY=OFF
     -DTFLITE_ENABLE_GPU=OFF
     -DLITERT_ENABLE_GPU=OFF
-    -DLITERT_ENABLE_NPU=OFF
+    -DLITERT_ENABLE_NPU=ON
     -DLITERT_ENABLE_QUALCOMM=OFF
     -DLITERT_DISABLE_KLEIDIAI=OFF
     -DLITERT_BUILD_C_API=ON
@@ -164,6 +164,18 @@ ExternalProject_Add(
 
   INSTALL_COMMAND ""
 )
+
+# ExternalProject_Add_Step(litert_external
+#   scoped_file_source_copy
+#   COMMAND ${CMAKE_COMMAND}
+#       -D JSON_CONFIG_FILE=${LITERT_PACKAGE_DIR}/copy_source_cfg.json
+#       -D LITERT_SRC_DIR=${LITERT_SRC_DIR}
+#       -D GENERATED_SRC_DIR=${GENERATED_SRC_DIR}
+#       -P ${LITERTLM_SCRIPTS_DIR}/copy_source.cmake
+#   DEPENDEES build
+#   COMMENT "[LiteRTLM] Copying source files from LiteRT into ${GENERATED_SRC_DIR}"
+#   ALWAYS 1
+# )
 
 include(${LITERT_PACKAGE_DIR}/litert_aggregate.cmake)
 generate_litert_aggregate()
