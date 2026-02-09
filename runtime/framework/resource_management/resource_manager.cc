@@ -31,6 +31,7 @@
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/components/model_resources.h"
 #include "runtime/engine/engine_settings.h"
+#include "runtime/engine/io_types.h"
 #include "runtime/executor/audio_executor.h"
 #include "runtime/executor/audio_executor_settings.h"
 #include "runtime/executor/executor_settings_base.h"
@@ -114,11 +115,29 @@ class LockedAudioExecutor : public AudioExecutor {
       : audio_executor_(std::move(audio_executor)), lock_(std::move(lock)) {}
 
   absl::StatusOr<ExecutorAudioData> Encode(
-      const TensorBuffer& input_image_tensor) override {
-    return audio_executor_->Encode(input_image_tensor);
+      const TensorBuffer& input_spectrogram_tensor) override {
+    return audio_executor_->Encode(input_spectrogram_tensor);
   }
 
   absl::Status Reset() override { return audio_executor_->Reset(); }
+
+  absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
+      const override {
+    return audio_executor_->GetAudioExecutorProperties();
+  }
+
+  absl::StatusOr<std::unique_ptr<AudioContext>> CreateNewContext() override {
+    return audio_executor_->CreateNewContext();
+  }
+
+  absl::StatusOr<std::unique_ptr<AudioContext>> CloneContext() override {
+    return audio_executor_->CloneContext();
+  }
+
+  absl::Status RestoreContext(
+      std::unique_ptr<AudioContext> audio_context) override {
+    return audio_executor_->RestoreContext(std::move(audio_context));
+  }
 
  private:
   std::shared_ptr<AudioExecutor> audio_executor_;
@@ -530,7 +549,18 @@ ResourceManager::CreateContextHandler(const SessionConfig& session_config) {
                      llm_executor_->CreateNewContext(
                          std::move(lora_id), std::move(runtime_config)));
   }
-  return ContextHandler::Create(std::move(llm_context));
+  std::unique_ptr<AudioContext> audio_context;
+  if (session_config.AudioModalityEnabled()) {
+    RETURN_IF_ERROR(TryLoadingAudioExecutor());
+    ASSIGN_OR_RETURN(auto audio_executor, AcquireAudioExecutor());
+    ASSIGN_OR_RETURN(auto audio_executor_properties,
+                     audio_executor->GetAudioExecutorProperties());
+    if (audio_executor_properties.is_streaming_model) {
+      ASSIGN_OR_RETURN(audio_context, audio_executor->CreateNewContext());
+    }
+  }
+  return ContextHandler::Create(std::move(llm_context),
+                                std::move(audio_context));
 }
 
 absl::StatusOr<std::unique_ptr<ContextHandler>>
@@ -562,9 +592,15 @@ ResourceManager::CloneContextHandler(
     ASSIGN_OR_RETURN(runtime_state, llm_executor_->GetRuntimeState());
   }
   auto processed_context = llm_context_handler->shared_processed_context();
-  return ContextHandler::Bundle(processed_context,
-                                std::make_unique<RuntimeConfig>(runtime_config),
-                                std::make_unique<RuntimeState>(runtime_state));
+
+  std::unique_ptr<AudioContext> audio_context;
+  if (llm_context_handler->HasAudioContext()) {
+    const auto& audio_context_ref = llm_context_handler->GetAudioContext();
+    ASSIGN_OR_RETURN(audio_context, audio_context_ref.Clone());
+  }
+  return ContextHandler::Bundle(
+      processed_context, std::make_unique<RuntimeConfig>(runtime_config),
+      std::make_unique<RuntimeState>(runtime_state), std::move(audio_context));
 }
 
 absl::StatusOr<std::unique_ptr<LlmExecutor>>
@@ -654,6 +690,29 @@ ResourceManager::AcquireExecutorWithContextHandler(
         std::move(new_processed_context), std::move(new_runtime_config),
         std::move(new_runtime_state));
     RETURN_IF_ERROR(llm_executor_->RestoreContext(std::move(llm_context)));
+  }
+
+  // If the current handler has an audio context, update and save the audio
+  // context to the current handler.
+  if (current_handler_ != nullptr) {
+    // If the current handler has an audio context, update it from audio
+    // executor and save it back to the current handler.
+    if (current_handler_->HasAudioContext()) {
+      ASSIGN_OR_RETURN(auto audio_executor, AcquireAudioExecutor());
+      ASSIGN_OR_RETURN(auto current_audio_context,
+                       audio_executor->CloneContext());
+      RETURN_IF_ERROR(
+          current_handler_->SetAudioContext(std::move(current_audio_context)));
+    }
+    // If the new handler has an audio context, audio executor will restore
+    // the audio context from the new handler.
+    if (new_context_handler->HasAudioContext()) {
+      ASSIGN_OR_RETURN(auto audio_executor, AcquireAudioExecutor());
+      ASSIGN_OR_RETURN(auto audio_context_cloned,
+                       new_context_handler->GetAudioContext().Clone());
+      RETURN_IF_ERROR(
+          audio_executor->RestoreContext(std::move(audio_context_cloned)));
+    }
   }
 
   current_handler_ = new_context_handler;

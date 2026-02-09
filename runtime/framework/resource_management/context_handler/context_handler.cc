@@ -22,6 +22,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "runtime/executor/llm_executor.h"
+#include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/util/status_macros.h"  // NOLINT
 
@@ -52,7 +53,8 @@ ContextHandler::SharedProcessedContext::LongestHandlerTimeStep(
 
 // static
 absl::StatusOr<std::unique_ptr<ContextHandler>> ContextHandler::Create(
-    std::unique_ptr<LlmContext> llm_context) {
+    std::unique_ptr<LlmContext> llm_context,
+    std::unique_ptr<AudioContext> audio_context) {
   RET_CHECK_NE(llm_context, nullptr) << "The llm_context is null.";
   ASSIGN_OR_RETURN(auto processed_context,
                    llm_context->RetrieveProcessedContext());
@@ -61,24 +63,28 @@ absl::StatusOr<std::unique_ptr<ContextHandler>> ContextHandler::Create(
   ASSIGN_OR_RETURN(auto runtime_config, llm_context->RetrieveRuntimeConfig());
   ASSIGN_OR_RETURN(auto runtime_state, llm_context->RetrieveRuntimeState());
   return Bundle(shared_processed_context, std::move(runtime_config),
-                std::move(runtime_state));
+                std::move(runtime_state), std::move(audio_context));
 }
 
 // static
 absl::StatusOr<std::unique_ptr<ContextHandler>> ContextHandler::Bundle(
     std::shared_ptr<SharedProcessedContext> shared_processed_context,
     std::unique_ptr<RuntimeConfig> runtime_config,
-    std::unique_ptr<RuntimeState> runtime_state) {
+    std::unique_ptr<RuntimeState> runtime_state,
+    std::unique_ptr<AudioContext> audio_context) {
   RET_CHECK_NE(shared_processed_context, nullptr)
       << "The shared_processed_context is null.";
   auto handler = std::unique_ptr<ContextHandler>(
       new ContextHandler(shared_processed_context, std::move(runtime_config),
-                         std::move(runtime_state)));
+                         std::move(runtime_state), std::move(audio_context)));
   return handler;
 }
 
 ContextHandler::~ContextHandler() {
   shared_processed_context_->RemoveHandler(this);
+  if (audio_context_ != nullptr) {
+    audio_context_.reset();
+  }
 }
 
 absl::Status ContextHandler::UpdateSharedProcessedContext(
@@ -95,10 +101,12 @@ absl::Status ContextHandler::UpdateSharedProcessedContext(
 ContextHandler::ContextHandler(
     std::shared_ptr<SharedProcessedContext> shared_processed_context,
     std::unique_ptr<RuntimeConfig> runtime_config,
-    std::unique_ptr<RuntimeState> runtime_state)
+    std::unique_ptr<RuntimeState> runtime_state,
+    std::unique_ptr<AudioContext> audio_context)
     : shared_processed_context_(shared_processed_context),
       runtime_config_(std::move(runtime_config)),
-      runtime_state_(std::move(runtime_state)) {
+      runtime_state_(std::move(runtime_state)),
+      audio_context_(std::move(audio_context)) {
   shared_processed_context_->AddHandler(this);
 }
 

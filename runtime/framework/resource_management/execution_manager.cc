@@ -678,20 +678,22 @@ absl::Status ExecutionManager::AddPrefillTask(
 
     RETURN_IF_CANCELLED(cancelled, task_id, callback);
 
-    auto executor_inputs =
-        ProcessAndCombineContents(inputs, session_info->benchmark_info);
-    if (!executor_inputs.ok()) {
-      FinishTaskAndLogErrors(task_id, executor_inputs.status(),
+    // Note AcquireExecutorWithContextHandler include context switching logic,
+    // so it should be called before any executor running.
+    auto llm_executor = resource_manager_->AcquireExecutorWithContextHandler(
+        session_info->context_handler);
+    if (!llm_executor.ok()) {
+      FinishTaskAndLogErrors(task_id, llm_executor.status(),
                              std::move(callback));
       return;
     }
 
     RETURN_IF_CANCELLED(cancelled, task_id, callback);
 
-    auto llm_executor = resource_manager_->AcquireExecutorWithContextHandler(
-        session_info->context_handler);
-    if (!llm_executor.ok()) {
-      FinishTaskAndLogErrors(task_id, llm_executor.status(),
+    auto executor_inputs =
+        ProcessAndCombineContents(inputs, session_info->benchmark_info);
+    if (!executor_inputs.ok()) {
+      FinishTaskAndLogErrors(task_id, executor_inputs.status(),
                              std::move(callback));
       return;
     }
@@ -844,9 +846,8 @@ absl::Status ExecutionManager::AddCloneSessionTask(
       {
         absl::MutexLock lock(session_and_task_lookup_mutex_);
         if (!session_lookup_.contains(session_id)) {
-          result = absl::InvalidArgumentError(
-              absl::StrCat("Session ", session_id,
-                           " not found in session list."));
+          result = absl::InvalidArgumentError(absl::StrCat(
+              "Session ", session_id, " not found in session list."));
           return;
         }
         original_session_info = session_lookup_.at(session_id);
@@ -919,10 +920,8 @@ absl::Status ExecutionManager::AddCloneSessionTask(
 }
 
 absl::Status ExecutionManager::AddTextScoringTask(
-    SessionId session_id, TaskId task_id,
-    absl::flat_hash_set<TaskId> dep_tasks,
-    const std::vector<absl::string_view>& target_text,
-    bool store_token_lengths,
+    SessionId session_id, TaskId task_id, absl::flat_hash_set<TaskId> dep_tasks,
+    const std::vector<absl::string_view>& target_text, bool store_token_lengths,
     std::shared_ptr<std::atomic<bool>> absl_nonnull cancelled,
     absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
   if (callback == nullptr) {
@@ -973,10 +972,9 @@ absl::Status ExecutionManager::AddTextScoringTask(
     // the sampler or the sampler parameters? For now, hardcode it to 1.0f for
     // testing.
     auto temperature = 1.0f;
-    auto responses =
-        Tasks::Score(*llm_executor.value(), *tokenizer_, target_text,
-                     temperature, std::move(decoded_ids_buffer.Value()),
-                     store_token_lengths);
+    auto responses = Tasks::Score(
+        *llm_executor.value(), *tokenizer_, target_text, temperature,
+        std::move(decoded_ids_buffer.Value()), store_token_lengths);
 
     if (cancelled != nullptr && cancelled->load()) {
       responses = Responses(TaskState::kCancelled);

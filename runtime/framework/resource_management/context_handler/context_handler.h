@@ -26,6 +26,7 @@
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "runtime/executor/llm_executor.h"
 #include "runtime/executor/llm_executor_google.h"
+#include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/util/status_macros.h"  // NOLINT
 
@@ -37,14 +38,16 @@ class ContextHandler {
 
   // Creates a new ContextHandler from a provided LlmContext.
   static absl::StatusOr<std::unique_ptr<ContextHandler>> Create(
-      std::unique_ptr<LlmContext> llm_context);
+      std::unique_ptr<LlmContext> llm_context,
+      std::unique_ptr<AudioContext> audio_context = nullptr);
 
   // Wraps the shared processed context, runtime config, and runtime state into
   // a ContextHandler.
   static absl::StatusOr<std::unique_ptr<ContextHandler>> Bundle(
       std::shared_ptr<SharedProcessedContext> shared_processed_context,
       std::unique_ptr<RuntimeConfig> runtime_config,
-      std::unique_ptr<RuntimeState> runtime_state);
+      std::unique_ptr<RuntimeState> runtime_state,
+      std::unique_ptr<AudioContext> audio_context = nullptr);
 
   ~ContextHandler();
 
@@ -105,11 +108,32 @@ class ContextHandler {
     return *runtime_state_;
   }
 
+  // Returns true if the audio context is set.
+  bool HasAudioContext() const { return audio_context_ != nullptr; }
+
+  // Retrieves the audio context, the caller will take the ownership of the
+  // returned audio context and it will no longer be available in the
+  // ContextHandler.
+  absl::StatusOr<std::unique_ptr<AudioContext>> RetrieveAudioContext() {
+    RET_CHECK(HasAudioContext()) << "Audio context not found.";
+    return std::move(audio_context_);
+  }
+
+  // Gets a reference of the current audio context.
+  const AudioContext& GetAudioContext() const { return *audio_context_; }
+
+  // Sets the audio context.
+  absl::Status SetAudioContext(std::unique_ptr<AudioContext> audio_context) {
+    audio_context_ = std::move(audio_context);
+    return absl::OkStatus();
+  }
+
  private:
   ContextHandler(
       std::shared_ptr<SharedProcessedContext> shared_processed_context,
       std::unique_ptr<RuntimeConfig> runtime_config,
-      std::unique_ptr<RuntimeState> runtime_state);
+      std::unique_ptr<RuntimeState> runtime_state,
+      std::unique_ptr<AudioContext> audio_context);
 
   // The shared processed context.
   std::shared_ptr<SharedProcessedContext> shared_processed_context_;
@@ -119,6 +143,9 @@ class ContextHandler {
 
   // The runtime state.
   std::unique_ptr<RuntimeState> runtime_state_;
+
+  // The audio context.
+  std::unique_ptr<AudioContext> audio_context_;
 };
 
 // Holds the real ProcessedContext and handlers any operations on it.

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
@@ -111,6 +112,17 @@ bool IsStreamingEncoder(const std::vector<absl::string_view>& input_names) {
 
 }  // namespace
 
+absl::StatusOr<std::unique_ptr<AudioContext>> AudioStreamingContext::Clone()
+    const {
+  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
+      new_state_buffers;
+  for (auto& [name, buffer] : state_buffers_) {
+    LITERT_ASSIGN_OR_RETURN(auto new_buffer, buffer.Duplicate());
+    new_state_buffers[name] = std::move(new_buffer);
+  }
+  return std::make_unique<AudioStreamingContext>(std::move(new_state_buffers));
+}
+
 absl::StatusOr<
     std::unique_ptr<AudioLiteRtCompiledModelExecutor::AudioStaticEncoder>>
 AudioLiteRtCompiledModelExecutor::AudioStaticEncoder::Create(
@@ -172,7 +184,8 @@ AudioLiteRtCompiledModelExecutor::AudioStaticEncoder::Initialize() {
   }
   if (!input_buffers_map_.contains(kSrcInputsName)) {
     return absl::InvalidArgumentError(
-        "The Audio Static Encoder model must have a src_inputs input buffer.");
+        "The Audio Static Encoder model must have a src_inputs input "
+        "buffer.");
   }
   input_mask_buffer_ = &input_buffers_map_[kMaskName];
   spectrogram_buffer_ = &input_buffers_map_[kSrcInputsName];
@@ -526,8 +539,8 @@ AudioLiteRtCompiledModelExecutor::Create(
     if (audio_encoder->GetOutputBuffersMap().size() !=
         audio_adapter->GetInputBuffers().size()) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "The number of output buffers of the audio encoder must be equal to "
-          "the number of input buffers of the audio adapter, but got ",
+          "The number of output buffers of the audio encoder must be equal "
+          "to the number of input buffers of the audio adapter, but got ",
           audio_encoder->GetOutputBuffersMap().size(), " and ",
           audio_adapter->GetInputBuffers().size()));
     }
@@ -541,7 +554,8 @@ AudioLiteRtCompiledModelExecutor::Create(
         output_sequence_length;
   }
 
-  // Make the audio adapter take the audio encoder's mask and features as input.
+  // Make the audio adapter take the audio encoder's mask and features as
+  // input.
   LITERT_ASSIGN_OR_RETURN(auto encoder_mask_tensor,
                           audio_encoder->GetOutputMaskBuffer().Duplicate());
   audio_adapter->GetMutableInputBuffers()[0] = std::move(encoder_mask_tensor);
@@ -585,7 +599,7 @@ absl::StatusOr<int> AudioLiteRtCompiledModelExecutor::EncodeInternal(
       audio_adapter_->GetMutableOutputBuffers()[0].Read<float>(
           absl::MakeSpan(audio_embeddings.data(),
                          chunk_valid_tokens * audio_embedding_dimensions_)));
-  if (exeuctor_properties_.is_streaming_model) {
+  if (executor_properties_.is_streaming_model) {
     reinterpret_cast<AudioStreamingEncoder*>(audio_encoder_.get())
         ->SwapInternalStateBuffers();
   }
@@ -668,6 +682,104 @@ absl::StatusOr<ExecutorAudioData> AudioLiteRtCompiledModelExecutor::Encode(
   std::vector<uint8_t> all_ones(input_sequence_length, 1);
   LITERT_RETURN_IF_ERROR(mask_tensor.Write<uint8_t>(absl::MakeSpan(all_ones)));
   return Encode(spectrogram_tensor, mask_tensor);
+}
+
+absl::StatusOr<std::unique_ptr<AudioStreamingContext>>
+AudioLiteRtCompiledModelExecutor::AudioStreamingEncoder::CreateNewContext() {
+  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer> state_buffers;
+  for (auto& [name, buffer] : input_buffers_map_) {
+    if (name == kSegmentValuesName || name == kSegmentMaskName) {
+      // Skip the segment values and mask buffers as they are not part of the
+      // state.
+      continue;
+    }
+    LITERT_ASSIGN_OR_RETURN(auto type, buffer.TensorType());
+    LITERT_ASSIGN_OR_RETURN(auto size, buffer.Size());
+    LITERT_ASSIGN_OR_RETURN(auto empty_buffer,
+                            TensorBuffer::CreateManagedHostMemory(type, size));
+    {
+      LITERT_ASSIGN_OR_RETURN(
+          auto buffer_lock_and_addr,
+          TensorBufferScopedLock::Create(empty_buffer,
+                                         TensorBuffer::LockMode::kWrite));
+      memset(buffer_lock_and_addr.second, 0, size);
+    }
+    state_buffers[name] = std::move(empty_buffer);
+  }
+  auto audio_streaming_context =
+      std::make_unique<AudioStreamingContext>(std::move(state_buffers));
+  return audio_streaming_context;
+}
+
+absl::StatusOr<std::unique_ptr<AudioStreamingContext>>
+AudioLiteRtCompiledModelExecutor::AudioStreamingEncoder::CloneContext() {
+  absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer> state_buffers;
+  for (auto& [name, buffer] : input_buffers_map_) {
+    if (name == kSegmentValuesName || name == kSegmentMaskName) {
+      // Skip the segment values and mask buffers as they are not part of the
+      // state.
+      continue;
+    }
+    LITERT_ASSIGN_OR_RETURN(auto buffer_copy, buffer.Duplicate());
+    state_buffers[name] = std::move(buffer_copy);
+  }
+  auto audio_streaming_context =
+      std::make_unique<AudioStreamingContext>(std::move(state_buffers));
+  return audio_streaming_context;
+}
+
+absl::Status
+AudioLiteRtCompiledModelExecutor::AudioStreamingEncoder::RestoreContext(
+    std::unique_ptr<AudioStreamingContext> audio_streaming_context) {
+  for (auto& [name, buffer] : audio_streaming_context->state_buffers()) {
+    if (!input_buffers_map_.contains(name)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("The Audio Streaming Encoder model must have a ", name,
+                       " input buffer."));
+    }
+    if (name == kSegmentValuesName || name == kSegmentMaskName) {
+      // Skip the segment values and mask buffers as they are not part of the
+      // state.
+      continue;
+    }
+    LITERT_ASSIGN_OR_RETURN(auto buffer_copy, buffer.Duplicate());
+    input_buffers_map_[name] = std::move(buffer_copy);
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<AudioContext>>
+AudioLiteRtCompiledModelExecutor::CreateNewContext() {
+  if (!executor_properties_.is_streaming_model) {
+    return absl::UnimplementedError(
+        "CreateNewContext is only supported for streaming models.");
+  }
+  return reinterpret_cast<AudioStreamingEncoder*>(audio_encoder_.get())
+      ->CreateNewContext();
+}
+
+absl::StatusOr<std::unique_ptr<AudioContext>>
+AudioLiteRtCompiledModelExecutor::CloneContext() {
+  if (!executor_properties_.is_streaming_model) {
+    return absl::UnimplementedError(
+        "CloneContext is only supported for streaming models.");
+  }
+  ASSIGN_OR_RETURN(
+      auto audio_encoder_context,
+      reinterpret_cast<AudioStreamingEncoder*>(audio_encoder_.get())
+          ->CloneContext());
+  return std::move(audio_encoder_context);
+}
+
+absl::Status AudioLiteRtCompiledModelExecutor::RestoreContext(
+    std::unique_ptr<AudioContext> audio_context) {
+  if (!executor_properties_.is_streaming_model) {
+    return absl::UnimplementedError(
+        "RestoreContext is only supported for streaming models.");
+  }
+  return reinterpret_cast<AudioStreamingEncoder*>(audio_encoder_.get())
+      ->RestoreContext(std::unique_ptr<AudioStreamingContext>(
+          static_cast<AudioStreamingContext*>(audio_context.release())));
 }
 
 }  // namespace litert::lm

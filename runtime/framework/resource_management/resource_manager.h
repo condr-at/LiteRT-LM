@@ -109,10 +109,15 @@ class ResourceManager {
   // Typically, this function is called instead of AcquireExecutor() when the
   // usage of the returned executor involves any state updates, e.g. prefill,
   // decode, etc.
+  // Note the method try to lock llm_executor_mutex_ and audio_executor_mutex_
+  // in order to clone the audio context if needed, thus other methods should
+  // not try to acquire the audio executor within the llm executor mutex.
+  // TODO(b/483136581): Refactor the locking mechanism.
   absl::StatusOr<std::unique_ptr<LlmExecutor>>
   AcquireExecutorWithContextHandler(
       std::shared_ptr<ContextHandler> new_context_handle)
-      ABSL_LOCKS_EXCLUDED(executor_mutex_);
+      ABSL_LOCKS_EXCLUDED(executor_mutex_)
+          ABSL_LOCKS_EXCLUDED(audio_executor_mutex_);
 
   // Try to load the vision executor if the vision executor is not loaded.
   absl::Status TryLoadingVisionExecutor()

@@ -54,6 +54,23 @@ class ProcessedContext {
   ProcessedContext& operator=(ProcessedContext&&) noexcept = default;
 };
 
+// Context for the audio executor.
+class AudioContext {
+ public:
+  virtual ~AudioContext() = default;
+
+  // Clones the audio context for stateful models. Notice the operation deep
+  // copy the underlying data, and expect it might be expensive.
+  virtual absl::StatusOr<std::unique_ptr<AudioContext>> Clone() const = 0;
+
+ protected:
+  AudioContext() = default;
+  AudioContext(const AudioContext&) = default;
+  AudioContext(AudioContext&&) noexcept = default;
+  AudioContext& operator=(const AudioContext&) = default;
+  AudioContext& operator=(AudioContext&&) noexcept = default;
+};
+
 // Struct to host the internal state for the executor.
 // State will be changed by the executor while executing task.
 // Noticed: The states here are all the internal states excluded those that are
@@ -92,6 +109,11 @@ class LlmContext {
   // Gets the runtime state.
   RuntimeState& runtime_state() { return *runtime_state_; };
 
+  // Gets the audio processed context.
+  AudioContext* audio_processed_context() {
+    return audio_processed_context_.get();
+  };
+
   // Retrieves the processed context, the caller will take the ownership of the
   // returned processed context and it will no longer be available in the
   // LlmContext. This is useful for non-duplicating the processed context while
@@ -116,10 +138,20 @@ class LlmContext {
     return std::move(runtime_config_);
   };
 
+  // Retrieves the audio processed context, the caller will take the ownership
+  // of the returned audio processed context and it will no longer be available
+  // in the LlmContext. This is useful for non-duplicating the audio processed
+  // context while extracting it.
+  absl::StatusOr<std::unique_ptr<AudioContext>>
+  RetrieveAudioProcessedContext() {
+    return std::move(audio_processed_context_);
+  };
+
  private:
   std::unique_ptr<ProcessedContext> processed_context_;
   std::unique_ptr<RuntimeConfig> runtime_config_;
   std::unique_ptr<RuntimeState> runtime_state_;
+  std::unique_ptr<AudioContext> audio_processed_context_;
 
  protected:
   LlmContext() = default;

@@ -54,6 +54,20 @@ class MockLlmExecutor : public LlmExecutor {
   MOCK_METHOD(absl::string_view, ExecutorBackendName, (), (const, override));
 };
 
+class FakeAudioContext : public AudioContext {
+ public:
+  explicit FakeAudioContext(int val = 0) : value_(val) {}
+
+  absl::StatusOr<std::unique_ptr<AudioContext>> Clone() const override {
+    return std::make_unique<FakeAudioContext>(value_);
+  }
+
+  int value() const { return value_; }
+
+ private:
+  int value_ = 0;
+};
+
 class ContextHandlerTest : public testing::Test {
   void SetUp() override {
     ASSERT_OK_AND_ASSIGN(handler_, MakeContextHandler());
@@ -89,9 +103,9 @@ class ContextHandlerTest : public testing::Test {
                      MakeSharedProcessedContext());
     auto runtime_config = std::make_unique<RuntimeConfig>();
     auto runtime_state = std::make_unique<RuntimeState>();
-    return ContextHandler::Bundle(std::move(shared_processed_context),
-                                  std::move(runtime_config),
-                                  std::move(runtime_state));
+    return ContextHandler::Bundle(
+        std::move(shared_processed_context), std::move(runtime_config),
+        std::move(runtime_state), /*audio_context=*/nullptr);
   };
 };
 
@@ -258,6 +272,50 @@ TEST_F(ContextHandlerTest,
                        shared_processed_context->RetrieveProcessedContext());
   EXPECT_EQ(retrieved_processed_context->processed_tokens().GetCopyOfTokens(),
             std::vector<std::vector<int>>({{1, 2, 3, 4, 5}}));
+}
+
+TEST_F(ContextHandlerTest, ContextHandlerSetAndRetrieveAudioContextSucceed) {
+  auto audio_context = std::make_unique<FakeAudioContext>(42);
+
+  ASSERT_OK(handler_->SetAudioContext(std::move(audio_context)));
+
+  ASSERT_OK_AND_ASSIGN(auto retrieved_audio_context,
+                       handler_->RetrieveAudioContext());
+  auto* fake_audio_context =
+      static_cast<FakeAudioContext*>(retrieved_audio_context.get());
+  EXPECT_EQ(fake_audio_context->value(), 42);
+}
+
+TEST_F(ContextHandlerTest, ContextHandlerHasAudioContext) {
+  EXPECT_EQ(handler_->HasAudioContext(), false);
+
+  auto audio_context = std::make_unique<FakeAudioContext>();
+  ASSERT_OK(handler_->SetAudioContext(std::move(audio_context)));
+
+  EXPECT_EQ(handler_->HasAudioContext(), true);
+
+  ASSERT_OK_AND_ASSIGN(auto retrieved_audio_context,
+                       handler_->RetrieveAudioContext());
+
+  EXPECT_EQ(handler_->HasAudioContext(), false);
+}
+
+TEST_F(ContextHandlerTest, ContextHandlerGetAudioContextSucceed) {
+  auto audio_context = std::make_unique<FakeAudioContext>(123);
+  ASSERT_OK(handler_->SetAudioContext(std::move(audio_context)));
+
+  const AudioContext& retrieved_audio_context = handler_->GetAudioContext();
+  const FakeAudioContext& fake_audio_context =
+      static_cast<const FakeAudioContext&>(retrieved_audio_context);
+  EXPECT_EQ(fake_audio_context.value(), 123);
+}
+
+TEST_F(ContextHandlerTest, RetrieveAudioContextFailedWhenNotSet) {
+  EXPECT_FALSE(handler_->HasAudioContext());
+  auto status_or_audio = handler_->RetrieveAudioContext();
+  EXPECT_FALSE(status_or_audio.ok());
+  EXPECT_THAT(status_or_audio.status().message(),
+              testing::HasSubstr("Audio context not found"));
 }
 
 }  // namespace litert::lm
