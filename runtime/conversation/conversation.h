@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/base/thread_annotations.h"  // from @com_google_absl
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -287,6 +288,11 @@ struct OptionalArgs {
 
   // The maximum number of tokens to generate during decode.
   std::optional<int> max_output_tokens = std::nullopt;
+
+  // The task group id for asynchronous tasks. If provided, the task
+  // controller will be stored and can be cancelled by calling
+  // `Conversation::CancelGroup(task_group_id)`.
+  std::optional<std::string> task_group_id = std::nullopt;
 };
 
 // A multi-turn centric stateful Conversation API for high-level user
@@ -456,6 +462,14 @@ class Conversation {
   // from the user is actually sent to the LLM and processed for prefill.
   void CancelProcess();
 
+  // Cancels all ongoing asynchronous tasks with the given task_group_id.
+  // Args:
+  // - `task_group_id`: The id of the task group to cancel.
+  // Note: after the cancellation, there is no guarantee that the internal state
+  // of the Conversation is intact and therefore it is recommended to not
+  // continue using the Conversation after cancellation.
+  void CancelGroup(absl::string_view task_group_id);
+
  private:
   explicit Conversation(
       std::unique_ptr<Engine::Session> session,
@@ -482,6 +496,15 @@ class Conversation {
       std::optional<ConstraintArg> decoding_constraint = std::nullopt,
       std::optional<int> max_output_tokens = std::nullopt);
 
+  // Adds a task controller to the task_controllers_ map if task_group_id is
+  // provided.
+  // Args:
+  // - `task_group_id`: The id of the task group to add the controller to.
+  // - `task_controller`: The task controller to add.
+  void AddTaskController(
+      const std::optional<std::string>& task_group_id,
+      std::unique_ptr<Engine::Session::TaskController> task_controller);
+
   std::unique_ptr<Engine::Session> session_;
   std::unique_ptr<ModelDataProcessor> model_data_processor_;
   Preface preface_;
@@ -496,6 +519,14 @@ class Conversation {
 
   // Whether the current conversation is in message appending state.
   bool is_appending_message_ = false;
+
+  // Mutex for task_controllers_.
+  mutable absl::Mutex task_controllers_mutex_;
+  // Map of task group id to task controllers.
+  absl::flat_hash_map<
+      std::string,
+      std::vector<std::unique_ptr<Engine::Session::TaskController>>>
+      task_controllers_ ABSL_GUARDED_BY(task_controllers_mutex_);
 };
 }  // namespace litert::lm
 

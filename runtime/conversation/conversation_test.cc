@@ -157,6 +157,13 @@ class MockEngine : public Engine {
               (override));
 };
 
+class MockTaskController : public Engine::Session::TaskController {
+ public:
+  MockTaskController() = default;
+  ~MockTaskController() override = default;
+  MOCK_METHOD(absl::Status, Cancel, (), (override));
+};
+
 absl::AnyInvocable<void(absl::StatusOr<Message>)> CreateTestMessageCallback(
     Message& expected_message, absl::Notification& done) {
   return [&expected_message, &done](absl::StatusOr<Message> message) mutable {
@@ -296,14 +303,46 @@ class ConversationTest : public testing::TestWithParam<ConversationTestParams> {
 
  protected:
   void SetUp() override {
-    auto tokenizer = SentencePieceTokenizer::CreateFromFile(
-        (std::filesystem::path(::testing::SrcDir()) / kTestTokenizerPath)
-            .string());
-    ASSERT_OK(tokenizer);
-    tokenizer_ = std::move(*tokenizer);
+    ASSERT_OK_AND_ASSIGN(
+        tokenizer_,
+        SentencePieceTokenizer::CreateFromFile(
+            (std::filesystem::path(::testing::SrcDir()) / kTestTokenizerPath)
+                .string()));
+    model_assets_ = ModelAssets::Create(GetTestdataPath(kTestLlmPath));
+    ASSERT_OK(model_assets_);
+    engine_settings_ =
+        EngineSettings::CreateDefault(*model_assets_, Backend::CPU);
+    ASSERT_OK(engine_settings_);
+
+    session_config_ = SessionConfig::CreateDefault();
+    session_config_.SetStartTokenId(0);
+    session_config_.GetMutableStopTokenIds().push_back({1});
+    *session_config_.GetMutableLlmModelType().mutable_gemma3() = {};
+  }
+
+  std::unique_ptr<MockSession> CreateMockSession() {
+    auto mock_session = std::make_unique<MockSession>();
+    EXPECT_CALL(*mock_session, GetSessionConfig())
+        .WillRepeatedly(testing::ReturnRef(session_config_));
+    EXPECT_CALL(*mock_session, GetTokenizer())
+        .WillRepeatedly(testing::ReturnRef(*tokenizer_));
+    return mock_session;
+  }
+
+  std::unique_ptr<MockEngine> CreateMockEngine(
+      std::unique_ptr<MockSession> mock_session) {
+    auto mock_engine = std::make_unique<MockEngine>();
+    EXPECT_CALL(*mock_engine, GetEngineSettings())
+        .WillRepeatedly(testing::ReturnRef(*engine_settings_));
+    EXPECT_CALL(*mock_engine, CreateSession(testing::_))
+        .WillOnce(testing::Return(std::move(mock_session)));
+    return mock_engine;
   }
 
   std::unique_ptr<Tokenizer> tokenizer_;
+  absl::StatusOr<ModelAssets> model_assets_;
+  absl::StatusOr<EngineSettings> engine_settings_;
+  SessionConfig session_config_ = SessionConfig::CreateDefault();
   bool enable_constrained_decoding_ = GetParam().enable_constrained_decoding;
   bool prefill_preface_on_init_ = GetParam().prefill_preface_on_init;
 };
@@ -342,33 +381,15 @@ TEST_P(ConversationTest, SendMessage) {
 
 TEST_P(ConversationTest, SendSingleMessage) {
   // Set up mock Session.
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
-  SessionConfig session_config = SessionConfig::CreateDefault();
-  session_config.SetStartTokenId(0);
-  session_config.GetMutableStopTokenIds().push_back({1});
-  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
-  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
-      .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
-
-  // Set up mock Engine.
-  auto mock_engine = std::make_unique<MockEngine>();
-  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
-      .WillOnce(testing::Return(std::move(mock_session)));
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  EXPECT_CALL(*mock_engine, GetEngineSettings())
-      .WillRepeatedly(testing::ReturnRef(engine_settings));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
       ConversationConfig::Builder()
-          .SetSessionConfig(session_config)
+          .SetSessionConfig(session_config_)
           .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
           .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
@@ -408,33 +429,15 @@ TEST_P(ConversationTest, SendSingleMessage) {
 
 TEST_P(ConversationTest, SendMultipleMessages) {
   // Set up mock Session.
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
-  SessionConfig session_config = SessionConfig::CreateDefault();
-  session_config.SetStartTokenId(0);
-  session_config.GetMutableStopTokenIds().push_back({1});
-  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
-  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
-      .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
-
-  // Set up mock Engine.
-  auto mock_engine = std::make_unique<MockEngine>();
-  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
-      .WillOnce(testing::Return(std::move(mock_session)));
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  EXPECT_CALL(*mock_engine, GetEngineSettings())
-      .WillRepeatedly(testing::ReturnRef(engine_settings));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
       ConversationConfig::Builder()
-          .SetSessionConfig(session_config)
+          .SetSessionConfig(session_config_)
           .SetEnableConstrainedDecoding(enable_constrained_decoding_)
           .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
           .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
@@ -490,33 +493,15 @@ TEST_P(ConversationTest, SendMultipleMessages) {
 
 TEST_P(ConversationTest, SendMultipleMessagesWithHistory) {
   // Set up mock Session.
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
-  SessionConfig session_config = SessionConfig::CreateDefault();
-  session_config.SetStartTokenId(0);
-  session_config.GetMutableStopTokenIds().push_back({1});
-  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
-  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
-      .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
-
-  // Set up mock Engine.
-  auto mock_engine = std::make_unique<MockEngine>();
-  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
-      .WillOnce(testing::Return(std::move(mock_session)));
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  EXPECT_CALL(*mock_engine, GetEngineSettings())
-      .WillRepeatedly(testing::ReturnRef(engine_settings));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
       ConversationConfig::Builder()
-          .SetSessionConfig(session_config)
+          .SetSessionConfig(session_config_)
           .SetEnableConstrainedDecoding(enable_constrained_decoding_)
           .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
           .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
@@ -601,33 +586,15 @@ TEST_P(ConversationTest, SendMultipleMessagesWithHistory) {
 
 TEST_P(ConversationTest, RunTextScoring) {
   // Set up mock Session.
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
-  SessionConfig session_config = SessionConfig::CreateDefault();
-  session_config.SetStartTokenId(0);
-  session_config.GetMutableStopTokenIds().push_back({1});
-  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
-  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
-      .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
-
-  // Set up mock Engine.
-  auto mock_engine = std::make_unique<MockEngine>();
-  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
-      .WillOnce(testing::Return(std::move(mock_session)));
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  EXPECT_CALL(*mock_engine, GetEngineSettings())
-      .WillRepeatedly(testing::ReturnRef(engine_settings));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
       ConversationConfig::Builder()
-          .SetSessionConfig(session_config)
+          .SetSessionConfig(session_config_)
           .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
           .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
@@ -712,33 +679,15 @@ TEST_P(ConversationTest, SendMessageAsync) {
 
 TEST_P(ConversationTest, SendSingleMessageAsync) {
   // Set up mock Session.
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
-  SessionConfig session_config = SessionConfig::CreateDefault();
-  session_config.SetStartTokenId(0);
-  session_config.GetMutableStopTokenIds().push_back({1});
-  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
-  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
-      .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
-
-  // Set up mock Engine.
-  auto mock_engine = std::make_unique<MockEngine>();
-  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
-      .WillOnce(testing::Return(std::move(mock_session)));
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  EXPECT_CALL(*mock_engine, GetEngineSettings())
-      .WillRepeatedly(testing::ReturnRef(engine_settings));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
       ConversationConfig::Builder()
-          .SetSessionConfig(session_config)
+          .SetSessionConfig(session_config_)
           .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
           .Build(*mock_engine));
   ASSERT_OK_AND_ASSIGN(auto conversation,
@@ -794,33 +743,15 @@ TEST_P(ConversationTest, SendSingleMessageAsync) {
 
 TEST_P(ConversationTest, SendMultipleMessagesAsync) {
   // Set up mock Session.
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
-  SessionConfig session_config = SessionConfig::CreateDefault();
-  session_config.SetStartTokenId(0);
-  session_config.GetMutableStopTokenIds().push_back({1});
-  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
-  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
-      .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
-
-  // Set up mock Engine.
-  auto mock_engine = std::make_unique<MockEngine>();
-  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
-      .WillOnce(testing::Return(std::move(mock_session)));
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  EXPECT_CALL(*mock_engine, GetEngineSettings())
-      .WillRepeatedly(testing::ReturnRef(engine_settings));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
       ConversationConfig::Builder()
-          .SetSessionConfig(session_config)
+          .SetSessionConfig(session_config_)
           .SetEnableConstrainedDecoding(enable_constrained_decoding_)
           .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
           .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
@@ -891,33 +822,15 @@ TEST_P(ConversationTest, SendMultipleMessagesAsync) {
 
 TEST_P(ConversationTest, SendMultipleMessagesAsyncWithHistory) {
   // Set up mock Session.
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
-  SessionConfig session_config = SessionConfig::CreateDefault();
-  session_config.SetStartTokenId(0);
-  session_config.GetMutableStopTokenIds().push_back({1});
-  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
-  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
-      .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
-
-  // Set up mock Engine.
-  auto mock_engine = std::make_unique<MockEngine>();
-  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
-      .WillOnce(testing::Return(std::move(mock_session)));
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  EXPECT_CALL(*mock_engine, GetEngineSettings())
-      .WillRepeatedly(testing::ReturnRef(engine_settings));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
       ConversationConfig::Builder()
-          .SetSessionConfig(session_config)
+          .SetSessionConfig(session_config_)
           .SetEnableConstrainedDecoding(enable_constrained_decoding_)
           .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
           .Build(*mock_engine));
@@ -1138,6 +1051,126 @@ TEST_P(ConversationTest, GetTokenizer) {
   EXPECT_EQ(tokenizer.GetTokens().size(), tokenizer_->GetTokens().size());
 }
 
+TEST_P(ConversationTest, CancelGroupWithSendMessageAsync) {
+  // Set up mock Session.
+  auto mock_session = CreateMockSession();
+  MockSession* mock_session_ptr = mock_session.get();
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
+
+  // Create Conversation.
+  ASSERT_OK_AND_ASSIGN(
+      auto conversation_config,
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config_)
+          .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
+          .Build(*mock_engine));
+  ASSERT_OK_AND_ASSIGN(auto conversation,
+                       Conversation::Create(*mock_engine, conversation_config));
+
+  // We will send a single message.
+  JsonMessage user_message = {{"role", "user"}, {"content", "How are you?"}};
+
+  auto mock_task_controller1 = std::make_unique<MockTaskController>();
+  // Expect Cancel() to be called on the first task controller when
+  // CancelGroup("group1") is called.
+  EXPECT_CALL(*mock_task_controller1, Cancel())
+      .WillOnce(testing::Return(absl::OkStatus()));
+  auto mock_task_controller2 = std::make_unique<MockTaskController>();
+  // Expect Cancel() to be called on the second task controller when
+  // CancelGroup("group1") is called.
+  EXPECT_CALL(*mock_task_controller2, Cancel())
+      .WillOnce(testing::Return(absl::OkStatus()));
+
+  // Expect RunPrefillAsync to be called and return the first task controller.
+  EXPECT_CALL(*mock_session_ptr, RunPrefillAsync(testing::_, testing::_))
+      .WillOnce([&](const std::vector<InputData>& contents,
+                   absl::AnyInvocable<void(absl::StatusOr<Responses>)>
+                       user_callback) {
+        user_callback(Responses(TaskState::kDone));
+        return std::move(mock_task_controller1);
+      });
+  // Expect RunDecodeAsync to be called and return the second task controller.
+  EXPECT_CALL(*mock_session_ptr, RunDecodeAsync(testing::_, testing::_))
+      .WillOnce(
+          [&](absl::AnyInvocable<void(absl::StatusOr<Responses>)> user_callback,
+              const DecodeConfig& decode_config) {
+            return std::move(mock_task_controller2);
+          });
+
+  absl::Notification done;
+  absl::Status status;
+  EXPECT_OK(conversation->SendMessageAsync(
+      user_message,
+      [&](absl::StatusOr<Message> message) {
+        status = message.status();
+        done.Notify();
+      },
+      {.task_group_id = "group1"}));
+
+  conversation->CancelGroup("group1");
+}
+
+TEST_P(ConversationTest, CancelGroupWithRunTextScoringAsync) {
+  // Set up mock Session.
+  auto mock_session = CreateMockSession();
+  MockSession* mock_session_ptr = mock_session.get();
+
+  auto cloned_session = std::make_unique<MockSession>();
+  // Expect GetSessionConfig to be called on the cloned session.
+  MockSession* cloned_session_ptr = cloned_session.get();
+  EXPECT_CALL(*cloned_session_ptr, GetSessionConfig())
+      .WillRepeatedly(testing::ReturnRef(session_config_));
+  // Expect GetTokenizer to be called on the cloned session.
+  EXPECT_CALL(*cloned_session_ptr, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
+
+  // Expect CloneAsync to be called and return the cloned session.
+  EXPECT_CALL(*mock_session_ptr, CloneAsync(testing::_))
+      .WillOnce(testing::Return(std::move(cloned_session)));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
+
+  // Create Conversation.
+  ASSERT_OK_AND_ASSIGN(
+      auto conversation_config,
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config_)
+          .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
+          .Build(*mock_engine));
+  ASSERT_OK_AND_ASSIGN(auto conversation,
+                       Conversation::Create(*mock_engine, conversation_config));
+
+  auto mock_task_controller = std::make_unique<MockTaskController>();
+  // Expect Cancel() to be called on the task controller when
+  // CancelGroup("group1") is called.
+  EXPECT_CALL(*mock_task_controller, Cancel())
+      .WillOnce(testing::Return(absl::OkStatus()));
+
+  // Expect RunTextScoringAsync to be called on the cloned session and return
+  // the task controller.
+  EXPECT_CALL(*cloned_session_ptr,
+              RunTextScoringAsync(testing::ElementsAre("I am good."),
+                                  testing::_, true))
+      .WillOnce(
+          [&](const std::vector<absl::string_view>& target_text,
+              absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+              bool store_token_lengths) {
+            return std::move(mock_task_controller);
+          });
+
+  absl::Notification done;
+  std::string response_text;
+  EXPECT_OK(conversation->RunTextScoringAsync(
+      {"I am good."},
+      [&](absl::StatusOr<Responses> responses) {
+        ASSERT_OK(responses);
+        response_text = responses->GetTexts()[0];
+        done.Notify();
+      },
+      {.task_group_id = "group1"}));
+
+  conversation->CancelGroup("group1");
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ConversationTest, ConversationTest,
     testing::ValuesIn(ConversationTest::GetTestParams()),
@@ -1307,33 +1340,15 @@ class MockConstraint : public Constraint {
 
 TEST_P(ConversationTest, SendMessageWithConstraint) {
   // Set up mock Session.
-  auto mock_session = std::make_unique<MockSession>();
+  auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
-  SessionConfig session_config = SessionConfig::CreateDefault();
-  session_config.SetStartTokenId(0);
-  session_config.GetMutableStopTokenIds().push_back({1});
-  *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
-  EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
-      .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
-
-  // Set up mock Engine.
-  auto mock_engine = std::make_unique<MockEngine>();
-  EXPECT_CALL(*mock_engine, CreateSession(testing::_))
-      .WillOnce(testing::Return(std::move(mock_session)));
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  EXPECT_CALL(*mock_engine, GetEngineSettings())
-      .WillRepeatedly(testing::ReturnRef(engine_settings));
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
 
   // Create Conversation with ExternalConstraintConfig.
   ASSERT_OK_AND_ASSIGN(
       auto conversation_config,
       ConversationConfig::Builder()
-          .SetSessionConfig(session_config)
+          .SetSessionConfig(session_config_)
           .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
           .SetConstraintProviderConfig(ExternalConstraintConfig())
           .Build(*mock_engine));

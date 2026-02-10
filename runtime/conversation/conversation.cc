@@ -317,6 +317,15 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
   return conversation;
 }
 
+void Conversation::AddTaskController(
+    const std::optional<std::string>& task_group_id,
+    std::unique_ptr<Engine::Session::TaskController> task_controller) {
+  if (task_group_id.has_value() && task_controller != nullptr) {
+    absl::MutexLock lock(task_controllers_mutex_);
+    task_controllers_[*task_group_id].emplace_back(std::move(task_controller));
+  }
+}
+
 absl::StatusOr<Message> Conversation::SendMessage(const Message& message,
                                                   OptionalArgs optional_args) {
   if (!std::holds_alternative<nlohmann::ordered_json>(message)) {
@@ -395,11 +404,12 @@ absl::Status Conversation::SendMessageAsync(
     this->history_.pop_back();
   };
 
-  absl::AnyInvocable<void(absl::StatusOr<Responses>)> internal_callback =
+  auto internal_callback = std::make_shared<
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)>>(
       CreateInternalCallback(
           *model_data_processor_, optional_args.args.value_or(std::monostate()),
           std::move(user_callback), std::move(cancel_callback),
-          std::move(complete_message_callback));
+          std::move(complete_message_callback)));
 
   ASSIGN_OR_RETURN(
       auto decode_config,
@@ -407,31 +417,60 @@ absl::Status Conversation::SendMessageAsync(
                          optional_args.max_output_tokens));
   if (is_appending_message_) {
     ASSIGN_OR_RETURN(
-        std::ignore,
+        auto task_controller,
         session_->RunPrefillAsync(
-            session_inputs, [callback = std::move(internal_callback)](
+            session_inputs, [callback = internal_callback](
                                 absl::StatusOr<Responses> responses) mutable {
               auto status = IgnoreEmptyInputError(responses.status());
               if (!status.ok()) {
-                callback(responses.status());
+                (*callback)(responses.status());
               }
             }));
+    AddTaskController(optional_args.task_group_id, std::move(task_controller));
   } else {
     ASSIGN_OR_RETURN(
-        std::ignore,
+        auto prefill_task_controller,
         session_->RunPrefillAsync(
             session_inputs,
-            [this, callback = std::move(internal_callback),
-             decode_config](absl::StatusOr<Responses> responses) mutable {
+            [this, callback = internal_callback, decode_config,
+             task_group_id = optional_args.task_group_id](
+                absl::StatusOr<Responses> responses) mutable {
+              // First, check if prefill returned an error. Ignore errors caused
+              // by empty input, as this is a valid case for triggering decode
+              // only.
               auto status = IgnoreEmptyInputError(responses.status());
+              // Scenario 1: Prefill failed with an unexpected error.
               if (!status.ok()) {
-                callback(responses.status());
+                // If prefill failed, invoke the callback with the error status
+                // and do not proceed to decode.
+                (*callback)(responses.status());
               } else if (IsEmptyInputError(responses.status()) ||
                          responses->GetTaskState() == TaskState::kDone) {
-                auto status = session_->RunDecodeAsync(std::move(callback),
-                                                       decode_config);
+                // Scenario 2: Prefill was skipped due to empty input, or
+                // prefill completed successfully. In either case, we can now
+                // start the decode process.
+                auto decode_task_controller = session_->RunDecodeAsync(
+                    [callback](absl::StatusOr<Responses> responses) {
+                      (*callback)(responses);
+                    },
+                    decode_config);
+                // If RunDecodeAsync returns a task controller, it means the
+                // decode task was scheduled successfully. Add the controller
+                // to our map if a task_group_id was provided, so it can be
+                // cancelled later.
+                if (decode_task_controller.ok()) {
+                  AddTaskController(task_group_id,
+                                    std::move(*decode_task_controller));
+                } else {
+                  // If !decode_task_controller.ok(), it means
+                  // RunDecodeAsync failed to schedule. Invoke the callback
+                  // with the error status.
+                  (*callback)(decode_task_controller.status());
+                }
               }
             }));
+    AddTaskController(optional_args.task_group_id,
+                      std::move(prefill_task_controller));
   }
 
   return absl::OkStatus();
@@ -452,10 +491,11 @@ absl::Status Conversation::RunTextScoringAsync(
     OptionalArgs optional_args) {
   ASSIGN_OR_RETURN(std::unique_ptr<Engine::Session> cloned_session,
                    session_->CloneAsync(nullptr));
-  return cloned_session
-      ->RunTextScoringAsync(target_text, std::move(callback),
-                            /*store_token_lengths=*/true)
-      .status();
+  ASSIGN_OR_RETURN(auto task_controller, cloned_session->RunTextScoringAsync(
+                                             target_text, std::move(callback),
+                                             /*store_token_lengths=*/true));
+  AddTaskController(optional_args.task_group_id, std::move(task_controller));
+  return absl::OkStatus();
 }
 
 absl::StatusOr<BenchmarkInfo> Conversation::GetBenchmarkInfo() {
@@ -467,5 +507,18 @@ absl::StatusOr<BenchmarkInfo*> Conversation::GetMutableBenchmarkInfo() {
 }
 
 void Conversation::CancelProcess() { session_->CancelProcess(); }
+
+void Conversation::CancelGroup(absl::string_view task_group_id) {
+  absl::MutexLock lock(task_controllers_mutex_);
+  if (auto it = task_controllers_.find(task_group_id);
+      it != task_controllers_.end()) {
+    for (auto& task_controller : it->second) {
+      if (task_controller != nullptr) {
+        task_controller->Cancel().IgnoreError();
+      }
+    }
+    task_controllers_.erase(it);
+  }
+}
 
 }  // namespace litert::lm
