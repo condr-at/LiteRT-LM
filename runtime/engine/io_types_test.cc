@@ -799,6 +799,28 @@ TEST(BenchmarkInfoTests, AddDecodeTurnError) {
               StatusIs(absl::StatusCode::kInternal));
 }
 
+TEST(BenchmarkInfoTests, AddTextToTokenIdsTurn) {
+  BenchmarkInfo benchmark_info(GetBenchmarkParams());
+  EXPECT_OK(benchmark_info.TimeTextToTokenIdsStart());
+  EXPECT_OK(benchmark_info.TimeTextToTokenIdsEnd(10));
+  EXPECT_OK(benchmark_info.TimeTextToTokenIdsStart());
+  EXPECT_OK(benchmark_info.TimeTextToTokenIdsEnd(20));
+  EXPECT_EQ(benchmark_info.GetTotalTextToTokenIdsTurns(), 2);
+}
+
+TEST(BenchmarkInfoTests, AddTextToTokenIdsTurnError) {
+  BenchmarkInfo benchmark_info(GetBenchmarkParams());
+  EXPECT_OK(benchmark_info.TimeTextToTokenIdsStart());
+  // Starting the turn twice should fail.
+  EXPECT_THAT(benchmark_info.TimeTextToTokenIdsStart(),
+              StatusIs(absl::StatusCode::kInternal));
+
+  EXPECT_OK(benchmark_info.TimeTextToTokenIdsEnd(10));
+  // Ending a turn that has not started should fail.
+  EXPECT_THAT(benchmark_info.TimeTextToTokenIdsEnd(20),
+              StatusIs(absl::StatusCode::kInternal));
+}
+
 TEST(BenchmarkInfoTests, AddMarks) {
   BenchmarkInfo benchmark_info(GetBenchmarkParams());
   EXPECT_OK(benchmark_info.TimeMarkDelta("sampling"));
@@ -877,6 +899,9 @@ TEST(BenchmarkInfoTests, OperatorOutputWithData) {
   EXPECT_OK(benchmark_info.TimeDecodeTurnStart());
   EXPECT_OK(benchmark_info.TimeDecodeTurnEnd(100));
 
+  EXPECT_OK(benchmark_info.TimeTextToTokenIdsStart());
+  EXPECT_OK(benchmark_info.TimeTextToTokenIdsEnd(50));
+
   std::stringstream ss;
   ss << benchmark_info;
   const std::string expected_output = R"(BenchmarkInfo:
@@ -896,6 +921,10 @@ TEST(BenchmarkInfoTests, OperatorOutputWithData) {
   Decode Turns \(Total 1 turns\):
     Decode Turn 1: Processed 100 tokens in .* duration.
       Decode Speed: .* tokens/sec.
+--------------------------------------------------
+  TextToTokenIds Turns \(Total 1 turns\):
+    Turn 1: .*, 50 tokens
+--------------------------------------------------
 --------------------------------------------------
 )";
   EXPECT_THAT(ss.str(), ContainsRegex(expected_output));

@@ -316,6 +316,30 @@ absl::Status BenchmarkInfo::TimeDecodeTurnEnd(uint64_t num_decode_tokens) {
   return absl::OkStatus();
 }
 
+absl::Status BenchmarkInfo::TimeTextToTokenIdsStart() {
+  const std::string phase_name =
+      absl::StrCat("text_to_token_ids:", text_to_token_ids_turn_index_);
+  if (start_time_map_.contains(phase_name)) {
+    return absl::InternalError(
+        absl::StrCat("TextToTokenIds turn ", phase_name, " already started."));
+  }
+  start_time_map_[phase_name] = absl::Now();
+  return absl::OkStatus();
+}
+
+absl::Status BenchmarkInfo::TimeTextToTokenIdsEnd(uint64_t num_tokens) {
+  const std::string phase_name =
+      absl::StrCat("text_to_token_ids:", text_to_token_ids_turn_index_);
+  if (!start_time_map_.contains(phase_name)) {
+    return absl::InternalError(
+        absl::StrCat("TextToTokenIds turn ", phase_name, " not started."));
+  }
+  text_to_token_ids_turns_.emplace_back(
+      num_tokens, absl::Now() - start_time_map_[phase_name]);
+  text_to_token_ids_turn_index_++;
+  return absl::OkStatus();
+}
+
 absl::StatusOr<BenchmarkTurnData> BenchmarkInfo::GetDecodeTurn(
     int turn_index) const {
   if (turn_index < 0 ||
@@ -350,6 +374,22 @@ double BenchmarkInfo::GetPrefillTokensPerSec(int turn_index) const {
     return 0.0;
   }
   return static_cast<double>(turn.num_tokens) / turn_seconds;
+}
+
+uint64_t BenchmarkInfo::GetTotalTextToTokenIdsTurns() const {
+  return text_to_token_ids_turns_.size();
+}
+
+absl::StatusOr<BenchmarkTurnData> BenchmarkInfo::GetTextToTokenIdsTurn(
+    int turn_index) const {
+  if (turn_index < 0 ||
+      static_cast<size_t>(turn_index) >= text_to_token_ids_turns_.size()) {
+    return absl::OutOfRangeError(
+        absl::StrCat("TextToTokenIds turn index ", turn_index,
+                     " is out of bounds. Total text_to_token_ids turns: ",
+                     text_to_token_ids_turns_.size()));
+  }
+  return text_to_token_ids_turns_[turn_index];
 }
 
 uint64_t BenchmarkInfo::GetTotalDecodeTurns() const {
@@ -465,6 +505,21 @@ std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info) {
          << std::endl;
     }
   }
+  os << "--------------------------------------------------" << std::endl;
+  os << "  TextToTokenIds Turns (Total " << info.GetTotalTextToTokenIdsTurns()
+     << " turns):" << std::endl;
+  if (info.GetTotalTextToTokenIdsTurns() == 0) {
+    os << "    No text to token ids turns recorded." << std::endl;
+  } else {
+    for (uint64_t i = 0; i < info.GetTotalTextToTokenIdsTurns(); ++i) {
+      auto turn = info.GetTextToTokenIdsTurn(i);
+      if (turn.ok()) {
+        os << "    Turn " << i + 1 << ": " << turn->duration << ", "
+           << turn->num_tokens << " tokens" << std::endl;
+      }
+    }
+  }
+
   os << "--------------------------------------------------" << std::endl;
 
   if (!info.GetMarkDurations().empty()) {

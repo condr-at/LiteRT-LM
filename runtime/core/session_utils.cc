@@ -60,7 +60,10 @@ absl::StatusOr<InputText> StringToProcessedInputText(
   if (benchmark_info.has_value()) {
     benchmark_prefill_token_count =
         benchmark_info->GetBenchmarkParams().num_prefill_tokens();
+    RETURN_IF_ERROR(
+        const_cast<BenchmarkInfo&>(*benchmark_info).TimeTextToTokenIdsStart());
   }
+
   ASSIGN_OR_RETURN(std::vector<int> ids, tokenizer.TextToTokenIds(text));
   if (benchmark_prefill_token_count > 0) {
     // If benchmark is enabled, we will use the benchmark prefill token
@@ -68,6 +71,10 @@ absl::StatusOr<InputText> StringToProcessedInputText(
     ids.resize(benchmark_prefill_token_count);
   } else if (bos_token_found) {
     ids.insert(ids.begin(), session_config.GetStartTokenId());
+  }
+  if (benchmark_info.has_value()) {
+    RETURN_IF_ERROR(const_cast<BenchmarkInfo&>(*benchmark_info)
+                        .TimeTextToTokenIdsEnd(ids.size()));
   }
   ASSIGN_OR_RETURN(auto ids_buffer, tokenizer.TokenIdsToTensorBuffer(ids));
   return InputText(std::move(ids_buffer));

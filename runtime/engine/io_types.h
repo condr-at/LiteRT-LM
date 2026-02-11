@@ -399,6 +399,8 @@ class BenchmarkInfo {
   absl::Status TimePrefillTurnEnd(uint64_t num_prefill_tokens);
   absl::Status TimeDecodeTurnStart();
   absl::Status TimeDecodeTurnEnd(uint64_t num_decode_tokens);
+  absl::Status TimeTextToTokenIdsStart();
+  absl::Status TimeTextToTokenIdsEnd(uint64_t num_tokens);
   // Time the duration between two consecutive marks. Useful for profiling the
   // pipeline at a specific point. For example:
   //   RETURN_IF_ERROR(benchmark_info.TimeMarkDelta("sampling"));
@@ -424,6 +426,10 @@ class BenchmarkInfo {
   absl::StatusOr<BenchmarkTurnData> GetDecodeTurn(int turn_index) const;
   double GetDecodeTokensPerSec(int turn_index) const;
 
+  // --- Calculated metrics and getters for TextToTokenIds ---
+  uint64_t GetTotalTextToTokenIdsTurns() const;
+  absl::StatusOr<BenchmarkTurnData> GetTextToTokenIdsTurn(int turn_index) const;
+
   // --- Gets the time to the first token ---
   // Note that the first time to token doesn't include the time for
   // initialization. It is the sum of the prefill time for the first turn and
@@ -436,14 +442,16 @@ class BenchmarkInfo {
   // Map of phase names to start time.
   std::map<std::string, absl::Time> start_time_map_;
   std::map<std::string, absl::Time> mark_time_map_;
-  // The current index of the prefill / decode turn.
+  // The current index of the prefill / decode / text_to_token_ids turn.
   int prefill_turn_index_ = 0;
   int decode_turn_index_ = 0;
+  int text_to_token_ids_turn_index_ = 0;
 
   std::map<std::string, absl::Duration> init_phases_;
   std::map<std::string, absl::Duration> mark_durations_;
   std::vector<BenchmarkTurnData> prefill_turns_;
   std::vector<BenchmarkTurnData> decode_turns_;
+  std::vector<BenchmarkTurnData> text_to_token_ids_turns_;
 };
 std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info);
 
