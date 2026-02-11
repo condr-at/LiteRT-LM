@@ -230,14 +230,14 @@ absl::StatusOr<DataProcessorConfig> CreateDataProcessorConfigFromLlmModelType(
 }
 
 absl::StatusOr<std::unique_ptr<ModelDataProcessor>> CreateModelDataProcessor(
-    const DataProcessorConfig& config, std::optional<Preface> preface,
-    const Tokenizer* tokenizer,
+    const litert::Environment& env, const DataProcessorConfig& config,
+    std::optional<Preface> preface, const Tokenizer* tokenizer,
     const std::vector<std::vector<int>>& stop_token_ids,
     bool enable_constrained_decoding, PromptTemplateCapabilities capabilities) {
   if (std::holds_alternative<Gemma3DataProcessorConfig>(config)) {
     ABSL_LOG(INFO) << "Creating Gemma3DataProcessor";
     return Gemma3DataProcessor::Create(
-        std::get<Gemma3DataProcessorConfig>(config), preface, tokenizer,
+        env, std::get<Gemma3DataProcessorConfig>(config), preface, tokenizer,
         stop_token_ids, enable_constrained_decoding);
   } else if (std::holds_alternative<Qwen3DataProcessorConfig>(config)) {
     ABSL_LOG(INFO) << "Creating Qwen3DataProcessor";
