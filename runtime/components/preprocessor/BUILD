@@ -71,6 +71,7 @@ cc_library(
         ":audio_preprocessor",
         ":mel_filterbank",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:absl_check",
         "@litert//litert/cc:litert_tensor_buffer_types",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",

@@ -111,6 +111,11 @@ class ModelDataProcessor {
 
   // Returns the end of tool call blocks.
   virtual absl::string_view CodeFenceEnd() const = 0;
+
+  // Clones the state of the other model data processor.
+  virtual absl::Status CloneState(const ModelDataProcessor& other) {
+    return absl::UnimplementedError("CloneState is not implemented.");
+  }
 };
 
 // TypeSafeModelDataProcessor is a ModelDataProcessor that expects a specific
@@ -156,6 +161,12 @@ class TypeSafeModelDataProcessor : public ModelDataProcessor {
   // Returns the config of the model data processor.
   virtual const ExpectedConfigT& GetConfig() const = 0;
 
+  // Clones the state of the other model data processor.
+  absl::Status CloneState(
+      const TypeSafeModelDataProcessor<ExpectedConfigT, ExpectedArgsT>& other) {
+    return this->CloneStateImpl(other);
+  }
+
  private:
   virtual absl::StatusOr<std::vector<InputData>> ToInputDataVectorImpl(
       const std::string& rendered_template_prompt,
@@ -164,6 +175,11 @@ class TypeSafeModelDataProcessor : public ModelDataProcessor {
 
   virtual absl::StatusOr<Message> ToMessageImpl(
       const Responses& responses, const ExpectedArgsT& typed_args) const = 0;
+
+  virtual absl::Status CloneStateImpl(
+      const TypeSafeModelDataProcessor<ExpectedConfigT, ExpectedArgsT>& other) {
+    return absl::UnimplementedError("CloneStateImpl is not implemented.");
+  }
 };
 
 }  // namespace litert::lm

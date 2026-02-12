@@ -348,6 +348,77 @@ TEST(AudioPreprocessorMiniAudioTest, UsmPreprocessingTwice) {
   }
 }
 
+TEST(AudioPreprocessorMiniAudioTest, UsmPreprocessingCopy) {
+  AudioPreprocessorConfig config =
+      AudioPreprocessorConfig::CreateDefaultUsmConfig();
+  ASSERT_OK_AND_ASSIGN(auto raw_audio_data, GetRawAudioData());
+  std::vector<float> pcm_frames;
+  ASSERT_OK(AudioPreprocessorMiniAudio::DecodeAudio(
+      raw_audio_data, config.GetNumChannels(), config.GetSampleRateHz(),
+      pcm_frames));
+
+  // Ground truth from TFLite weightless USM frontend model.
+  ASSERT_OK_AND_ASSIGN(auto frontend_model,
+                       FrontendModelWrapper::Create(kFrontendModelPath));
+  std::vector<float> frontend_mel_spectrogram;
+  std::vector<uint8_t> frontend_mask;
+  ASSERT_OK(frontend_model->Run(pcm_frames, &frontend_mel_spectrogram,
+                                &frontend_mask));
+  int true_count = 0;
+  for (int i = 0; i < frontend_mask.size(); ++i) {
+    if (frontend_mask[i] == 1) {
+      true_count++;
+    }
+  }
+  frontend_mel_spectrogram.resize(true_count * config.GetNumMelBins());
+  std::vector<float> pcm_frames_front_half(
+      pcm_frames.begin(), pcm_frames.begin() + pcm_frames.size() / 2);
+  std::vector<float> pcm_frames_back_half(
+      pcm_frames.begin() + pcm_frames.size() / 2, pcm_frames.end());
+
+  // Create MiniAudio preprocessor.
+  ASSERT_OK_AND_ASSIGN(auto preprocessor,
+                       AudioPreprocessorMiniAudio::Create(config));
+  ASSERT_OK_AND_ASSIGN(
+      auto preprocessed_audio_front_half,
+      preprocessor->Preprocess(InputAudio(pcm_frames_front_half)));
+
+  // Copy the preprocessor and reset the original preprocessor. The copy
+  // should not be affected by the reset.
+  AudioPreprocessorMiniAudio preprocessor_copy = *preprocessor;
+  preprocessor->Reset();
+
+  // Preprocess the back half of the audio data with the new preprocessor.
+  ASSERT_OK_AND_ASSIGN(
+      auto preprocessed_audio_back_half,
+      preprocessor_copy.Preprocess(InputAudio(pcm_frames_back_half)));
+
+  // Get the preprocessed mel spectrogram from the front and back half and
+  // concatenate them.
+  ASSERT_OK_AND_ASSIGN(
+      auto tensor_front_half,
+      preprocessed_audio_front_half.GetPreprocessedAudioTensor());
+  ASSERT_OK_AND_ASSIGN(
+      auto tensor_back_half,
+      preprocessed_audio_back_half.GetPreprocessedAudioTensor());
+  ASSERT_OK_AND_ASSIGN(auto data_front_half,
+                       GetDataAsVector<float>(*tensor_front_half));
+  ASSERT_OK_AND_ASSIGN(auto data_back_half,
+                       GetDataAsVector<float>(*tensor_back_half));
+  std::vector<float> preprocessed_mel_spectrogram(data_front_half.begin(),
+                                                  data_front_half.end());
+  preprocessed_mel_spectrogram.insert(preprocessed_mel_spectrogram.end(),
+                                      data_back_half.begin(),
+                                      data_back_half.end());
+
+  ASSERT_EQ(preprocessed_mel_spectrogram.size(),
+            frontend_mel_spectrogram.size());
+  for (int i = 0; i < preprocessed_mel_spectrogram.size(); ++i) {
+    EXPECT_NEAR(preprocessed_mel_spectrogram[i], frontend_mel_spectrogram[i],
+                5e-4);
+  }
+}
+
 #endif  // !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) &&
         // !defined(__NT__) && !defined(_WIN64)
 

@@ -489,4 +489,22 @@ absl::string_view Gemma3DataProcessor::CodeFenceEnd() const {
   return config_.code_fence_end;
 }
 
+absl::Status Gemma3DataProcessor::CloneStateImpl(
+    const TypeSafeModelDataProcessor<Gemma3DataProcessorConfig,
+                                     Gemma3DataProcessorArguments>& other) {
+  const Gemma3DataProcessor& other_gemma3_data_processor =
+      static_cast<const Gemma3DataProcessor&>(other);
+  if (other_gemma3_data_processor.audio_preprocessor_ != nullptr) {
+    if (audio_preprocessor_ == nullptr) {
+      ASSIGN_OR_RETURN(audio_preprocessor_,
+                       AudioPreprocessorMiniAudio::Create(
+                           AudioPreprocessorConfig::CreateDefaultUsmConfig()));
+    }
+    *static_cast<AudioPreprocessorMiniAudio*>(audio_preprocessor_.get()) =
+        *static_cast<AudioPreprocessorMiniAudio*>(
+            other_gemma3_data_processor.audio_preprocessor_.get());
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace litert::lm

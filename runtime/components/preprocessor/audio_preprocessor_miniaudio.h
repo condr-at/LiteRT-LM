@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_check.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
@@ -69,6 +70,34 @@ class AudioPreprocessorMiniAudio : public AudioPreprocessor {
   void Reset() override {
     input_queue_.clear();
     samples_to_next_step_ = config_.GetFrameLength();
+  }
+
+  // Copy constructor for cloning the audio preprocessor.
+  AudioPreprocessorMiniAudio(const AudioPreprocessorMiniAudio& other)
+      : config_(other.config_),
+        mel_filterbank_(nullptr),
+        input_queue_(other.input_queue_),
+        samples_to_next_step_(other.samples_to_next_step_) {
+    mel_filterbank_ = std::make_unique<MelFilterbank>();
+    ABSL_CHECK_OK(mel_filterbank_->Initialize(
+        other.config_.GetFftBins(), other.config_.GetSampleRateHz(),
+        other.config_.GetNumMelBins(), other.config_.GetMelLowHz(),
+        other.config_.GetMelHighHz()));
+    input_queue_ = other.input_queue_;
+  }
+
+  // Copy assignment operator for cloning the audio preprocessor.
+  AudioPreprocessorMiniAudio& operator=(
+      const AudioPreprocessorMiniAudio& other) {
+    config_ = other.config_;
+    mel_filterbank_ = std::make_unique<MelFilterbank>();
+    ABSL_CHECK_OK(mel_filterbank_->Initialize(
+        other.config_.GetFftBins(), other.config_.GetSampleRateHz(),
+        other.config_.GetNumMelBins(), other.config_.GetMelLowHz(),
+        other.config_.GetMelHighHz()));
+    input_queue_ = other.input_queue_;
+    samples_to_next_step_ = other.samples_to_next_step_;
+    return *this;
   }
 
  private:

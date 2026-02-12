@@ -534,4 +534,36 @@ void Conversation::CancelGroup(absl::string_view task_group_id) {
   }
 }
 
+absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Clone() {
+  ASSIGN_OR_RETURN(auto session, session_->Clone());
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<ModelDataProcessor> model_data_processor,
+      CreateModelDataProcessor(config_.GetProcessorConfig(),
+                               config_.GetPreface(), &session->GetTokenizer(),
+                               session->GetSessionConfig().GetStopTokenIds(),
+                               config_.constrained_decoding_enabled(),
+                               config_.GetPromptTemplate().GetCapabilities()));
+  auto status = model_data_processor->CloneState(*model_data_processor_);
+  if (!status.ok() && !absl::IsUnimplemented(status)) {
+    return status;
+  }
+  std::unique_ptr<ConstraintProvider> constraint_provider;
+  if (config_.constraint_provider_config().has_value()) {
+    ASSIGN_OR_RETURN(constraint_provider,
+                     CreateConstraintProvider(
+                         config_.constraint_provider_config().value(),
+                         session->GetTokenizer(),
+                         session->GetSessionConfig().GetStopTokenIds()));
+  }
+  auto new_conversation = absl::WrapUnique(new Conversation(
+      std::move(session), std::move(model_data_processor), config_.GetPreface(),
+      config_.GetPromptTemplate(), config_, std::move(constraint_provider)));
+  new_conversation->is_appending_message_ = is_appending_message_;
+  {
+    absl::MutexLock lock(history_mutex_);  // NOLINT
+    new_conversation->history_ = history_;
+  }
+  return new_conversation;
+}
+
 }  // namespace litert::lm

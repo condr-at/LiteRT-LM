@@ -1411,6 +1411,67 @@ TEST_P(ConversationTest, SendMessageWithConstraint) {
                         }));
 }
 
+TEST_P(ConversationTest, Clone) {
+  // Set up mock Session.
+  auto mock_session = CreateMockSession();
+  MockSession* mock_session_ptr = mock_session.get();
+  auto mock_engine = CreateMockEngine(std::move(mock_session));
+
+  // Create Conversation.
+  ASSERT_OK_AND_ASSIGN(
+      auto conversation_config,
+      ConversationConfig::Builder()
+          .SetSessionConfig(session_config_)
+          .SetOverwritePromptTemplate(PromptTemplate(kTestJinjaPromptTemplate))
+          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
+          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
+          .Build(*mock_engine));
+  ASSERT_OK_AND_ASSIGN(auto conversation,
+                       Conversation::Create(*mock_engine, conversation_config));
+
+  // Send a message to populate history.
+  JsonMessage user_message = {{"role", "user"}, {"content", "Hello"}};
+  EXPECT_CALL(*mock_session_ptr, RunPrefill(testing::_))
+      .WillOnce(testing::Return(absl::OkStatus()));
+  EXPECT_CALL(*mock_session_ptr, RunDecode(testing::_))
+      .WillOnce(testing::Return(Responses(TaskState::kProcessing, {"Hi"})));
+  ASSERT_OK(conversation->SendMessage(user_message));
+
+  // Expect Session::Clone to be called.
+  auto cloned_mock_session = std::make_unique<MockSession>();
+  MockSession* cloned_mock_session_ptr = cloned_mock_session.get();
+  EXPECT_CALL(*cloned_mock_session_ptr, GetSessionConfig())
+      .WillRepeatedly(testing::ReturnRef(session_config_));
+  EXPECT_CALL(*cloned_mock_session_ptr, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
+  EXPECT_CALL(*mock_session_ptr, Clone())
+      .WillOnce(testing::Return(std::move(cloned_mock_session)));
+
+  // Clone the conversation.
+  ASSERT_OK_AND_ASSIGN(auto cloned_conversation, conversation->Clone());
+
+  // Verify the history in the cloned conversation.
+  auto history = cloned_conversation->GetHistory();
+  EXPECT_EQ(history.size(), 2);
+  EXPECT_EQ(std::get<JsonMessage>(history[0]), user_message);
+
+  // Verify that sending a message in the cloned conversation works and uses the
+  // cloned session.
+  JsonMessage user_message2 = {{"role", "user"}, {"content", "How are you?"}};
+  EXPECT_CALL(*cloned_mock_session_ptr, RunPrefill(testing::_))
+      .WillOnce(testing::Return(absl::OkStatus()));
+  EXPECT_CALL(*cloned_mock_session_ptr, RunDecode(testing::_))
+      .WillOnce(
+          testing::Return(Responses(TaskState::kProcessing, {"I am good."})));
+
+  ASSERT_OK(cloned_conversation->SendMessage(user_message2));
+
+  // Verify that the original conversation is unaffected by the new message in
+  // the cloned one.
+  EXPECT_EQ(conversation->GetHistory().size(), 2);
+  EXPECT_EQ(cloned_conversation->GetHistory().size(), 4);
+}
+
 TEST_P(ConversationTest, SendMessageWithMaxOutputTokens) {
   // Set up mock Session.
   auto mock_session = std::make_unique<MockSession>();
