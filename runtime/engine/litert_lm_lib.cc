@@ -586,7 +586,8 @@ void LogMemoryUsage(const LiteRtLmSettings& settings, float peak_mem_mb,
 
 }  // namespace
 
-absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
+absl::Status RunLiteRtLm(const LiteRtLmSettings& settings,
+                         std::vector<LitertLmMetrics>* metrics) {
   std::unique_ptr<FileLogSink> log_sink;
   if (settings.log_sink_file.has_value()) {
     log_sink = std::make_unique<FileLogSink>(settings.log_sink_file.value());
@@ -653,7 +654,7 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
             settings.input_prompt, settings, engine.get(), conversation.get()));
       }
     }
-
+    LitertLmMetrics metric;
     if (settings.benchmark) {
       absl::StatusOr<BenchmarkInfo> benchmark_info;
       if (conversation != nullptr) {
@@ -665,6 +666,9 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
       }
       if (benchmark_info.ok()) {
         LogBenchmarkInfo(*benchmark_info, settings);
+        if (metrics != nullptr) {
+          metric.benchmark_info = *benchmark_info;
+        }
       }
     }
 
@@ -681,8 +685,15 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings) {
         mem_monitor->Stop();
         peak_mem_mb = mem_monitor->GetPeakMemUsageInMB();
         peak_private_mb = mem_monitor->GetPeakPrivateFootprintInMB();
+        if (metrics != nullptr) {
+          metric.peak_mem_mb = peak_mem_mb;
+          metric.peak_private_mb = peak_private_mb;
+        }
       }
       LogMemoryUsage(settings, peak_mem_mb, peak_private_mb);
+    }
+    if (metrics != nullptr) {
+      metrics->push_back(metric);
     }
   }
 

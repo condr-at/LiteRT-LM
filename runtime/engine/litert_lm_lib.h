@@ -21,12 +21,14 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "absl/base/log_severity.h"  // from @com_google_absl
 #include "absl/log/log_entry.h"  // from @com_google_absl
 #include "absl/log/log_sink.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
+#include "runtime/engine/io_types.h"
 
 namespace litert {
 namespace lm {
@@ -107,8 +109,17 @@ struct LiteRtLmSettings {
   ConvType conv_type = ConvType::kAuto;
 };
 
+struct LitertLmMetrics {
+  std::optional<BenchmarkInfo> benchmark_info;
+  float peak_mem_mb = 0.0f;
+  float peak_private_mb = 0.0f;
+};
+
 // Runs the LLM inference with the given settings.
-absl::Status RunLiteRtLm(const LiteRtLmSettings& settings);
+// If metrics is not null, the metrics will be populated with the metrics from
+// the inference. Results from each iteration is saved in the vector.
+absl::Status RunLiteRtLm(const LiteRtLmSettings& settings,
+                         std::vector<LitertLmMetrics>* metrics = nullptr);
 
 }  // namespace lm
 }  // namespace litert
