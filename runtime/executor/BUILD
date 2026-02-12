@@ -31,7 +31,11 @@ cc_library(
         ":executor_settings_base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:file_util",
         "//runtime/util:litert_status_util",
+        "//runtime/util:scoped_file",
     ],
 )
 
@@ -773,6 +777,7 @@ cc_library(
         "//runtime/components:model_resources",
         "//runtime/engine:io_types",
         "//runtime/util:litert_status_util",
+        "//runtime/util:scoped_file",
     ] + select({
         "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_api_with_dynamic_runtime",

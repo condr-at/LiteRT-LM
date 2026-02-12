@@ -53,10 +53,32 @@
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/litert_compiled_model_executor_utils.h"
 #include "runtime/executor/llm_executor_io_types.h"
+#include "runtime/util/scoped_file.h"
 #include "runtime/util/status_macros.h"  //NOLINT
 
 namespace litert::lm {
 namespace {
+
+absl::Status SetCpuCacheOptions(
+    const absl::StatusOr<std::string>& weight_cache_file,
+    std::shared_ptr<litert::lm::ScopedFile> scoped_cache_file,
+    litert::CpuOptions& cpu_options, absl::string_view logging_prefix) {
+  if (scoped_cache_file != nullptr) {
+    ASSIGN_OR_RETURN(auto duplicated, scoped_cache_file->Duplicate());
+    ASSIGN_OR_RETURN(int fd, duplicated.Release());
+    cpu_options.SetXNNPackWeightCacheFileDescriptor(fd);
+    ABSL_LOG(INFO) << logging_prefix
+                   << " use provided cache file descriptor: " << fd;
+  } else if (weight_cache_file.ok()) {
+    const std::string& weight_cache_path = *weight_cache_file;
+    cpu_options.SetXNNPackWeightCachePath(weight_cache_path.c_str());
+    ABSL_LOG(INFO) << logging_prefix
+                   << " use cache path: " << weight_cache_path;
+  } else {
+    ABSL_LOG(INFO) << logging_prefix << " does not use cache.";
+  }
+  return absl::OkStatus();
+}
 
 constexpr absl::string_view kFeaturesName = "features";
 constexpr absl::string_view kMaskName = "mask";
@@ -137,6 +159,8 @@ AudioLiteRtCompiledModelExecutor::AudioStaticEncoder::Create(
 absl::Status
 AudioLiteRtCompiledModelExecutor::AudioStaticEncoder::Initialize() {
   LITERT_ASSIGN_OR_RETURN(auto options, Options::Create());
+  auto weight_cache_file =
+      executor_settings_.GetWeightCacheFile(".audio_encoder.xnnpack_cache");
   if (executor_settings_.GetBackend() == Backend::GPU) {
     LITERT_ASSIGN_OR_RETURN(auto& gpu_options, options.GetGpuOptions());
     gpu_options.EnableConstantTensorSharing(true);
@@ -146,6 +170,12 @@ AudioLiteRtCompiledModelExecutor::AudioStaticEncoder::Initialize() {
   } else if (executor_settings_.GetBackend() == Backend::CPU) {
     LITERT_ASSIGN_OR_RETURN(auto& cpu_options, options.GetCpuOptions());
     cpu_options.SetNumThreads(executor_settings_.GetNumThreads());
+    std::shared_ptr<ScopedFile> scoped_encoder_cache_file =
+        executor_settings_.GetScopedEncoderCacheFile();
+    RETURN_IF_ERROR(SetCpuCacheOptions(weight_cache_file,
+                                       scoped_encoder_cache_file, cpu_options,
+                                       "audio_encoder"));
+
     options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
   } else {
     return absl::InvalidArgumentError(
@@ -251,6 +281,8 @@ AudioLiteRtCompiledModelExecutor::AudioStreamingEncoder::Create(
 absl::Status
 AudioLiteRtCompiledModelExecutor::AudioStreamingEncoder::Initialize() {
   LITERT_ASSIGN_OR_RETURN(auto options, Options::Create());
+  auto weight_cache_file =
+      executor_settings_.GetWeightCacheFile(".audio_encoder.xnnpack_cache");
   if (executor_settings_.GetBackend() == Backend::GPU) {
     LITERT_ASSIGN_OR_RETURN(auto& gpu_options, options.GetGpuOptions());
     gpu_options.EnableConstantTensorSharing(true);
@@ -260,6 +292,13 @@ AudioLiteRtCompiledModelExecutor::AudioStreamingEncoder::Initialize() {
   } else if (executor_settings_.GetBackend() == Backend::CPU) {
     LITERT_ASSIGN_OR_RETURN(auto& cpu_options, options.GetCpuOptions());
     cpu_options.SetNumThreads(executor_settings_.GetNumThreads());
+
+    std::shared_ptr<ScopedFile> scoped_encoder_cache_file =
+        executor_settings_.GetScopedEncoderCacheFile();
+    RETURN_IF_ERROR(SetCpuCacheOptions(weight_cache_file,
+                                       scoped_encoder_cache_file, cpu_options,
+                                       "audio_encoder"));
+
     options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
   } else {
     return absl::InvalidArgumentError(
@@ -421,6 +460,8 @@ AudioLiteRtCompiledModelExecutor::AudioAdapter::Create(
 
 absl::Status AudioLiteRtCompiledModelExecutor::AudioAdapter::Initialize() {
   LITERT_ASSIGN_OR_RETURN(auto options, Options::Create());
+  auto weight_cache_file =
+      executor_settings_.GetWeightCacheFile(".audio_adapter.xnnpack_cache");
   if (executor_settings_.GetBackend() == Backend::GPU) {
     LITERT_ASSIGN_OR_RETURN(auto& gpu_options, options.GetGpuOptions());
     gpu_options.EnableConstantTensorSharing(true);
@@ -430,6 +471,13 @@ absl::Status AudioLiteRtCompiledModelExecutor::AudioAdapter::Initialize() {
   } else if (executor_settings_.GetBackend() == Backend::CPU) {
     LITERT_ASSIGN_OR_RETURN(auto& cpu_options, options.GetCpuOptions());
     cpu_options.SetNumThreads(executor_settings_.GetNumThreads());
+
+    std::shared_ptr<ScopedFile> scoped_adapter_cache_file =
+        executor_settings_.GetScopedAdapterCacheFile();
+    RETURN_IF_ERROR(SetCpuCacheOptions(weight_cache_file,
+                                       scoped_adapter_cache_file, cpu_options,
+                                       "audio_adapter"));
+
     options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
   } else {
     return absl::InvalidArgumentError(
