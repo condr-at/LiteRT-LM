@@ -37,8 +37,9 @@ enum class Backend {
  *   not be initialized.
  * @property maxNumTokens The maximum number of the sum of input and output tokens. It is equivalent
  *   to the size of the kv-cache. When `null`, use the default value from the model or the engine.
- * @property cacheDir The directory for placing cache files. It should be a directory where the
- *   Android application has write access. If not unset, it uses the directory of the [modelPath].
+ * @property cacheDir The directory for placing cache files. It should be a directory with write
+ *   access. If not set, it uses the directory of the [modelPath]. Set to ":nocache" to disable
+ *   caching at all.
  */
 data class EngineConfig(
   val modelPath: String,

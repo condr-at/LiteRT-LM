@@ -18,6 +18,7 @@ package com.google.ai.edge.litertlm
 /**
  * Data class to hold benchmark information.
  *
+ * @property initTimeInSecond The time in seconds to initialize the engine and the conversation.
  * @property timeToFirstTokenInSecond The time in seconds to the first token.
  * @property lastPrefillTokenCount The number of tokens in the last prefill. Returns 0 if there was
  *   no prefill.
@@ -28,6 +29,7 @@ package com.google.ai.edge.litertlm
  * @property lastDecodeTokensPerSecond The number of tokens processed per second in the last decode.
  */
 data class BenchmarkInfo(
+  val initTimeInSecond: Double,
   val timeToFirstTokenInSecond: Double,
   val lastPrefillTokenCount: Int,
   val lastDecodeTokenCount: Int,
@@ -46,7 +48,9 @@ data class BenchmarkInfo(
  * @param backend The backend to use for the engine.
  * @param prefillTokens The number of tokens to prefill.
  * @param decodeTokens The number of tokens to decode.
- * @param cacheDir The directory for cache files.
+ * @param cacheDir The directory for placing cache files. It should be a directory with write
+ *   access. If not set, it uses the directory of the [modelPath]. Set to ":nocache" to disable
+ *   caching at all.
  * @return The benchmark info.
  */
 @ExperimentalApi
@@ -55,7 +59,7 @@ fun benchmark(
   backend: Backend,
   prefillTokens: Int = 256,
   decodeTokens: Int = 256,
-  cacheDir: String = "",
+  cacheDir: String? = null,
 ): BenchmarkInfo {
   val enginePointer =
     LiteRtLmJni.nativeCreateBenchmark(
@@ -63,7 +67,7 @@ fun benchmark(
       backend.name,
       prefillTokens,
       decodeTokens,
-      cacheDir,
+      cacheDir ?: "",
     )
 
   try {

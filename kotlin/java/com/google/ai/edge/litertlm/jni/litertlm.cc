@@ -28,6 +28,7 @@
 #include "absl/log/globals.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json_fwd.hpp"  // from @nlohmann_json
 #include "litert/c/internal/litert_logging.h"  // from @litert
 #include "runtime/conversation/conversation.h"
@@ -154,13 +155,20 @@ jobject CreateBenchmarkInfoJni(
   jclass benchmark_info_cls =
       env->FindClass("com/google/ai/edge/litertlm/BenchmarkInfo");
   jmethodID benchmark_info_ctor =
-      env->GetMethodID(benchmark_info_cls, "<init>", "(DIIDD)V");
+      env->GetMethodID(benchmark_info_cls, "<init>", "(DDIIDD)V");
 
-  return env->NewObject(benchmark_info_cls, benchmark_info_ctor,
-                        benchmark_info.GetTimeToFirstToken(),
-                        last_prefill_token_count, last_decode_token_count,
-                        last_prefill_tokens_per_second,
-                        last_decode_tokens_per_second);
+  double total_init_time_ms = 0.0;
+  for (const auto& phase : benchmark_info.GetInitPhases()) {
+    ABSL_LOG(INFO) << "Init phase: " << phase.first << " took "
+                   << absl::ToDoubleMilliseconds(phase.second) << " ms";
+    total_init_time_ms += absl::ToDoubleMilliseconds(phase.second);
+  }
+
+  return env->NewObject(
+      benchmark_info_cls, benchmark_info_ctor, total_init_time_ms / 1000.0,
+      benchmark_info.GetTimeToFirstToken(), last_prefill_token_count,
+      last_decode_token_count, last_prefill_tokens_per_second,
+      last_decode_tokens_per_second);
 }
 
 // Converts a Java InputData array to a C++ vector of InputData.
