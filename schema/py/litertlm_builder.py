@@ -108,6 +108,7 @@ class TfLiteModelType(enum.Enum):
 
   VISION_ENCODER = "tf_lite_vision_encoder"
   VISION_ADAPTER = "tf_lite_vision_adapter"
+  END_OF_VISION = "tf_lite_end_of_vision"
   ARTISAN_TEXT_DECODER = "tf_lite_artisan_text_decoder"
 
   @classmethod

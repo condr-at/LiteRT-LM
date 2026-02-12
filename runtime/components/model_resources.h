@@ -48,6 +48,7 @@ enum class ModelType {
   kTfLiteAudioAdapter = 10,
   kTfLiteEndOfAudio = 6,
   kTfLiteVisionAdapter = 7,
+  kTfLiteEndOfVision = 12,  // The end of vision token model.
   kTfLiteVisionEncoder = 8,
   kArtisanTextDecoder = 11,  // The text decoder model for the artisan gpu.
 };
@@ -75,6 +76,8 @@ inline absl::StatusOr<ModelType> StringToModelType(
     return ModelType::kTfLiteEndOfAudio;
   } else if (lower_case_model_type_str == "tf_lite_vision_adapter") {
     return ModelType::kTfLiteVisionAdapter;
+  } else if (lower_case_model_type_str == "tf_lite_end_of_vision") {
+    return ModelType::kTfLiteEndOfVision;
   } else if (lower_case_model_type_str == "tf_lite_vision_encoder") {
     return ModelType::kTfLiteVisionEncoder;
   } else if (lower_case_model_type_str == "tf_lite_artisan_text_decoder") {
@@ -106,6 +109,8 @@ inline std::string ModelTypeToString(ModelType model_type) {
       return "TF_LITE_END_OF_AUDIO";
     case ModelType::kTfLiteVisionAdapter:
       return "TF_LITE_VISION_ADAPTER";
+    case ModelType::kTfLiteEndOfVision:
+      return "TF_LITE_END_OF_VISION";
     case ModelType::kTfLiteVisionEncoder:
       return "TF_LITE_VISION_ENCODER";
     case ModelType::kArtisanTextDecoder:
