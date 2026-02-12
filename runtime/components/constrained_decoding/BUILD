@@ -24,11 +24,13 @@ licenses(["notice"])
 cc_library(
     name = "bitmap",
     hdrs = ["bitmap.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "constraint",
     hdrs = ["constraint.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":bitmap",
         "@com_google_absl//absl/status:statusor",

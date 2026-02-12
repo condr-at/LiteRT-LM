@@ -94,6 +94,9 @@ class ConstrainedDecoder {
   absl::Status MaskLogits(absl::Span<tflite::half> logits,
                           absl::Span<const ::litert::Layout::Dim> logits_dims);
 
+  // Returns a pointer to the constraint.
+  Constraint* GetConstraint() const { return constraint_; }
+
  private:
   // The constraint to be applied.
   Constraint* constraint_;
