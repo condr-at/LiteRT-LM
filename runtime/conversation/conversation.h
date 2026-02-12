@@ -462,6 +462,13 @@ class Conversation {
   // from the user is actually sent to the LLM and processed for prefill.
   void CancelProcess();
 
+  // Clones the conversation. The cloned conversation will be independent of the
+  // original conversation, including the history, state, etc.
+  //
+  // Note that the cloned conversation will not clone the group_id of the
+  // ongoing tasks.
+  absl::StatusOr<std::unique_ptr<Conversation>> Clone();
+
   // Cancels all ongoing asynchronous tasks with the given task_group_id.
   // Args:
   // - `task_group_id`: The id of the task group to cancel.

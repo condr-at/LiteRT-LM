@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
@@ -100,6 +101,11 @@ class Gemma3DataProcessor
       std::vector<Message>& history, const Preface& preface,
       const Message& message, const PromptTemplate& prompt_template,
       bool current_is_appending_message, bool append_message) const override;
+
+  absl::Status CloneStateImpl(
+      const TypeSafeModelDataProcessor<Gemma3DataProcessorConfig,
+                                       Gemma3DataProcessorArguments>& other)
+      override;
 
   std::unique_ptr<LiteRtLmGemmaModelConstraintProvider,
                   decltype(&LiteRtLmGemmaModelConstraintProvider_Destroy)>
