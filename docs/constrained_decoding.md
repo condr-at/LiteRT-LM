@@ -48,8 +48,8 @@ LiteRT-LM supports different backends for constrained decoding, configured via
 ## Using Constraints in `SendMessage`
 
 Once enabled, you can apply constraints to individual messages using the
-`decoding_constraint` argument in `SendMessage` or `SendMessageAsync`. This
-argument is of type `ConstraintArg`.
+`decoding_constraint` field in the `OptionalArgs` struct passed to `SendMessage`
+or `SendMessageAsync`. This field is of type `std::optional<ConstraintArg>`.
 
 ### 1. LLGuidance Constraints
 
@@ -71,8 +71,7 @@ constraint_arg.constraint_string = "a+b+";
 
 auto response = conversation->SendMessage(
     user_message,
-    /*args=*/std::nullopt,
-    /*decoding_constraint=*/constraint_arg
+    {.decoding_constraint = constraint_arg}
 );
 ```
 
@@ -94,8 +93,7 @@ constraint_arg.constraint_string = R"({
 
 auto response = conversation->SendMessage(
     user_message,
-    /*args=*/std::nullopt,
-    /*decoding_constraint*/constraint_arg
+    {.decoding_constraint = constraint_arg}
 );
 ```
 
@@ -122,8 +120,7 @@ constraint_arg.constraint_string = R"(
 
 auto response = conversation->SendMessage(
     user_message,
-    /*args=*/std::nullopt,
-    /*decoding_constraint=*/constraint_arg
+    {.decoding_constraint = constraint_arg}
 );
 ```
 
@@ -150,13 +147,12 @@ class MyCustomConstraint : public Constraint {
 auto my_constraint = std::make_unique<MyCustomConstraint>();
 
 // 3. Pass it to SendMessage
-ExternalConstraintArg ext_arg;
-ext_arg.constraint = std::move(my_constraint);
+ExternalConstraintArg external_constraint;
+external_constraint.constraint = std::move(my_constraint);
 
 auto response = conversation->SendMessage(
     user_message,
-    std::nullopt,
-    ext_arg
+    {.decoding_constraint = std::move(external_constraint)}
 );
 ```
 
@@ -173,7 +169,7 @@ A variant configuration passed to `ConversationConfig`.
 
 ### `ConstraintArg`
 
-A variant argument passed to `SendMessage`.
+A variant argument passed via `OptionalArgs` to `SendMessage`.
 
 -   `LlGuidanceConstraintArg`:
     -   `constraint_type`: `kRegex`, `kJsonSchema`, or `kLark`.
