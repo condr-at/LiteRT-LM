@@ -1546,16 +1546,30 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
 #else   // !__APPLE__
       gpu_compilation_options.SetPreferTextureWeights(true);
 #endif  // !__APPLE__
-      // If the model path is available, use the model name as the cache key.
-      // Otherwise, if we are loading from an fd, there will be no
-      // model token and caching will be disabled.
-      //
-      // TODO: b/483472584 - Support caching when loading model from fd.
+
+      bool has_valid_model_fd =
+          executor_settings.GetModelAssets().GetScopedFile().ok() &&
+          executor_settings.GetModelAssets().GetScopedFile().value()->IsValid();
+
+      auto program_cache_file =
+          executor_settings.GetProgramCacheFile(".mldrift_program_cache.bin");
+      bool has_valid_program_cache_fd =
+          program_cache_file.ok() &&
+          !std::holds_alternative<std::string>(*program_cache_file);
+
       auto model_path_or_status = executor_settings.GetModelAssets().GetPath();
       if (model_path_or_status.ok()) {
+        // If the model path is available, use the model name as the cache key.
         absl::string_view model_path = *model_path_or_status;
         absl::string_view model_name = Basename(model_path);
         gpu_compilation_options.SetModelCacheKey(model_name.data());
+      } else if (has_valid_model_fd && has_valid_program_cache_fd) {
+        // If the model is loaded from an fd, there is no way to automatically
+        // generate a cache key. But if we are loading a model from an fd, it is
+        // likely that our program cache is also loaded from an fd which does
+        // not require a cache key to prevent collisions. The GPU delegate will
+        // still expect a cache key, so we set it to a constant value.
+        gpu_compilation_options.SetModelCacheKey("fd_token");
       }
 
       bool serialization_dir_set = false;
@@ -1578,8 +1592,6 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
         gpu_compilation_options.SetSerializeExternalTensors(false);
       }
 
-      auto program_cache_file =
-          executor_settings.GetProgramCacheFile(".mldrift_program_cache.bin");
       if (program_cache_file.ok()) {
         if (std::holds_alternative<std::string>(*program_cache_file)) {
           if (!serialization_dir_set) {
