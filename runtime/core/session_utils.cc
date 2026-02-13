@@ -22,6 +22,7 @@
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/match.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "litert/cc/internal/litert_detail.h"  // from @litert
@@ -51,7 +52,7 @@ absl::StatusOr<InputText> StringToProcessedInputText(
     ASSIGN_OR_RETURN(bos_string, tokenizer.TokenIdsToText({bos_token_id}));
   }
   bool bos_token_found = false;
-  if (!bos_string.empty() && StartsWith(text, bos_string)) {
+  if (!bos_string.empty() && absl::StartsWith(text, bos_string)) {
     text = text.substr(bos_string.size());
     bos_token_found = true;
   }
@@ -130,7 +131,7 @@ absl::StatusOr<std::vector<InputData>> ApplyPromptTemplates(
       // will treat the BOS string differently from other strings. If the BOS
       // string is empty, it means the BOS token id is not valid. In this case,
       // we will not check for the BOS string in the input.
-      if (!bos_string.empty() && StartsWith(raw_text, bos_string)) {
+      if (!bos_string.empty() && absl::StartsWith(raw_text, bos_string)) {
         return absl::InvalidArgumentError(
             "Input contains bos control token. Control token should not be "
             "included in the input.");

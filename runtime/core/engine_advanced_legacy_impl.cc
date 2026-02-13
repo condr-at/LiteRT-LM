@@ -31,10 +31,14 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "third_party/odml/infra/genai/inference/executor/litert_executor_utils.h"
+#include "third_party/odml/infra/genai/inference/executor/litert_vision_executor_settings.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_gpu_artisan_executor.h"
 #include "third_party/odml/infra/genai/inference/executor/llm_litert_xnnpack_executor.h"
+#include "third_party/odml/infra/genai/inference/proto/tflite_delegate_options.pb.h"
+#include "third_party/odml/infra/genai/inference/utils/llm_utils/model_data.h"
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "litert/cc/litert_macros.h"  // from @litert
+#include "runtime/components/model_data_provider.h"
 #include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/core/session_factory.h"
@@ -133,6 +137,79 @@ absl::StatusOr<std::unique_ptr<LlmExecutor>> BuildExecutor(
   return std::move(executor);
 }
 
+absl::Status MaybeSetLegacyVisionExecutorSettings(
+    EngineSettings& engine_settings,
+    oi::ExecutorModelResources& model_resources) {
+  if (!engine_settings.GetVisionExecutorSettings().has_value()) {
+    return absl::OkStatus();
+  }
+  auto& litert_lm_vision_settings =
+      engine_settings.GetMutableVisionExecutorSettings();
+  if (litert_lm_vision_settings->GetLegacyVisionExecutorSettings()
+          .has_value()) {
+    return absl::OkStatus();
+  }
+  odml::infra::proto::TfLiteDelegateOptions encoder_delegate_options;
+  encoder_delegate_options.set_use_gpu(
+      litert_lm_vision_settings->GetEncoderBackend() == Backend::GPU);
+  encoder_delegate_options.set_enable_constant_tensors_sharing(true);
+  encoder_delegate_options.set_enable_fast_tuning(true);
+  encoder_delegate_options.set_enable_infinite_float_capping(true);
+  encoder_delegate_options.set_use_buffer_storage_type(true);
+  encoder_delegate_options.set_prefer_texture_weights(false);
+  if (litert_lm_vision_settings->GetActivationDataType() ==
+      ActivationDataType::FLOAT32) {
+    encoder_delegate_options.set_activation_data_type(
+        odml::infra::proto::SessionConfig::ACTIVATION_DATA_TYPE_F32);
+  } else {
+    encoder_delegate_options.set_activation_data_type(
+        odml::infra::proto::SessionConfig::ACTIVATION_DATA_TYPE_F16);
+  }
+  encoder_delegate_options.set_num_threads(4);
+
+  odml::infra::proto::TfLiteDelegateOptions adapter_delegate_options;
+  adapter_delegate_options.set_use_gpu(false);
+  adapter_delegate_options.set_enable_constant_tensors_sharing(false);
+  adapter_delegate_options.set_enable_fast_tuning(true);
+  adapter_delegate_options.set_enable_infinite_float_capping(false);
+  adapter_delegate_options.set_use_buffer_storage_type(false);
+  adapter_delegate_options.set_prefer_texture_weights(false);
+  adapter_delegate_options.set_num_threads(4);
+  adapter_delegate_options.set_activation_data_type(
+      odml::infra::proto::SessionConfig::ACTIVATION_DATA_TYPE_F32);
+
+  odml::infra::VisionExecutorSettings legacy_vision_executor_settings(
+      /*encoder_path=*/"",
+      /*adapter_path=*/"",
+      /*shared_model_data=*/nullptr,
+      /*model_resources=*/&model_resources,
+      /*encoder_options=*/encoder_delegate_options,
+      /*adapter_options=*/adapter_delegate_options,
+      /*executor_factory=*/nullptr,
+      /*encoder_cache_file=*/
+      litert_lm_vision_settings->GetScopedEncoderCacheFile(),
+      /*adapter_cache_file=*/
+      litert_lm_vision_settings->GetScopedAdapterCacheFile());
+
+  // Create a separate model data for vision models so it does not get
+  // cleared by the main model runner.
+  std::shared_ptr<odml::infra::llm_utils::ModelData> vision_model_data;
+  if (engine_settings.GetMainExecutorSettings().GetBackend() ==
+      Backend::GPU_ARTISAN) {
+    // Obtain model_data from model_resources.
+    auto& model_data_provider = dynamic_cast<ModelDataProvider&>(
+        *model_resources.litert_lm_model_resources);
+    ASSIGN_OR_RETURN(
+        std::shared_ptr<odml::infra::llm_utils::ModelData> vision_model_data,
+        model_data_provider.GetSharedArtisanModeldata());
+    legacy_vision_executor_settings.set_model_data(
+        std::move(vision_model_data));
+  }
+  litert_lm_vision_settings->SetLegacyVisionExecutorSettings(
+      std::move(legacy_vision_executor_settings));
+  return absl::OkStatus();
+}
+
 absl::StatusOr<Environment&> GetEnvironment() {
   static absl::NoDestructor<absl::StatusOr<Environment>> kEnvironment(
       [&]() -> absl::StatusOr<Environment> {
@@ -171,9 +248,13 @@ EngineAdvancedLegacyImpl::CreateSession(const SessionConfig& session_config) {
   std::optional<AudioExecutorProperties> audio_executor_properties;
   if (config.AudioModalityEnabled() &&
       model_resources_->litert_lm_model_resources != nullptr) {
-    ASSIGN_OR_RETURN(audio_executor_properties,
-                     GetAudioExecutorPropertiesFromModelResources(
-                         *model_resources_->litert_lm_model_resources));
+    auto properties = GetAudioExecutorPropertiesFromModelResources(
+        *model_resources_->litert_lm_model_resources);
+    if (properties.ok()) {
+      audio_executor_properties = *properties;
+    } else if (!absl::IsUnimplemented(properties.status())) {
+      return properties.status();
+    }
   }
   return InitializeSessionAdvanced(execution_manager_, tokenizer_, config,
                                    benchmark_info_, audio_executor_properties);
@@ -242,6 +323,9 @@ absl::StatusOr<std::unique_ptr<Engine>> EngineAdvancedLegacyImpl::Create(
   RETURN_IF_ERROR(
       engine_settings.MaybeUpdateAndValidate(*tokenizer, &llm_metadata));
 
+  RETURN_IF_ERROR(
+      MaybeSetLegacyVisionExecutorSettings(engine_settings, *model_resources));
+
   ASSIGN_OR_RETURN(auto executor,
                    BuildExecutor(*model_resources, engine_settings));
 
@@ -256,6 +340,14 @@ absl::StatusOr<std::unique_ptr<Engine>> EngineAdvancedLegacyImpl::Create(
             /*encoder_backend=*/
             engine_settings.GetVisionExecutorSettings()->GetBackend(),
             /*adapter_backend=*/Backend::CPU));
+    if (engine_settings.GetVisionExecutorSettings()
+            ->GetLegacyVisionExecutorSettings()
+            .has_value()) {
+      vision_executor_settings.SetLegacyVisionExecutorSettings(
+          engine_settings.GetVisionExecutorSettings()
+              ->GetLegacyVisionExecutorSettings()
+              .value());
+    }
     vision_executor_settings_ptr = std::make_unique<VisionExecutorSettings>(
         std::move(vision_executor_settings));
   }

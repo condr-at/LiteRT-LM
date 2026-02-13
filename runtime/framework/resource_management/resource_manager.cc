@@ -553,10 +553,14 @@ ResourceManager::CreateContextHandler(const SessionConfig& session_config) {
   if (session_config.AudioModalityEnabled()) {
     RETURN_IF_ERROR(TryLoadingAudioExecutor());
     ASSIGN_OR_RETURN(auto audio_executor, AcquireAudioExecutor());
-    ASSIGN_OR_RETURN(auto audio_executor_properties,
-                     audio_executor->GetAudioExecutorProperties());
-    if (audio_executor_properties.is_streaming_model) {
-      ASSIGN_OR_RETURN(audio_context, audio_executor->CreateNewContext());
+    auto audio_executor_properties =
+        audio_executor->GetAudioExecutorProperties();
+    if (audio_executor_properties.ok()) {
+      if (audio_executor_properties->is_streaming_model) {
+        ASSIGN_OR_RETURN(audio_context, audio_executor->CreateNewContext());
+      }
+    } else if (!absl::IsUnimplemented(audio_executor_properties.status())) {
+      return audio_executor_properties.status();
     }
   }
   return ContextHandler::Create(std::move(llm_context),

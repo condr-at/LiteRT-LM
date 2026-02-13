@@ -230,10 +230,15 @@ TEST(EngineTest, CreateEngine_FailsNoVisionModel) {
   ASSERT_OK_AND_ASSIGN(auto llm, CreateEngine(*engine_settings));
   SessionConfig session_config = SessionConfig::CreateDefault();
   session_config.SetVisionModalityEnabled(true);
-  EXPECT_THAT(llm->CreateSession(session_config),
-              testing::status::StatusIs(
-                  absl::StatusCode::kNotFound,
-                  "TF_LITE_VISION_ENCODER not found in the model."));
+  EXPECT_THAT(
+      llm->CreateSession(session_config),
+      testing::AnyOf(testing::status::StatusIs(
+                         absl::StatusCode::kNotFound,
+                         "TF_LITE_VISION_ENCODER not found in the model."),
+                     testing::status::StatusIs(
+                         absl::StatusCode::kNotFound,
+                         testing::HasSubstr(
+                             "No file with name: TF_LITE_VISION_ENCODER."))));
 }
 
 TEST(EngineTest, CreateEngine_FailsNoAudioModel) {
