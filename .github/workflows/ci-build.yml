@@ -114,10 +114,9 @@ jobs:
           ! readelf -sW bazel-bin/runtime/engine/litert_lm_main \
             | grep " LiteRt" | grep -v " UND LiteRt" | grep -v " LiteRtTopK" \
             | grep -v -e LiteRtIsSameLayout -e LiteRtGetNumLayoutElements \
-                      -e "LiteRt.*MinLoggerSeverity" -e "LiteRt.*OpaqueOptions" \
+                      -e "LiteRt.*Logger" -e "LiteRt.*Metric" -e "LiteRt.*OpaqueOptions" \
                       -e "LiteRt.*EnvironmentOptions" -e LiteRtGetLogSeverityName \
-                      -e LiteRtGetDefaultLogger -e LiteRtCompareApiVersion \
-                      -e LiteRtGetStatusString -e "LiteRt.*Metric"
+                      -e LiteRtCompareApiVersion -e LiteRtGetStatusString
       - name: Setup Android NDK.
         uses: nttld/setup-ndk@v1
         id: setup-ndk
