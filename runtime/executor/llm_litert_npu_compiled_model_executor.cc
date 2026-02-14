@@ -399,9 +399,9 @@ LlmLiteRtNpuCompiledModelExecutor::CreateEmbedderContextWithBufferSharing(
         gemma_prefill_input_buffers,
     absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>&
         gemma_decode_input_buffers) {
-  LITERT_ASSIGN_OR_RETURN(
-      CompiledModel embedder_compiled_model,
-      CompiledModel::Create(env, embedder_model, litert::HwAccelerators::kCpu));
+  LITERT_ASSIGN_OR_RETURN(CompiledModel embedder_compiled_model,
+                          CompiledModel::Create(env, embedder_model.Get(),
+                                                litert::HwAccelerators::kCpu));
 
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       prefill_input_buffers;
@@ -445,9 +445,9 @@ LlmLiteRtNpuCompiledModelExecutor::
             gemma_prefill_input_buffers,
         absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>&
             gemma_decode_input_buffers) {
-  LITERT_ASSIGN_OR_RETURN(
-      CompiledModel embedder_compiled_model,
-      CompiledModel::Create(env, embedder_model, litert::HwAccelerators::kCpu));
+  LITERT_ASSIGN_OR_RETURN(CompiledModel embedder_compiled_model,
+                          CompiledModel::Create(env, embedder_model.Get(),
+                                                litert::HwAccelerators::kCpu));
 
   absl::flat_hash_map<absl::string_view, ::litert::TensorBuffer>
       prefill_input_buffers;
@@ -485,7 +485,7 @@ absl::StatusOr<LlmLiteRtNpuCompiledModelExecutor::NpuAuxiliaryContext>
 LlmLiteRtNpuCompiledModelExecutor::CreateNpuAuxiliaryContext(
     ::litert::Environment& env, const litert::Model& npu_auxiliary_model) {
   LITERT_ASSIGN_OR_RETURN(auto npu_auxiliary_compiled_model,
-                          CompiledModel::Create(env, npu_auxiliary_model,
+                          CompiledModel::Create(env, npu_auxiliary_model.Get(),
                                                 litert::HwAccelerators::kCpu));
   NpuAuxiliaryContext npu_auxiliary_context(
       std::move(npu_auxiliary_compiled_model));
@@ -1471,7 +1471,7 @@ LlmLiteRtNpuCompiledModelExecutor::CreateForGemma3n(
   LITERT_ASSIGN_OR_RETURN(auto options, CreateLiteRtOptions());
   LITERT_ASSIGN_OR_RETURN(
       CompiledModel llm_compiled_model,
-      CompiledModel::Create(env, *transformer_model, options));
+      CompiledModel::Create(env, transformer_model->Get(), options));
 
   // Allocate all input and output buffers of the LLM model that are meant to be
   // used by the NPU chip first, so that we can later duplicate the buffers into
@@ -1615,7 +1615,7 @@ LlmLiteRtNpuCompiledModelExecutor::CreateForGemma3(
   LITERT_ASSIGN_OR_RETURN(auto options, CreateLiteRtOptions());
   LITERT_ASSIGN_OR_RETURN(
       CompiledModel llm_compiled_model,
-      CompiledModel::Create(env, *transformer_model, options));
+      CompiledModel::Create(env, transformer_model->Get(), options));
 
   // Allocate all input and output buffers of the LLM model that are meant to be
   // used by the NPU chip first, so that we can later duplicate the buffers into

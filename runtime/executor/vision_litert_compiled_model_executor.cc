@@ -159,7 +159,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionEncoder::Initialize() {
   }
 
   LITERT_ASSIGN_OR_RETURN(compiled_model_,
-                          CompiledModel::Create(env_, model_, options));
+                          CompiledModel::Create(env_, model_.Get(), options));
   if (auto num_signatures = model_.GetNumSignatures(); num_signatures != 1) {
     return absl::InvalidArgumentError(absl::StrCat(
         "The Vision Encoder model must have exactly one signature but got ",
@@ -227,7 +227,7 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionAdapter::Initialize() {
   }
 
   LITERT_ASSIGN_OR_RETURN(compiled_model_,
-                          CompiledModel::Create(env_, model_, options));
+                          CompiledModel::Create(env_, model_.Get(), options));
   if (auto num_signatures = model_.GetNumSignatures(); num_signatures != 1) {
     return absl::InvalidArgumentError(absl::StrCat(
         "The Vision Adapter model must have exactly one signature but got ",

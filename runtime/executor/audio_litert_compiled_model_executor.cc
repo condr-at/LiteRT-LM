@@ -184,7 +184,7 @@ AudioLiteRtCompiledModelExecutor::AudioStaticEncoder::Initialize() {
   }
 
   LITERT_ASSIGN_OR_RETURN(compiled_model_,
-                          CompiledModel::Create(env_, model_, options));
+                          CompiledModel::Create(env_, model_.Get(), options));
   LITERT_ASSIGN_OR_RETURN(auto signatures, model_.GetSignatures());
   if (signatures.size() != 1) {
     return absl::InvalidArgumentError(
@@ -307,7 +307,7 @@ AudioLiteRtCompiledModelExecutor::AudioStreamingEncoder::Initialize() {
   }
 
   LITERT_ASSIGN_OR_RETURN(compiled_model_,
-                          CompiledModel::Create(env_, model_, options));
+                          CompiledModel::Create(env_, model_.Get(), options));
   LITERT_ASSIGN_OR_RETURN(auto signatures, model_.GetSignatures());
   if (signatures.size() != 1) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -486,7 +486,7 @@ absl::Status AudioLiteRtCompiledModelExecutor::AudioAdapter::Initialize() {
   }
 
   LITERT_ASSIGN_OR_RETURN(compiled_model_,
-                          CompiledModel::Create(env_, model_, options));
+                          CompiledModel::Create(env_, model_.Get(), options));
   LITERT_ASSIGN_OR_RETURN(auto signatures, model_.GetSignatures());
   if (signatures.size() != 1) {
     return absl::InvalidArgumentError(absl::StrCat(

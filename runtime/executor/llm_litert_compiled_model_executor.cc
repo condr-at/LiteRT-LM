@@ -1008,8 +1008,8 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
   }
   if (signatures_.input_int32_param.has_value()) {
     RETURN_IF_ERROR(FillSingleBufferCacheParamTensor(
-        decode_input_buffers_[signatures_.input_int32_param.value()],
-        step + 1, 1));
+        decode_input_buffers_[signatures_.input_int32_param.value()], step + 1,
+        1));
   }
 
   return BindTensorsAndRunDecode(&output_logits);
@@ -1741,7 +1741,7 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
 
   LITERT_ASSIGN_OR_RETURN(
       auto compiled_model,
-      CompiledModel::Create(lrt_env, *litert_model, compilation_options));
+      CompiledModel::Create(lrt_env, litert_model->Get(), compilation_options));
 
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_input_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_output_buffers;
@@ -2140,7 +2140,7 @@ LlmLiteRtCompiledModelExecutorDynamic::Create(
 
   LITERT_ASSIGN_OR_RETURN(
       auto compiled_model,
-      CompiledModel::Create(lrt_env, *litert_model, compilation_options));
+      CompiledModel::Create(lrt_env, litert_model->Get(), compilation_options));
 
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_input_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_output_buffers;

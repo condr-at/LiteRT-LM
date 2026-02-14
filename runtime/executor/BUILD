@@ -509,6 +509,7 @@ cc_library(
         ":litert_compiled_model_executor_utils",
         ":llm_executor",
         ":llm_executor_io_types",
+        ":llm_executor_processed_tokens",
         ":llm_executor_settings",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:absl_log",
@@ -523,7 +524,6 @@ cc_library(
         "//runtime/components:model_resources_litert_lm",
         "//runtime/components:model_resources_task",
         "//runtime/components/embedding_lookup:embedding_lookup_manager",
-        "//runtime/executor:llm_executor_processed_tokens",
         "//runtime/util:convert_tensor_buffer",
         "//runtime/util:litert_status_util",
     ] + select({

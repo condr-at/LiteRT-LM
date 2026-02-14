@@ -255,8 +255,8 @@ absl::Status EmbeddingLookupText::Initialize() {
   LITERT_ASSIGN_OR_RETURN(auto options, Options::Create());
   options.SetHardwareAccelerators(litert::HwAccelerators::kCpu);
 
-  LITERT_ASSIGN_OR_RETURN(compiled_model_,
-                          litert::CompiledModel::Create(env_, model_, options));
+  LITERT_ASSIGN_OR_RETURN(compiled_model_, litert::CompiledModel::Create(
+                                               env_, model_.Get(), options));
   LITERT_ASSIGN_OR_RETURN(auto signatures, model_.GetSignatures());
 
   if (signature_key_.has_value()) {
