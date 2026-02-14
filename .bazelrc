@@ -535,3 +535,20 @@ test:bulk_test_cpu --build_tests_only
 
 # TODO: b/397625618 Enable bzlmod
 common --noenable_bzlmod
+
+# --- Fix for Clang 19+ and Strict Layering Checks ---
+# Linux & macOS Configuration (Clang/GCC)
+# Only disable modules here, where we know the compiler understands "-fno-modules"
+build:linux --features=-layering_check
+build:linux --features=-header_modules
+build:linux --cxxopt="-fno-modules"
+build:linux --host_cxxopt="-fno-modules"
+
+build:macos --features=-layering_check
+build:macos --features=-header_modules
+build:macos --cxxopt="-fno-modules"
+build:macos --host_cxxopt="-fno-modules"
+
+# Windows Configuration (MSVC)
+# We leave this blank or add MSVC-specific flags if needed later.
+# MSVC doesn't typically enable strict layering checks by default anyway.
