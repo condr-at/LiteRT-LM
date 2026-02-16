@@ -4,10 +4,10 @@ Welcome to the documentation for LiteRT-LM. Here you will find detailed informat
 
 ## Getting Started
 
-If you are new to LiteRT-LM, this is the place to start. You will find information on how to build and run the library, as well as a quick start guide.
+If you are new to LiteRT-LM, this is the place to start. You will find information on how to build and run the library, as well as a quick start guide. Note that `bazel` is the recommended build system. The `CMake` build system is added recently and still under active development.
 
 *   [Build and Run](./getting-started/build-and-run.md)
-*   [(experimental) CMake](./getting-started/cmake.md)
+*   [(preliminary) CMake](./getting-started/cmake.md)
 
 ## API Reference
 
