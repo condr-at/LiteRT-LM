@@ -30,76 +30,6 @@ git lfs install
 git lfs pull
 ```
 
-## Quick Start <span id="quick_start"></span>
-
-**Want to try it out first?** Before proceeding with the full setup, you can use
-the pre-built binary below to run the LiteRT-LM immediately.
-### Desktop CLI (LIT)
-
--   [MacOS ARM64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.macos_arm64)
--   [Linux x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.linux_x86_64)
--   [Linux ARM64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.linux_arm64)
--   [Windows x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.windows_x86_64.exe)
-
-After the download the `lit` binary, just run `lit` to see the options.
-Simple use case is like:
-
-```shell
-# Set the HuggingFace token in the HUGGING_FACE_HUB_TOKEN environment variable
-# so that lit can pull the model from HuggingFace.
-
-# On Linux or MacOS
-export HUGging_FACE_HUB_TOKEN="**your huggingface token**"
-
-# On Windows Command Prompt
-set HUGGING_FACE_HUB_TOKEN=your_huggingface_token
-
-# On Windows Powershell
-$env:HUGGING_FACE_HUB_TOKEN = "your_huggingface_token"
-```
-
-```shell
-lit list --show_all
-lit pull gemma3-1b
-lit run gemma3-1b [--backend=<cpu|gpu>]
-```
-
-Note: **Running GPU on Windows needs DirectXShaderCompiler**
- <span id="windows_gpu"></span>
- Download the dxc_2025_07_14.zip or the latest zip file from
- https://github.com/microsoft/DirectXShaderCompiler/releases, unzip the file and
- locate the right architecture directory under `bin`, copy the `dxil.dll` and
- `dxcompiler.dll` into the same directory as the executable like `lit` or
- `litert_lm_main`.
-
-Tip: For more functionality, use `lit --help` or `lit <command> --help`
-
-Tip: Follow this [link](https://huggingface.co/docs/hub/en/security-tokens) to
-get your own hugging face token
-
-Tip: you may have to `chmod +x lit` and explicitly approve the usage of
-pre-built binaries. For example, in MacOS, you should go to **System Settings >
-Privacy & Security > Security** to approve the binary.
-
-### Mobile Apps
-
--   [Android AI Edge Gallery App](https://play.google.com/store/apps/details?id=com.google.ai.edge.gallery&hl=en_US&pli=1)
--   iOS (Coming soon)
-
-Note that the LiteRT-LM runtime is designed to work
-with models in the `.litertlm` format. You can find and download compatible
-models in the [Supported Models and
-Performance](#supported-models-and-performance) section.
-
-Note: that the first time a given model is loaded on a given device, it will
-take longer to load. This is because the model weights are being arranged to run
-optimally on your particular device. Subsequent loads will be faster
-because the optimized weights are cached on your device.
-
-## Documentation
-
-For detailed documentation, please visit the [docs](./docs/README.md) directory.
-
 ## Description
 
 Language models are no longer a single model but really a pipeline of models and
@@ -187,6 +117,77 @@ with performance lock on Android devices).
 | Gemma-3n-E4B | Samsung S24<br>(Ultra) | CPU | 73.5 | 9.2 | 4096 |
 | Gemma-3n-E4B | Samsung S24<br>(Ultra) | GPU | 548.0 | 9.4 | 4096 |
 | FunctionGemma | Samsung S25<br>(Ultra) | CPU | 1718.4 | 125.9 | 1024 |
+
+
+## Quick Start <span id="quick_start"></span>
+
+**Want to try it out first?** Before proceeding with the full setup, you can use
+the pre-built binary below to run the LiteRT-LM immediately.
+### Desktop CLI (LIT)
+
+-   [MacOS ARM64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.macos_arm64)
+-   [Linux x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.linux_x86_64)
+-   [Linux ARM64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.linux_arm64)
+-   [Windows x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.windows_x86_64.exe)
+
+After the download the `lit` binary, just run `lit` to see the options.
+Simple use case is like:
+
+```shell
+# Set the HuggingFace token in the HUGGING_FACE_HUB_TOKEN environment variable
+# so that lit can pull the model from HuggingFace.
+
+# On Linux or MacOS
+export HUGging_FACE_HUB_TOKEN="**your huggingface token**"
+
+# On Windows Command Prompt
+set HUGGING_FACE_HUB_TOKEN=your_huggingface_token
+
+# On Windows Powershell
+$env:HUGGING_FACE_HUB_TOKEN = "your_huggingface_token"
+```
+
+```shell
+lit list --show_all
+lit pull gemma3-1b
+lit run gemma3-1b [--backend=<cpu|gpu>]
+```
+
+Note: **Running GPU on Windows needs DirectXShaderCompiler**
+ <span id="windows_gpu"></span>
+ Download the dxc_2025_07_14.zip or the latest zip file from
+ https://github.com/microsoft/DirectXShaderCompiler/releases, unzip the file and
+ locate the right architecture directory under `bin`, copy the `dxil.dll` and
+ `dxcompiler.dll` into the same directory as the executable like `lit` or
+ `litert_lm_main`.
+
+Tip: For more functionality, use `lit --help` or `lit <command> --help`
+
+Tip: Follow this [link](https://huggingface.co/docs/hub/en/security-tokens) to
+get your own hugging face token
+
+Tip: you may have to `chmod +x lit` and explicitly approve the usage of
+pre-built binaries. For example, in MacOS, you should go to **System Settings >
+Privacy & Security > Security** to approve the binary.
+
+### Mobile Apps
+
+-   [Android AI Edge Gallery App](https://play.google.com/store/apps/details?id=com.google.ai.edge.gallery&hl=en_US&pli=1)
+-   iOS (Coming soon)
+
+Note that the LiteRT-LM runtime is designed to work
+with models in the `.litertlm` format. You can find and download compatible
+models in the [Supported Models and
+Performance](#supported-models-and-performance) section.
+
+Note: that the first time a given model is loaded on a given device, it will
+take longer to load. This is because the model weights are being arranged to run
+optimally on your particular device. Subsequent loads will be faster
+because the optimized weights are cached on your device.
+
+## Documentation
+
+For detailed documentation, please visit the [docs](./docs/README.md) directory.
 
 ## Model Hosting and Deployment
 
