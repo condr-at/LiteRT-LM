@@ -7,7 +7,7 @@ Welcome to the documentation for LiteRT-LM. Here you will find detailed informat
 If you are new to LiteRT-LM, this is the place to start. You will find information on how to build and run the library, as well as a quick start guide.
 
 *   [Build and Run](./getting-started/build-and-run.md)
-*   [CMake Details](./getting-started/cmake.md)
+*   [(experimental) CMake](./getting-started/cmake.md)
 
 ## API Reference
 
