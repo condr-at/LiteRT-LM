@@ -21,8 +21,8 @@ The typical lifecycle for using the Conversation API is:
     enabling a chat-like interaction.
 
 Below is the simplest way to send message and get model response. It is
-recommended for most use cases. It mirrors [Gemini Chat
-APIs](https://ai.google.dev/gemini-api/docs/text-generation#multi-turn-conversations).
+recommended for most use cases. It mirrors
+[Gemini Chat APIs](https://ai.google.dev/gemini-api/docs/text-generation#multi-turn-conversations).
 
 -   [`SendMessage`][SendMessage]: A blocking call that takes user input and
     returns the complete model response.
@@ -234,8 +234,8 @@ variety of models.
 
 While there isn't a single rigid standard, most prompt templates and models
 expect [`Message`][Message] to follow conventions similar to those used in the
-[Gemini API Content](https://ai.google.dev/api/caching#Content) or the [OpenAI
-Message structure](https://platform.openai.com/docs/api-reference/chat/create).
+[Gemini API Content](https://ai.google.dev/api/caching#Content) or the
+[OpenAI Message structure](https://platform.openai.com/docs/api-reference/chat/create).
 
 [`Message`][Message] must contain `role`, representing who the message is sent
 from. `content` can be as simple as a text string.
@@ -248,9 +248,9 @@ from. `content` can be as simple as a text string.
 ```
 
 For multimodal data input, `content` is a list of `part`. Again `part` is not a
-predefined data structure but a [ordered key-value pair data
-type][ordered_json]. The specific fields depend on what the prompt template and
-the model expect.
+predefined data structure but a
+[ordered key-value pair data type][ordered_json]. The specific fields depend on
+what the prompt template and the model expect.
 
 ```json
 {
@@ -305,15 +305,16 @@ The [`ModelDataProcessor`][ModelDataProcessor] is a crucial model-specific
 component responsible for converting the generic [`Message`][Message] format
 into the [`InputData`][InputData] type required by the [`Session`][Session], and
 convert from [`Session`][Session]'s [`Responses`][Responses] to
-[`Message`][Message]. It functions similarly to [`Hugging Face Multi-modal
-processors`](https://huggingface.co/docs/transformers/en/main_classes/processors#transformers.ProcessorMixin),
+[`Message`][Message]. It functions similarly to
+[`Hugging Face Multi-modal processors`](https://huggingface.co/docs/transformers/en/main_classes/processors#transformers.ProcessorMixin),
 handling all necessary data preprocessing before the main LLM model execution.
 
 The specific responsibilities of a [`ModelDataProcessor`][ModelDataProcessor]
 vary based on the model's capabilities and the expected prompt template format.
 For instance:
 
-*   **Multimodal Models (e.g., `Gemma3N`):** The [`Gemma3DataProcessor`](https://github.com/google-ai-edge/LiteRT-LM/blob/main/runtime/conversation/model_data_processor/gemma3_data_processor.h)
+*   **Multimodal Models (e.g., `Gemma3N`):** The
+    [`Gemma3DataProcessor`](https://github.com/google-ai-edge/LiteRT-LM/blob/main/runtime/conversation/model_data_processor/gemma3_data_processor.h)
     includes image and audio preprocessors.
 *   **Function Calling Models (e.g., `Qwen3`):** The
     [`Qwen3DataProcessor`](https://github.com/google-ai-edge/LiteRT-LM/blob/main/runtime/conversation/model_data_processor/qwen3_data_processor.h)
@@ -325,8 +326,8 @@ Each [`ModelDataProcessor`][ModelDataProcessor] is associated with a
 
 -   **[`DataProcessorConfig`][DataProcessorConfig]:** This configuration is used
     to initialize the [`ModelDataProcessor`][ModelDataProcessor]. It corresponds
-    to the [`LlmModelType`][LlmModelType] protobuf stored in the [model file
-    metadata](https://github.com/google-ai-edge/LiteRT-LM/blob/63f7dec93ac85560e64194a00b5d7c407de40846/runtime/proto/llm_metadata.proto#L91).
+    to the [`LlmModelType`][LlmModelType] protobuf stored in the
+    [model file metadata](https://github.com/google-ai-edge/LiteRT-LM/blob/63f7dec93ac85560e64194a00b5d7c407de40846/runtime/proto/llm_metadata.proto#L91).
     The [`DataProcessorConfig`][DataProcessorConfig] provides default values for
     any fields not specified in the metadata's [`LlmModelType`][LlmModelType].
 
@@ -339,8 +340,9 @@ Each [`ModelDataProcessor`][ModelDataProcessor] is associated with a
 
 To support a new LLM model type, you will typically need to implement a new
 [`ModelDataProcessor`][ModelDataProcessor] to encapsulate its unique data
-handling logic. See [Add ModelDataProcessor for a new LLM model
-type](#add-modeldataprocessor-for-new-llm-model-type) for detailed instructions.
+handling logic. See
+[Add ModelDataProcessor for a new LLM model type](#add-modeldataprocessor-for-new-llm-model-type)
+for detailed instructions.
 
 ### Prompt Template
 
@@ -363,8 +365,7 @@ standard Jinja template to ensure proper model usage.
 The Jinja template used by the model will be provided by the model file
 metadata.
 
-> [!NOTE]
-> A subtle change in prompt because of incorrect formatting can lead to
+> [!NOTE] A subtle change in prompt because of incorrect formatting can lead to
 > significant model degradation. As reported in [Quantifying Language Models'
 > Sensitivity to Spurious Features in Prompt Design or: How I learned to start
 > worrying about prompt formatting](https://arxiv.org/abs/2310.11324)
@@ -374,8 +375,8 @@ metadata.
 [`Preface`][Preface] sets the initial context for the conversation. It can
 include initial messages, tool definitions, and any other background information
 the LLM needs to start the interaction. This achieves functionality similar to
-the [`Gemini API system
-instruction`](https://ai.google.dev/gemini-api/docs/text-generation#system-instructions)
+the
+[`Gemini API system instruction`](https://ai.google.dev/gemini-api/docs/text-generation#system-instructions)
 and [`Gemini API Tools`](https://ai.google.dev/api/caching#Tool)
 
 [Preface][Preface] contains the following fields
@@ -386,12 +387,13 @@ and [`Gemini API Tools`](https://ai.google.dev/api/caching#Tool)
     examples, etc.
 
 -   `tools` The tools the model can use in the conversation. The format of tools
-    is again not fixed, but mostly follows [`Gemini API
-    FunctionDeclaration`](https://ai.google.dev/api/caching#FunctionDeclaration).
+    is again not fixed, but mostly follows
+    [`Gemini API FunctionDeclaration`](https://ai.google.dev/api/caching#FunctionDeclaration).
 
 -   `extra_context` The extra context that keeps the extensibility for models to
     customize its required context information to start a conversation. For
     examples,
+
     -   `enable_thinking` for models with thinking mode, e.g.
         [Qwen3](https://huggingface.co/Qwen/Qwen3-0.6B) or
         [SmolLM3-3B](https://huggingface.co/HuggingFaceTB/SmolLM3-3B).
@@ -496,9 +498,8 @@ This function is triggered under the following conditions:
 Refer to the [Step 6 asynchronous call](#text-only-content) for an example
 implementation.
 
-> [!IMPORTANT]
-> The [`Message`][Message] received by the callback contains only the
-> latest chunk of the model's output, not the entire message history.
+> [!IMPORTANT] The [`Message`][Message] received by the callback contains only
+> the latest chunk of the model's output, not the entire message history.
 
 For example, if the complete model response expected from a blocking
 [`SendMessage`][SendMessage] call would be:

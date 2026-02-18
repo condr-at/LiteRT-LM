@@ -37,12 +37,13 @@ To try out the above sample, clone the repo and run with
 bazel run -c opt //kotlin/java/com/google/ai/edge/litertlm/example:main -- <abs_model_path>
 ```
 
-Available `.litertlm` models are on the [HuggingFace LiteRT
-Community](https://huggingface.co/litert-community). The above animation was
-using the [Gemma3-1B-IT](https://huggingface.co/litert-community/Gemma3-1B-IT).
+Available `.litertlm` models are on the
+[HuggingFace LiteRT Community](https://huggingface.co/litert-community). The
+above animation was using the
+[Gemma3-1B-IT](https://huggingface.co/litert-community/Gemma3-1B-IT).
 
-For Android sample, check out the [Google AI Edge
-Gallery](https://github.com/google-ai-edge/gallery) app.
+For Android sample, check out the
+[Google AI Edge Gallery](https://github.com/google-ai-edge/gallery) app.
 
 ## Getting Started with Gradle
 
@@ -152,14 +153,14 @@ engine.createConversation(conversationConfig).use { conversation ->
 
 There are three ways to send messages:
 
--   **`sendMessage(contents): Message`**: Synchronous call that blocks
-    until the model returns a complete response. This is simpler for basic
+-   **`sendMessage(contents): Message`**: Synchronous call that blocks until the
+    model returns a complete response. This is simpler for basic
     request/response interactions.
--   **`sendMessageAsync(contents, callback)`**:
-    Asynchronous call for streaming responses. This is better for long-running
-    requests or when you want to display the response as it's being generated.
--   **`sendMessageAsync(contents): Flow<Message>`**: Asynchronous call
-    that returns a Kotlin Flow for streaming responses. This is the recommended
+-   **`sendMessageAsync(contents, callback)`**: Asynchronous call for streaming
+    responses. This is better for long-running requests or when you want to
+    display the response as it's being generated.
+-   **`sendMessageAsync(contents): Flow<Message>`**: Asynchronous call that
+    returns a Kotlin Flow for streaming responses. This is the recommended
     approach for Coroutine users.
 
 **Synchronous Example:**
@@ -357,7 +358,6 @@ class SampleOpenApiTool : OpenApiTool {
     }
 }
 ```
-
 
 #### Registering Tools
 
