@@ -118,11 +118,14 @@ absl::Status VisionLiteRtCompiledModelExecutor::VisionEncoder::Initialize() {
 
       LITERT_ASSIGN_OR_RETURN(auto& gpu_options, options.GetGpuOptions());
       gpu_options.EnableConstantTensorSharing(true);
-      if (activation_data_type == ActivationDataType::FLOAT32) {
-        gpu_options.SetPrecision(GpuOptions::Precision::kFp32);
-      } else {
-        gpu_options.SetPrecision(GpuOptions::Precision::kFp16);
-      }
+      // TODO(b/484646529): Re-enable precision setting once the GPU vision
+      // encoder precision is fixed.
+      // if (activation_data_type == ActivationDataType::FLOAT32) {
+      //   gpu_options.SetPrecision(GpuOptions::Precision::kFp32);
+      // } else {
+      //   gpu_options.SetPrecision(GpuOptions::Precision::kFp16);
+      // }
+      gpu_options.SetPrecision(GpuOptions::Precision::kFp32);
       gpu_options.SetPreferTextureWeights(true);
 
       if (weight_cache_path != ":nocache") {
