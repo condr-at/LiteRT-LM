@@ -64,9 +64,13 @@ import kotlinx.coroutines.flow.callbackFlow
  *
  * @property handle The native handle to the conversation object.
  * @property toolManager The ToolManager instance to use for this conversation.
+ * @property disableAutomaticToolCalling Whether to disable automatic tool calling.
  */
-class Conversation(private val handle: Long, val toolManager: ToolManager = ToolManager()) :
-  AutoCloseable {
+class Conversation(
+  private val handle: Long,
+  val toolManager: ToolManager = ToolManager(),
+  val disableAutomaticToolCalling: Boolean = false,
+) : AutoCloseable {
   private val _isAlive = AtomicBoolean(true)
 
   /** Whether the conversation is alive and ready to be used, */
@@ -97,6 +101,9 @@ class Conversation(private val handle: Long, val toolManager: ToolManager = Tool
       val responseJsonObject = JsonParser.parseString(responseJsonString).asJsonObject
 
       if (responseJsonObject.has("tool_calls")) {
+        if (disableAutomaticToolCalling) {
+          return jsonToMessage(responseJsonObject)
+        }
         currentMessageJson = handleToolCalls(responseJsonObject)
         // Loop back to send the tool response
       } else if (responseJsonObject.has("content")) {
@@ -303,6 +310,10 @@ class Conversation(private val handle: Long, val toolManager: ToolManager = Tool
       val messageJsonObject = JsonParser.parseString(messageJsonString).asJsonObject
 
       if (messageJsonObject.has("tool_calls")) {
+        if (disableAutomaticToolCalling) {
+          callback.onMessage(jsonToMessage(messageJsonObject))
+          return
+        }
         if (toolCallCount >= RECURRING_TOOL_CALL_LIMIT) {
           callback.onError(
             IllegalStateException(
@@ -395,21 +406,44 @@ class Conversation(private val handle: Long, val toolManager: ToolManager = Tool
     private const val RECURRING_TOOL_CALL_LIMIT = 25
 
     private fun jsonToMessage(messageJsonObject: JsonObject): Message {
-      val contentsJsonArray = messageJsonObject.getAsJsonArray("content")
       val contents = mutableListOf<Content>()
 
-      for (contentElement in contentsJsonArray) {
-        val contentJsonObject = contentElement.asJsonObject
-        val type = contentJsonObject.get("type").asString
+      if (messageJsonObject.has("content")) {
+        val contentsJsonArray = messageJsonObject.getAsJsonArray("content")
 
-        if (type == "text") {
-          contents.add(Content.Text(contentJsonObject.get("text").asString))
+        for (contentElement in contentsJsonArray) {
+          val contentJsonObject = contentElement.asJsonObject
+          val type = contentJsonObject.get("type").asString
+
+          if (type == "text") {
+            contents.add(Content.Text(contentJsonObject.get("text").asString))
+          }
+        }
+      }
+
+      val toolCalls = mutableListOf<ToolCall>()
+      if (messageJsonObject.has("tool_calls")) {
+        val toolCallsJsonArray = messageJsonObject.getAsJsonArray("tool_calls")
+        for (toolCallElement in toolCallsJsonArray) {
+          val toolCallJsonObject = toolCallElement.asJsonObject
+          if (toolCallJsonObject.has("function")) {
+            val functionJsonObject = toolCallJsonObject.getAsJsonObject("function")
+            val functionName = functionJsonObject.get("name").asString
+            val arguments = functionJsonObject.getAsJsonObject("arguments")
+            toolCalls.add(ToolCall(functionName, arguments))
+          }
         }
       }
 
       // Note: consider to parse the "role" from the messageJsonObject.
       // It seems that models can return "assistant" or "model".
-      return Message.model(Contents.of(contents))
+      return if (toolCalls.isNotEmpty()) {
+        val text = if (contents.isNotEmpty()) (contents.first() as? Content.Text)?.text else null
+        val contentsArg = if (text != null) Contents.of(text) else Contents.empty()
+        Message.model(contentsArg, toolCalls)
+      } else {
+        Message.model(Contents.of(contents))
+      }
     }
   }
 }
