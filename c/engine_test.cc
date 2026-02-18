@@ -15,6 +15,7 @@
 #include "runtime/conversation/io_types.h"
 #include "runtime/engine/engine_settings.h"
 #include "runtime/executor/executor_settings_base.h"
+#include "runtime/executor/llm_executor_settings.h"
 
 struct LiteRtLmEngineSettings {
   std::unique_ptr<litert::lm::EngineSettings> settings;
@@ -111,6 +112,23 @@ TEST(EngineCTest, SetCacheDir) {
   litert_lm_engine_settings_set_cache_dir(settings.get(), cache_dir.c_str());
   EXPECT_EQ(settings->settings->GetMainExecutorSettings().GetCacheDir(),
             cache_dir);
+}
+
+TEST(EngineCTest, SetPrefillChunkSize) {
+  const std::string task_path = "test_model_path_1";
+  EngineSettingsPtr settings(
+      litert_lm_engine_settings_create(task_path.c_str(), "cpu",
+                                       /* vision_backend_str */ nullptr,
+                                       /* audio_backend_str */ nullptr),
+      &litert_lm_engine_settings_delete);
+  ASSERT_NE(settings, nullptr);
+  int prefill_chunk_size = 128;
+  litert_lm_engine_settings_set_prefill_chunk_size(settings.get(),
+                                                   prefill_chunk_size);
+  auto config = settings->settings->GetMainExecutorSettings()
+                    .GetBackendConfig<litert::lm::CpuConfig>();
+  ASSERT_TRUE(config.ok());
+  EXPECT_EQ(config->prefill_chunk_size, prefill_chunk_size);
 }
 
 TEST(EngineCTest, CreateSessionConfigWithSamplerParams) {

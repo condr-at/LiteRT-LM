@@ -199,6 +199,15 @@ LITERT_LM_C_API_EXPORT
 void litert_lm_engine_settings_set_activation_data_type(
     LiteRtLmEngineSettings* settings, int activation_data_type_int);
 
+// Sets the prefill chunk size for the engine. Only applicable for CPU backend
+// with dynamic models.
+//
+// @param settings The engine settings.
+// @param prefill_chunk_size The prefill chunk size.
+LITERT_LM_C_API_EXPORT
+void litert_lm_engine_settings_set_prefill_chunk_size(
+    LiteRtLmEngineSettings* settings, int prefill_chunk_size);
+
 // Enables benchmarking for the engine.
 //
 // @param settings The engine settings.
@@ -326,7 +335,6 @@ LITERT_LM_C_API_EXPORT
 int litert_lm_benchmark_info_get_prefill_token_count_at(
     const LiteRtLmBenchmarkInfo* benchmark_info, int index);
 
-
 // Returns the decode token count at a given turn index.
 //
 // @param benchmark_info The benchmark info object.
@@ -335,7 +343,6 @@ int litert_lm_benchmark_info_get_prefill_token_count_at(
 LITERT_LM_C_API_EXPORT
 int litert_lm_benchmark_info_get_decode_token_count_at(
     const LiteRtLmBenchmarkInfo* benchmark_info, int index);
-
 
 // Returns the prefill tokens per second at a given turn index.
 //
