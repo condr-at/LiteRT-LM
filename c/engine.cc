@@ -36,6 +36,7 @@
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
+#include "runtime/executor/llm_executor_settings.h"
 #include "runtime/proto/sampler_params.pb.h"
 
 namespace {
@@ -250,12 +251,12 @@ LiteRtLmConversationConfig* litert_lm_conversation_config_create(
     }
   }
 
-  auto conversation_config = litert::lm::ConversationConfig::Builder()
-                                 .SetSessionConfig(*config_to_use)
-                                 .SetPreface(json_preface)
-                                 .SetEnableConstrainedDecoding(
-                                     enable_constrained_decoding)
-                                 .Build(*engine->engine);
+  auto conversation_config =
+      litert::lm::ConversationConfig::Builder()
+          .SetSessionConfig(*config_to_use)
+          .SetPreface(json_preface)
+          .SetEnableConstrainedDecoding(enable_constrained_decoding)
+          .Build(*engine->engine);
 
   if (!conversation_config.ok()) {
     ABSL_LOG(ERROR) << "Failed to create conversation config: "
@@ -321,8 +322,8 @@ LiteRtLmEngineSettings* litert_lm_engine_settings_create(
     auto& executor_settings = engine_settings->GetMutableMainExecutorSettings();
     executor_settings.SetActivationDataType(
         litert::lm::ActivationDataType::FLOAT32);
-    executor_settings.SetAdvancedSettings({
-        .allow_src_quantized_fc_conv_ops = false});
+    executor_settings.SetAdvancedSettings(
+        {.allow_src_quantized_fc_conv_ops = false});
   }
 
   auto* c_settings = new LiteRtLmEngineSettings;
@@ -362,6 +363,21 @@ void litert_lm_engine_settings_set_activation_data_type(
   if (settings && settings->settings) {
     settings->settings->GetMutableMainExecutorSettings().SetActivationDataType(
         static_cast<litert::lm::ActivationDataType>(activation_data_type_int));
+  }
+}
+
+void litert_lm_engine_settings_set_prefill_chunk_size(
+    LiteRtLmEngineSettings* settings, int prefill_chunk_size) {
+  if (settings && settings->settings) {
+    auto& main_settings = settings->settings->GetMutableMainExecutorSettings();
+    auto config = main_settings.MutableBackendConfig<litert::lm::CpuConfig>();
+    if (!config.ok()) {
+      ABSL_LOG(WARNING) << "Failed to get CpuConfig to set prefill chunk size: "
+                        << config.status();
+      return;
+    }
+    config->prefill_chunk_size = prefill_chunk_size;
+    main_settings.SetBackendConfig(*config);
   }
 }
 

@@ -57,6 +57,7 @@ cc_library(
         "//runtime/engine:engine_settings",
         "//runtime/engine:io_types",
         "//runtime/executor:executor_settings_base",
+        "//runtime/executor:llm_executor_settings",
         "//runtime/proto:engine_cc_proto",
         "//runtime/proto:sampler_params_cc_proto",
     ],
@@ -87,5 +88,6 @@ cc_test(
         "//runtime/conversation:io_types",
         "//runtime/engine:engine_settings",
         "//runtime/executor:executor_settings_base",
+        "//runtime/executor:llm_executor_settings",
     ],
 )
