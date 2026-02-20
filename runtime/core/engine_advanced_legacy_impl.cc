@@ -82,6 +82,16 @@ class EngineAdvancedLegacyImpl : public Engine {
 
   const Tokenizer& GetTokenizer() const override { return *tokenizer_; }
 
+  absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
+      const override {
+    if (model_resources_->litert_lm_model_resources == nullptr) {
+      return absl::FailedPreconditionError(
+          "AudioExecutorProperties is not available.");
+    }
+    return GetAudioExecutorPropertiesFromModelResources(
+        *model_resources_->litert_lm_model_resources);
+  }
+
  private:
   explicit EngineAdvancedLegacyImpl(
       EngineSettings engine_settings,
@@ -242,19 +252,8 @@ absl::StatusOr<std::unique_ptr<Engine::Session>>
 EngineAdvancedLegacyImpl::CreateSession(const SessionConfig& session_config) {
   auto config = session_config;
   RETURN_IF_ERROR(config.MaybeUpdateAndValidate(engine_settings_));
-  std::optional<AudioExecutorProperties> audio_executor_properties;
-  if (config.AudioModalityEnabled() &&
-      model_resources_->litert_lm_model_resources != nullptr) {
-    auto properties = GetAudioExecutorPropertiesFromModelResources(
-        *model_resources_->litert_lm_model_resources);
-    if (properties.ok()) {
-      audio_executor_properties = *properties;
-    } else if (!absl::IsUnimplemented(properties.status())) {
-      return properties.status();
-    }
-  }
   return InitializeSessionAdvanced(execution_manager_, tokenizer_.get(), config,
-                                   benchmark_info_, audio_executor_properties);
+                                   benchmark_info_);
 }
 
 absl::Status EngineAdvancedLegacyImpl::WaitUntilDone(absl::Duration timeout) {

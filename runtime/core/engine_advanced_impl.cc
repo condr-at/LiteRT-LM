@@ -163,18 +163,10 @@ class EngineAdvancedImpl : public Engine {
 
     ABSL_CHECK(litert_model_resources_ != nullptr);
 
-    std::optional<AudioExecutorProperties> audio_executor_properties;
-    if (config.AudioModalityEnabled()) {
-      ASSIGN_OR_RETURN(audio_executor_properties,
-                       GetAudioExecutorPropertiesFromModelResources(
-                           *litert_model_resources_));
-    }
-
     ASSIGN_OR_RETURN(
         auto session,
         InitializeSessionAdvanced(execution_manager_, tokenizer_.get(), config,
-                                  std::move(session_benchmark_info),
-                                  audio_executor_properties));
+                                  std::move(session_benchmark_info)));
 
     if (benchmark_info_.has_value()) {
       auto session_benchmark_info_or = session->GetMutableBenchmarkInfo();
@@ -194,6 +186,12 @@ class EngineAdvancedImpl : public Engine {
   }
 
   const Tokenizer& GetTokenizer() const override { return *tokenizer_; }
+
+  absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
+      const override {
+    return GetAudioExecutorPropertiesFromModelResources(
+        *litert_model_resources_);
+  }
 
  private:
   // Stored engine settings.

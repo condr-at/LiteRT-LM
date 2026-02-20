@@ -109,24 +109,10 @@ absl::StatusOr<std::unique_ptr<SessionBasic>> SessionBasic::Create(
         stop_token_detector.AddStopTokenSequence(stop_token_sequence));
   }
 
-  std::optional<AudioExecutorProperties> audio_executor_properties;
-  if (audio_executor != nullptr) {
-    auto properties = audio_executor->GetAudioExecutorProperties();
-    if (properties.ok()) {
-      audio_executor_properties = properties.value();
-    } else if (properties.status().code() == absl::StatusCode::kUnimplemented) {
-      ABSL_LOG(INFO) << "Audio executor properties is not implemented, "
-                        "proceeding without audio executor properties.";
-    } else {
-      return properties.status();
-    }
-  }
-
   occupied_executors_->insert(executor);
   return absl::WrapUnique(new SessionBasic(
       executor, tokenizer, vision_executor, audio_executor, std::move(sampler),
-      session_config, benchmark_info, worker_thread_pool, stop_token_detector,
-      audio_executor_properties));
+      session_config, benchmark_info, worker_thread_pool, stop_token_detector));
 }
 
 SessionBasic::~SessionBasic() {

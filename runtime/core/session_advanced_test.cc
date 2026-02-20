@@ -214,8 +214,7 @@ class SessionAdvancedTest : public testing::Test {
 
     return SessionAdvanced::Create(execution_manager_, tokenizer_.get(),
                                    session_config,
-                                   /*benchmark_info=*/std::nullopt,
-                                   /*audio_executor_properties=*/std::nullopt);
+                                   /*benchmark_info=*/std::nullopt);
   }
 
   std::unique_ptr<Tokenizer> tokenizer_;
@@ -292,8 +291,7 @@ TEST_F(SessionAdvancedTest, RunPrefill) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   EXPECT_OK(session->RunPrefill(inputs));
@@ -315,8 +313,7 @@ TEST_F(SessionAdvancedTest, EmptyInputTextReturnsError) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText(""));
   EXPECT_THAT(session->RunPrefill(inputs),
@@ -349,8 +346,7 @@ TEST_F(SessionAdvancedTest, RunDecodeWithInternalSampler) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   EXPECT_OK(session->RunPrefill(inputs));
@@ -388,8 +384,7 @@ TEST_F(SessionAdvancedTest, RunDecodeWithMaxOutputTokens) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   EXPECT_OK(session->RunPrefill(inputs));
@@ -430,8 +425,7 @@ TEST_F(SessionAdvancedTest, RunDecodeWithExternalSampler) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   EXPECT_OK(session->RunPrefill(inputs));
@@ -477,8 +471,7 @@ TEST_F(SessionAdvancedTest,
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   EXPECT_OK(session->RunPrefill(inputs));
@@ -527,8 +520,7 @@ TEST_F(SessionAdvancedTest,
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
   EXPECT_OK(session->RunPrefill(inputs));
@@ -582,8 +574,7 @@ TEST_F(SessionAdvancedTest,
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("How"));
@@ -638,8 +629,7 @@ TEST_F(SessionAdvancedTest,
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("How"));
@@ -687,8 +677,7 @@ TEST_F(SessionAdvancedTest, RunPrefillAsync) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -725,8 +714,7 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncWithInternalSampler) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -764,10 +752,9 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncWithExternalSampler) {
                                /*litert_env=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
-      auto session,
-      SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+      auto session, SessionAdvanced::Create(execution_manager, tokenizer_.get(),
+                                            session_config,
+                                            /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -820,8 +807,7 @@ TEST_F(SessionAdvancedTest,
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("How"));
@@ -887,8 +873,7 @@ TEST_F(SessionAdvancedTest,
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("How"));
@@ -937,8 +922,7 @@ TEST_F(SessionAdvancedTest, RunPrefillAndDecodeAsyncWithInternalSampler) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -985,8 +969,7 @@ TEST_F(SessionAdvancedTest, RunPrefillAndDecodeAsyncWithExternalSampler) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1031,8 +1014,7 @@ TEST_F(SessionAdvancedTest, GenerateContentStream) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1075,8 +1057,7 @@ TEST_F(SessionAdvancedTest, RunPrefillEmptyInput) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   EXPECT_THAT(session->RunPrefill(inputs),
@@ -1115,8 +1096,7 @@ TEST_F(SessionAdvancedTest, RunPrefillAsyncFailed) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1162,8 +1142,7 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncFailed) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1209,8 +1188,7 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncWithCancellationWithInternalSampler) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1267,8 +1245,7 @@ TEST_F(SessionAdvancedTest, RunDecodeAsyncWithCancellationWithExternalSampler) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1324,8 +1301,7 @@ TEST_F(SessionAdvancedTest,
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1383,8 +1359,7 @@ TEST_F(SessionAdvancedTest,
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1466,10 +1441,8 @@ TEST_P(SessionAdvancedCancellationTest,
                                /*litert_env=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
-      auto session,
-      SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, benchmark_info,
-                              /*audio_executor_properties=*/std::nullopt));
+      auto session, SessionAdvanced::Create(execution_manager, tokenizer_.get(),
+                                            session_config, benchmark_info));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1544,10 +1517,8 @@ TEST_P(SessionAdvancedCancellationTest,
                                /*litert_env=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
-      auto session,
-      SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, benchmark_info,
-                              /*audio_executor_properties=*/std::nullopt));
+      auto session, SessionAdvanced::Create(execution_manager, tokenizer_.get(),
+                                            session_config, benchmark_info));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1614,8 +1585,7 @@ TEST_F(SessionAdvancedTest, RunPrefillAsyncOnCancelledSession) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   session->CancelProcess();
 
@@ -1671,10 +1641,8 @@ TEST_F(SessionAdvancedTest,
                                /*litert_env=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
-      auto session,
-      SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, benchmark_info,
-                              /*audio_executor_properties=*/std::nullopt));
+      auto session, SessionAdvanced::Create(execution_manager, tokenizer_.get(),
+                                            session_config, benchmark_info));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1717,10 +1685,8 @@ TEST_F(SessionAdvancedTest,
                                /*litert_env=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
-      auto session,
-      SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, benchmark_info,
-                              /*audio_executor_properties=*/std::nullopt));
+      auto session, SessionAdvanced::Create(execution_manager, tokenizer_.get(),
+                                            session_config, benchmark_info));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!"));
@@ -1768,8 +1734,7 @@ TEST_F(SessionAdvancedTest,
 
   auto session =
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt);
+                              session_config, /*benchmark_info=*/std::nullopt);
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("How"));
@@ -1836,8 +1801,7 @@ TEST_F(SessionAdvancedTest,
 
   auto session =
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt);
+                              session_config, /*benchmark_info=*/std::nullopt);
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("How"));
@@ -1903,8 +1867,7 @@ TEST_F(SessionAdvancedTest, RunIncrementalPrefillWithDecode) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   {
     std::vector<InputData> inputs;
@@ -1981,8 +1944,7 @@ TEST_F(SessionAdvancedTest, ProcessAndCombineContentsTextAndAudioSuccess) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!<start_of_audio>"));
@@ -2051,8 +2013,7 @@ TEST_F(SessionAdvancedTest, ProcessAndCombineContentsTextAudioTextSuccess) {
   ASSERT_OK_AND_ASSIGN(
       auto session,
       SessionAdvanced::Create(execution_manager, tokenizer_.get(),
-                              session_config, /*benchmark_info=*/std::nullopt,
-                              /*audio_executor_properties=*/std::nullopt));
+                              session_config, /*benchmark_info=*/std::nullopt));
 
   std::vector<InputData> inputs;
   inputs.emplace_back(InputText("Hello World!<start_of_audio>"));

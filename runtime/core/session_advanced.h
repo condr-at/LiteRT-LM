@@ -77,19 +77,10 @@ class SessionAdvanced : public Engine::Session {
   };
 
   // Creates a SessionAdvanced object.
-  // - executor: The initialized LLM Executor to call.
-  // - tokenizer: The tokenizer to encode/decode the text into token ids.
-  // - vision_executor: The vision executor to encode the image input.
-  // - audio_executor: The audio executor to encode the audio input.
-  // - stop_token_ids: The token ids to stop the decoding process.
-  // - sampler_params: The sampler parameters used for decoding. Note that if
-  //   the sampler_params.type is TYPE_UNSPECIFIED, the sampling logic will be
-  //   handled by the LLM Executor.
   static absl::StatusOr<std::unique_ptr<SessionAdvanced>> Create(
       std::weak_ptr<ExecutionManager> execution_manager,
       Tokenizer* absl_nonnull tokenizer, const SessionConfig& session_config,
-      std::optional<BenchmarkInfo> benchmark_info,
-      std::optional<AudioExecutorProperties> audio_executor_properties);
+      std::optional<BenchmarkInfo> benchmark_info);
 
   // TODO b/409401231 - Call execution manager's release session instead.
   // Wait until all tasks are done before destroying the session.
@@ -148,14 +139,6 @@ class SessionAdvanced : public Engine::Session {
 
   absl::StatusOr<BenchmarkInfo*> GetMutableBenchmarkInfo() override;
 
-  absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
-      const override {
-    if (audio_executor_properties_.has_value()) {
-      return audio_executor_properties_.value();
-    }
-    return absl::FailedPreconditionError("Audio modality is not enabled.");
-  }
-
   // TODO(b/450903294): Add rollback history support for Session and
   // Conversation.
   void CancelProcess() override {
@@ -211,16 +194,13 @@ class SessionAdvanced : public Engine::Session {
                            Tokenizer* absl_nonnull tokenizer,
                            std::shared_ptr<const SessionInfo> session_info,
                            SessionState session_state = SessionState::kFresh,
-                           absl::flat_hash_set<TaskId> last_task_ids = {},
-                           std::optional<AudioExecutorProperties>
-                               audio_executor_properties = std::nullopt)
+                           absl::flat_hash_set<TaskId> last_task_ids = {})
       : session_id_(session_id),
         execution_manager_(execution_manager),
         tokenizer_(tokenizer),
         session_info_(session_info),
         session_state_(session_state),
-        last_task_ids_(last_task_ids),
-        audio_executor_properties_(audio_executor_properties) {}
+        last_task_ids_(last_task_ids) {}
 
   // The session ID used for the session.
   SessionId session_id_;
@@ -239,10 +219,6 @@ class SessionAdvanced : public Engine::Session {
 
   // The last task IDs that might be executing in the session.
   absl::flat_hash_set<TaskId> last_task_ids_ = {};
-
-  // The audio executor properties for the session. This is only available if
-  // the session is created with audio modality enabled.
-  std::optional<AudioExecutorProperties> audio_executor_properties_;
 };
 
 }  // namespace litert::lm

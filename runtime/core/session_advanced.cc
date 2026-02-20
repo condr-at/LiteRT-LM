@@ -52,8 +52,7 @@ using TaskController = Engine::Session::TaskController;
 absl::StatusOr<std::unique_ptr<SessionAdvanced>> SessionAdvanced::Create(
     std::weak_ptr<ExecutionManager> execution_manager,
     Tokenizer* absl_nonnull tokenizer, const SessionConfig& session_config,
-    std::optional<BenchmarkInfo> benchmark_info,
-    std::optional<AudioExecutorProperties> audio_executor_properties) {
+    std::optional<BenchmarkInfo> benchmark_info) {
   auto execution_manager_lock = execution_manager.lock();
   if (execution_manager_lock == nullptr) {
     return absl::FailedPreconditionError("Execution manager is not available.");
@@ -65,8 +64,7 @@ absl::StatusOr<std::unique_ptr<SessionAdvanced>> SessionAdvanced::Create(
   return absl::WrapUnique(new SessionAdvanced(
       session_id, execution_manager, tokenizer, session_info_,
       /*session_state=*/SessionState::kFresh,
-      /*last_task_ids=*/{},
-      /*audio_executor_properties=*/audio_executor_properties));
+      /*last_task_ids=*/{}));
 }
 
 absl::Status SessionAdvanced::RunPrefill(

@@ -198,6 +198,14 @@ class EngineImpl : public Engine {
 
   const Tokenizer& GetTokenizer() const override { return *tokenizer_; }
 
+  absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
+      const override {
+    if (audio_executor_ == nullptr) {
+      return absl::FailedPreconditionError("Audio modality is not enabled.");
+    }
+    return audio_executor_->GetAudioExecutorProperties();
+  }
+
  private:
   // Stored engine settings.
   EngineSettings engine_settings_;
