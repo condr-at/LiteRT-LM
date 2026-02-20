@@ -58,6 +58,7 @@ ExternalProject_Add(
     git checkout -- . && git clean -df
 
     COMMAND ${CMAKE_COMMAND}
+    -DCMAKE_INSTALL_LIBDIR=lib
     -DFLATC_EXECUTABLE=${FLATC_EXECUTABLE}
     -DFLATBUFFERS_LIB_DIR=${FLATBUFFERS_LIB_DIR}
     -DTFLITE_SRC_DIR=${TFLITE_SRC_DIR}
