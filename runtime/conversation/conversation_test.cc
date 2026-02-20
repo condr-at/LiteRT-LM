@@ -49,7 +49,7 @@
 #include "runtime/engine/engine_settings.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
-#include "runtime/util/test_utils.h"  // NOLINT
+#include "runtime/util/test_utils.h"  // IWYU pragma: keep
 
 namespace litert::lm {
 namespace {
@@ -108,13 +108,12 @@ class MockSession : public Engine::Session {
               (const std::vector<absl::string_view>& target_text,
                bool store_token_lengths),
               (override));
-  MOCK_METHOD(
-      absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>,
-      RunTextScoringAsync,
-      (const std::vector<absl::string_view>& target_text,
-       absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
-       bool store_token_lengths),
-      (override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Engine::Session::TaskController>>,
+              RunTextScoringAsync,
+              (const std::vector<absl::string_view>& target_text,
+               absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+               bool store_token_lengths),
+              (override));
 
   MOCK_METHOD(absl::Status, RunPrefill,
               (const std::vector<InputData>& contents), (override));
@@ -148,12 +147,12 @@ class MockSession : public Engine::Session {
   MOCK_METHOD(void, CancelProcess, (), (override));
   MOCK_METHOD(absl::Status, WaitUntilDone, (), (override));
   MOCK_METHOD(const SessionConfig&, GetSessionConfig, (), (const, override));
-  MOCK_METHOD(const Tokenizer&, GetTokenizer, (), (const, override));
 };
 
 class MockEngine : public Engine {
  public:
   MOCK_METHOD(const EngineSettings&, GetEngineSettings, (), (const, override));
+  MOCK_METHOD(const Tokenizer&, GetTokenizer, (), (const, override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Session>>, CreateSession,
               (const SessionConfig& session_config), (override));
   MOCK_METHOD(absl::Status, WaitUntilDone, (absl::Duration timeout),
@@ -326,8 +325,6 @@ class ConversationTest : public testing::TestWithParam<ConversationTestParams> {
     auto mock_session = std::make_unique<MockSession>();
     EXPECT_CALL(*mock_session, GetSessionConfig())
         .WillRepeatedly(testing::ReturnRef(session_config_));
-    EXPECT_CALL(*mock_session, GetTokenizer())
-        .WillRepeatedly(testing::ReturnRef(*tokenizer_));
     return mock_session;
   }
 
@@ -338,6 +335,8 @@ class ConversationTest : public testing::TestWithParam<ConversationTestParams> {
         .WillRepeatedly(testing::ReturnRef(*engine_settings_));
     EXPECT_CALL(*mock_engine, CreateSession(testing::_))
         .WillOnce(testing::Return(std::move(mock_session)));
+    EXPECT_CALL(*mock_engine, GetTokenizer())
+        .WillRepeatedly(testing::ReturnRef(*tokenizer_));
     return mock_engine;
   }
 
@@ -644,16 +643,15 @@ TEST_P(ConversationTest, RunTextScoring) {
 
   // Test async scoring.
   auto cloned_session_async = std::make_unique<MockSession>();
-  EXPECT_CALL(*cloned_session_async,
-              RunTextScoringAsync(testing::ElementsAre("I am good."),
-                                  testing::_, true))
-      .WillOnce(
-          [](const std::vector<absl::string_view>& target_text,
-             absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
-             bool store_token_lengths) {
-            callback(Responses(TaskState::kProcessing, {"I am good."}));
-            return nullptr;
-          });
+  EXPECT_CALL(
+      *cloned_session_async,
+      RunTextScoringAsync(testing::ElementsAre("I am good."), testing::_, true))
+      .WillOnce([](const std::vector<absl::string_view>& target_text,
+                   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+                   bool store_token_lengths) {
+        callback(Responses(TaskState::kProcessing, {"I am good."}));
+        return nullptr;
+      });
   EXPECT_CALL(*mock_session_ptr, CloneAsync(testing::_))
       .WillOnce(testing::Return(std::move(cloned_session_async)));
 
@@ -1060,26 +1058,6 @@ TEST_P(ConversationTest, GetBenchmarkInfo) {
             prefill_preface_on_init_ ? 3 : 2);
 }
 
-TEST_P(ConversationTest, GetTokenizer) {
-  ASSERT_OK_AND_ASSIGN(auto model_assets,
-                       ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
-  ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
-                                                 model_assets, Backend::CPU));
-  engine_settings.GetMutableMainExecutorSettings().SetCacheDir(":nocache");
-  engine_settings.GetMutableMainExecutorSettings().SetMaxNumTokens(10);
-  ASSERT_OK_AND_ASSIGN(auto engine, EngineFactory::CreateAny(engine_settings));
-  ASSERT_OK_AND_ASSIGN(
-      auto config,
-      ConversationConfig::Builder()
-          .SetEnableConstrainedDecoding(enable_constrained_decoding_)
-          .SetPrefillPrefaceOnInit(prefill_preface_on_init_)
-          .Build(*engine));
-  ASSERT_OK_AND_ASSIGN(auto conversation,
-                       Conversation::Create(*engine, config));
-  const Tokenizer& tokenizer = conversation->GetTokenizer();
-  EXPECT_EQ(tokenizer.GetTokens().size(), tokenizer_->GetTokens().size());
-}
-
 TEST_P(ConversationTest, CancelGroupWithSendMessageAsync) {
   // Set up mock Session.
   auto mock_session = CreateMockSession();
@@ -1113,8 +1091,8 @@ TEST_P(ConversationTest, CancelGroupWithSendMessageAsync) {
   // Expect RunPrefillAsync to be called and return the first task controller.
   EXPECT_CALL(*mock_session_ptr, RunPrefillAsync(testing::_, testing::_))
       .WillOnce([&](const std::vector<InputData>& contents,
-                   absl::AnyInvocable<void(absl::StatusOr<Responses>)>
-                       user_callback) {
+                    absl::AnyInvocable<void(absl::StatusOr<Responses>)>
+                        user_callback) {
         user_callback(Responses(TaskState::kDone));
         return std::move(mock_task_controller1);
       });
@@ -1128,13 +1106,13 @@ TEST_P(ConversationTest, CancelGroupWithSendMessageAsync) {
 
   absl::Notification done;
   absl::Status status;
-  EXPECT_OK(conversation->SendMessageAsync(
-      user_message,
-      [&](absl::StatusOr<Message> message) {
-        status = message.status();
-        done.Notify();
-      },
-      {.task_group_id = "group1"}));
+  EXPECT_OK(
+      conversation->SendMessageAsync(user_message,
+                                     [&](absl::StatusOr<Message> message) {
+                                       status = message.status();
+                                       done.Notify();
+                                     },
+                                     {.task_group_id = "group1"}));
 
   conversation->CancelGroup("group1");
 }
@@ -1149,14 +1127,13 @@ TEST_P(ConversationTest, CancelGroupWithRunTextScoringAsync) {
   MockSession* cloned_session_ptr = cloned_session.get();
   EXPECT_CALL(*cloned_session_ptr, GetSessionConfig())
       .WillRepeatedly(testing::ReturnRef(session_config_));
-  // Expect GetTokenizer to be called on the cloned session.
-  EXPECT_CALL(*cloned_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
 
   // Expect CloneAsync to be called and return the cloned session.
   EXPECT_CALL(*mock_session_ptr, CloneAsync(testing::_))
       .WillOnce(testing::Return(std::move(cloned_session)));
   auto mock_engine = CreateMockEngine(std::move(mock_session));
+  EXPECT_CALL(*mock_engine, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
@@ -1176,9 +1153,9 @@ TEST_P(ConversationTest, CancelGroupWithRunTextScoringAsync) {
 
   // Expect RunTextScoringAsync to be called on the cloned session and return
   // the task controller.
-  EXPECT_CALL(*cloned_session_ptr,
-              RunTextScoringAsync(testing::ElementsAre("I am good."),
-                                  testing::_, true))
+  EXPECT_CALL(
+      *cloned_session_ptr,
+      RunTextScoringAsync(testing::ElementsAre("I am good."), testing::_, true))
       .WillOnce(
           [&](const std::vector<absl::string_view>& target_text,
               absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
@@ -1416,6 +1393,8 @@ TEST_P(ConversationTest, Clone) {
   auto mock_session = CreateMockSession();
   MockSession* mock_session_ptr = mock_session.get();
   auto mock_engine = CreateMockEngine(std::move(mock_session));
+  EXPECT_CALL(*mock_engine, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
 
   // Create Conversation.
   ASSERT_OK_AND_ASSIGN(
@@ -1442,8 +1421,6 @@ TEST_P(ConversationTest, Clone) {
   MockSession* cloned_mock_session_ptr = cloned_mock_session.get();
   EXPECT_CALL(*cloned_mock_session_ptr, GetSessionConfig())
       .WillRepeatedly(testing::ReturnRef(session_config_));
-  EXPECT_CALL(*cloned_mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
   EXPECT_CALL(*mock_session_ptr, Clone())
       .WillOnce(testing::Return(std::move(cloned_mock_session)));
 
@@ -1482,13 +1459,13 @@ TEST_P(ConversationTest, SendMessageWithMaxOutputTokens) {
   *session_config.GetMutableLlmModelType().mutable_gemma3() = {};
   EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
       .WillRepeatedly(testing::ReturnRef(session_config));
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
 
   // Set up mock Engine.
   auto mock_engine = std::make_unique<MockEngine>();
   EXPECT_CALL(*mock_engine, CreateSession(testing::_))
       .WillOnce(testing::Return(std::move(mock_session)));
+  EXPECT_CALL(*mock_engine, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer_));
   ASSERT_OK_AND_ASSIGN(auto model_assets,
                        ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
   ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
@@ -1534,17 +1511,18 @@ TEST(AppendMessageTest, Gemma3Sync) {
   session_config.SetApplyPromptTemplateInSession(false);
   EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
       .WillRepeatedly(testing::ReturnRef(session_config));
-  auto tokenizer = SentencePieceTokenizer::CreateFromFile(
-      (std::filesystem::path(::testing::SrcDir()) / kTestTokenizerPath)
-          .string());
-  ASSERT_OK(tokenizer);
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(**tokenizer));
+  ASSERT_OK_AND_ASSIGN(
+      auto tokenizer,
+      SentencePieceTokenizer::CreateFromFile(
+          (std::filesystem::path(::testing::SrcDir()) / kTestTokenizerPath)
+              .string()));
 
   // Set up mock Engine.
   auto mock_engine = std::make_unique<MockEngine>();
   EXPECT_CALL(*mock_engine, CreateSession(testing::_))
       .WillOnce(testing::Return(std::move(mock_session)));
+  EXPECT_CALL(*mock_engine, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer));
   ASSERT_OK_AND_ASSIGN(auto model_assets,
                        ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
   ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
@@ -1635,17 +1613,18 @@ TEST(AppendMessageTest, Gemma3Async) {
   session_config.SetApplyPromptTemplateInSession(false);
   EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
       .WillRepeatedly(testing::ReturnRef(session_config));
-  auto tokenizer = SentencePieceTokenizer::CreateFromFile(
-      (std::filesystem::path(::testing::SrcDir()) / kTestTokenizerPath)
-          .string());
-  ASSERT_OK(tokenizer);
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(**tokenizer));
+  ASSERT_OK_AND_ASSIGN(
+      auto tokenizer,
+      SentencePieceTokenizer::CreateFromFile(
+          (std::filesystem::path(::testing::SrcDir()) / kTestTokenizerPath)
+              .string()));
 
   // Set up mock Engine.
   auto mock_engine = std::make_unique<MockEngine>();
   EXPECT_CALL(*mock_engine, CreateSession(testing::_))
       .WillOnce(testing::Return(std::move(mock_session)));
+  EXPECT_CALL(*mock_engine, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer));
   ASSERT_OK_AND_ASSIGN(auto model_assets,
                        ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
   ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(
@@ -1783,17 +1762,18 @@ TEST(AppendMessageTest, Gemma3SyncPrefillPrefaceOnInitAndAlternateRoles) {
   session_config.SetApplyPromptTemplateInSession(false);
   EXPECT_CALL(*mock_session_ptr, GetSessionConfig())
       .WillRepeatedly(testing::ReturnRef(session_config));
-  auto tokenizer = SentencePieceTokenizer::CreateFromFile(
-      (std::filesystem::path(::testing::SrcDir()) / kTestTokenizerPath)
-          .string());
-  ASSERT_OK(tokenizer);
-  EXPECT_CALL(*mock_session_ptr, GetTokenizer())
-      .WillRepeatedly(testing::ReturnRef(**tokenizer));
+  ASSERT_OK_AND_ASSIGN(
+      auto tokenizer,
+      SentencePieceTokenizer::CreateFromFile(
+          (std::filesystem::path(::testing::SrcDir()) / kTestTokenizerPath)
+              .string()));
 
   // Set up mock Engine.
   auto mock_engine = std::make_unique<MockEngine>();
   EXPECT_CALL(*mock_engine, CreateSession(testing::_))
       .WillOnce(testing::Return(std::move(mock_session)));
+  EXPECT_CALL(*mock_engine, GetTokenizer())
+      .WillRepeatedly(testing::ReturnRef(*tokenizer));
   ASSERT_OK_AND_ASSIGN(auto model_assets,
                        ModelAssets::Create(GetTestdataPath(kTestLlmPath)));
   ASSERT_OK_AND_ASSIGN(auto engine_settings, EngineSettings::CreateDefault(

@@ -138,8 +138,6 @@ class SessionBasic : public Engine::Session {
     return session_config_;
   }
 
-  const Tokenizer& GetTokenizer() const override { return tokenizer_; }
-
   absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
       const override {
     if (audio_executor_properties_.has_value()) {

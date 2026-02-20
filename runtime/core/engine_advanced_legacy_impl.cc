@@ -80,6 +80,8 @@ class EngineAdvancedLegacyImpl : public Engine {
 
   const EngineSettings& GetEngineSettings() const override;
 
+  const Tokenizer& GetTokenizer() const override { return *tokenizer_; }
+
  private:
   explicit EngineAdvancedLegacyImpl(
       EngineSettings engine_settings,

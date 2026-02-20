@@ -193,6 +193,8 @@ class EngineAdvancedImpl : public Engine {
     return engine_settings_;
   }
 
+  const Tokenizer& GetTokenizer() const override { return *tokenizer_; }
+
  private:
   // Stored engine settings.
   EngineSettings engine_settings_;

@@ -32,7 +32,6 @@
 #include "runtime/components/constrained_decoding/constraint_provider.h"
 #include "runtime/components/constrained_decoding/constraint_provider_config.h"
 #include "runtime/components/prompt_template.h"
-#include "runtime/components/tokenizer.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/conversation/model_data_processor/config_registry.h"
 #include "runtime/conversation/model_data_processor/model_data_processor.h"
@@ -451,9 +450,6 @@ class Conversation {
   // Returns the configuration used for creating the Conversation.
   const ConversationConfig& GetConfig() const { return config_; }
 
-  // Returns the tokenizer used for the conversation.
-  const Tokenizer& GetTokenizer() const { return session_->GetTokenizer(); }
-
   // Returns the benchmark info for the conversation. Under the hood, this
   // method triggers the benchmark info collection from the Session. Returns:
   // - The benchmark info for the conversation.
@@ -487,11 +483,12 @@ class Conversation {
 
  private:
   explicit Conversation(
-      std::unique_ptr<Engine::Session> session,
+      Engine& engine, std::unique_ptr<Engine::Session> session,
       std::unique_ptr<ModelDataProcessor> model_data_processor, Preface preface,
       PromptTemplate prompt_template, ConversationConfig config,
       std::unique_ptr<ConstraintProvider> constraint_provider = nullptr)
-      : session_(std::move(session)),
+      : engine_(engine),
+        session_(std::move(session)),
         model_data_processor_(std::move(model_data_processor)),
         preface_(preface),
         prompt_template_(std::move(prompt_template)),
@@ -520,6 +517,9 @@ class Conversation {
       const std::optional<std::string>& task_group_id,
       std::unique_ptr<Engine::Session::TaskController> task_controller);
 
+  // Keep a reference to the creator engine to enable access to the shared
+  // resources that might be required for features like cloning.
+  Engine& engine_;
   std::unique_ptr<Engine::Session> session_;
   std::unique_ptr<ModelDataProcessor> model_data_processor_;
   Preface preface_;

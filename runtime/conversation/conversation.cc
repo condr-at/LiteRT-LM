@@ -269,21 +269,22 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
   ASSIGN_OR_RETURN(
       std::unique_ptr<ModelDataProcessor> model_data_processor,
       CreateModelDataProcessor(config.GetProcessorConfig(), config.GetPreface(),
-                               &session->GetTokenizer(),
+                               &engine.GetTokenizer(),
                                session->GetSessionConfig().GetStopTokenIds(),
                                config.constrained_decoding_enabled(),
                                config.GetPromptTemplate().GetCapabilities()));
   std::unique_ptr<ConstraintProvider> constraint_provider;
   if (config.constraint_provider_config().has_value()) {
-    ASSIGN_OR_RETURN(constraint_provider,
-                     CreateConstraintProvider(
-                         config.constraint_provider_config().value(),
-                         session->GetTokenizer(),
-                         session->GetSessionConfig().GetStopTokenIds()));
+    ASSIGN_OR_RETURN(
+        constraint_provider,
+        CreateConstraintProvider(
+            config.constraint_provider_config().value(), engine.GetTokenizer(),
+            session->GetSessionConfig().GetStopTokenIds()));
   }
   auto conversation = absl::WrapUnique(new Conversation(
-      std::move(session), std::move(model_data_processor), config.GetPreface(),
-      config.GetPromptTemplate(), config, std::move(constraint_provider)));
+      engine, std::move(session), std::move(model_data_processor),
+      config.GetPreface(), config.GetPromptTemplate(), config,
+      std::move(constraint_provider)));
   if (config.prefill_preface_on_init() &&
       !IsEmptyPreface(config.GetPreface())) {
     std::string single_turn_text;
@@ -417,12 +418,13 @@ absl::Status Conversation::SendMessageAsync(
     this->history_.pop_back();
   };
 
-  auto internal_callback = std::make_shared<
-      absl::AnyInvocable<void(absl::StatusOr<Responses>)>>(
-      CreateInternalCallback(
-          *model_data_processor_, optional_args.args.value_or(std::monostate()),
-          std::move(user_callback), std::move(cancel_callback),
-          std::move(complete_message_callback)));
+  auto internal_callback =
+      std::make_shared<absl::AnyInvocable<void(absl::StatusOr<Responses>)>>(
+          CreateInternalCallback(*model_data_processor_,
+                                 optional_args.args.value_or(std::monostate()),
+                                 std::move(user_callback),
+                                 std::move(cancel_callback),
+                                 std::move(complete_message_callback)));
 
   ASSIGN_OR_RETURN(
       auto decode_config,
@@ -444,10 +446,9 @@ absl::Status Conversation::SendMessageAsync(
     ASSIGN_OR_RETURN(
         auto prefill_task_controller,
         session_->RunPrefillAsync(
-            session_inputs,
-            [this, callback = internal_callback, decode_config,
-             task_group_id = optional_args.task_group_id](
-                absl::StatusOr<Responses> responses) mutable {
+            session_inputs, [this, callback = internal_callback, decode_config,
+                             task_group_id = optional_args.task_group_id](
+                                absl::StatusOr<Responses> responses) mutable {
               // First, check if prefill returned an error. Ignore errors caused
               // by empty input, as this is a valid case for triggering decode
               // only.
@@ -539,7 +540,7 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Clone() {
   ASSIGN_OR_RETURN(
       std::unique_ptr<ModelDataProcessor> model_data_processor,
       CreateModelDataProcessor(config_.GetProcessorConfig(),
-                               config_.GetPreface(), &session->GetTokenizer(),
+                               config_.GetPreface(), &engine_.GetTokenizer(),
                                session->GetSessionConfig().GetStopTokenIds(),
                                config_.constrained_decoding_enabled(),
                                config_.GetPromptTemplate().GetCapabilities()));
@@ -552,12 +553,13 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Clone() {
     ASSIGN_OR_RETURN(constraint_provider,
                      CreateConstraintProvider(
                          config_.constraint_provider_config().value(),
-                         session->GetTokenizer(),
+                         engine_.GetTokenizer(),
                          session->GetSessionConfig().GetStopTokenIds()));
   }
   auto new_conversation = absl::WrapUnique(new Conversation(
-      std::move(session), std::move(model_data_processor), config_.GetPreface(),
-      config_.GetPromptTemplate(), config_, std::move(constraint_provider)));
+      engine_, std::move(session), std::move(model_data_processor),
+      config_.GetPreface(), config_.GetPromptTemplate(), config_,
+      std::move(constraint_provider)));
   new_conversation->is_appending_message_ = is_appending_message_;
   {
     absl::MutexLock lock(history_mutex_);  // NOLINT

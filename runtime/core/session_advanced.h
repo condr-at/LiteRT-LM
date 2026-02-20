@@ -175,8 +175,6 @@ class SessionAdvanced : public Engine::Session {
     return session_info_->session_config;
   }
 
-  const Tokenizer& GetTokenizer() const override { return *tokenizer_; }
-
   absl::Status WaitUntilDone() override {
     auto execution_manager_lock = execution_manager_.lock();
     if (execution_manager_lock == nullptr) {

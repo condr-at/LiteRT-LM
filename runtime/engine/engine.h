@@ -269,9 +269,6 @@ class Engine {
     // Get the reference to the session config for the session.
     virtual const SessionConfig& GetSessionConfig() const = 0;
 
-    // Get the reference to the tokenizer for the session.
-    virtual const Tokenizer& GetTokenizer() const = 0;
-
     // Get the audio model properties for the session. This is only available
     // if the session is created with audio modality enabled.
     virtual absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
@@ -292,6 +289,9 @@ class Engine {
 
   // Returns the EngineSettings currently used by the engine.
   virtual const EngineSettings& GetEngineSettings() const = 0;
+
+  // Get the reference to the tokenizer for the engine.
+  virtual const Tokenizer& GetTokenizer() const = 0;
 
   // Default timeout duration for the engine/session processes.
   static constexpr absl::Duration kDefaultTimeout = absl::Minutes(10);
