@@ -128,10 +128,10 @@ with performance lock on Android devices).
 the pre-built binary below to run the LiteRT-LM immediately.
 ### Desktop CLI (LIT)
 
--   [MacOS ARM64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.macos_arm64)
--   [Linux x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.linux_x86_64)
--   [Linux ARM64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.linux_arm64)
--   [Windows x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.8.0/lit.windows_x86_64.exe)
+-   [MacOS ARM64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.9.0-alpha02/lit-macos-arm64)
+-   [Linux x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.9.0-alpha02/lit-linux-amd64)
+-   [Linux ARM64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.9.0-alpha02/lit-linux-arm64)
+-   [Windows x86_64](https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.9.0-alpha02/lit-windows-amd64.exe)
 
 After the download the `lit` binary, just run `lit` to see the options.
 Simple use case is like:
