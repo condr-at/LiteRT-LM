@@ -1,4 +1,4 @@
-name: "smoke-test-linux"
+name: "CI-Build-CMake"
 on:
   push:
     branches: [ "main" ]
@@ -23,10 +23,9 @@ env:
   CCACHE_SLOPPINESS: "time_macros"
 
 jobs:
-  smoke-test:
-    name: "Smoke-Test-Linux"
+  presubmit:
+    name: "Presubmit-CMake-Linux"
     runs-on: ubuntu-latest
-    environment: huggingface-access
     container:
       image: ubuntu:24.04
 
@@ -40,10 +39,12 @@ jobs:
             python3-numpy ccache zlib1g-dev libssl-dev \
             libpng-dev libcurl4-openssl-dev libfftw3-dev \
             apt-file && apt-file update
+
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -128,6 +129,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_C_COMPILER=gcc \
             -DENABLE_CCACHE=ON
+
       - name: Build
         run: cmake --build cmake/build --config Release --parallel $(nproc)
 
@@ -137,6 +139,7 @@ jobs:
             --backend=cpu \
             --model_path=${{ env.MODEL_PATH }} \
             --input_prompt="How tall is the Eiffel Tower?"
+
       - name: Save CCache on Failure
         if: failure()
         uses: actions/cache/save@v4
