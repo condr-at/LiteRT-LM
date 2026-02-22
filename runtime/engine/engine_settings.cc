@@ -259,6 +259,11 @@ absl::Status EngineSettings::MaybeUpdateAndValidate(
     main_executor_settings_.SetAdvancedSettings(advanced_settings);
   }
 
+  if (IsBenchmarkEnabled()) {
+    advanced_settings.is_benchmark = true;
+    main_executor_settings_.SetAdvancedSettings(advanced_settings);
+  }
+
   if (!metadata.has_jinja_prompt_template()) {
     ASSIGN_OR_RETURN(*metadata.mutable_jinja_prompt_template(),
                      GetDefaultJinjaPromptTemplate(metadata.prompt_templates(),

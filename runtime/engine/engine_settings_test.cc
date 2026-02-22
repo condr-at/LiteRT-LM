@@ -513,6 +513,33 @@ TEST(EngineSettingsTest, BenchmarkParams) {
   EXPECT_EQ(settings->GetBenchmarkParams()->num_prefill_tokens(), 100);
 }
 
+TEST(EngineSettingsTest, BenchmarkParamsUpdateAdvancedSettings) {
+  auto model_assets = ModelAssets::Create("test_model_path_1");
+  ASSERT_OK(model_assets);
+  ASSERT_OK_AND_ASSIGN(auto settings,
+                       EngineSettings::CreateDefault(*model_assets));
+
+  MockTokenizer tokenizer;
+  EXPECT_CALL(tokenizer, TokenIdsToText).WillRepeatedly(Return("fake_text"));
+  EXPECT_CALL(tokenizer, TokenToId).WillRepeatedly(Return(1));
+  EXPECT_CALL(tokenizer, TextToTokenIds)
+      .WillRepeatedly(Return(std::vector<int>{1}));
+  proto::LlmMetadata llm_metadata = CreateLlmMetadata();
+
+  EXPECT_OK(settings.MaybeUpdateAndValidate(tokenizer, &llm_metadata));
+  EXPECT_FALSE(
+      settings.GetMainExecutorSettings().GetAdvancedSettings()->is_benchmark);
+
+  proto::BenchmarkParams& benchmark_params =
+      settings.GetMutableBenchmarkParams();
+  benchmark_params.set_num_decode_tokens(100);
+  benchmark_params.set_num_prefill_tokens(100);
+
+  EXPECT_OK(settings.MaybeUpdateAndValidate(tokenizer, &llm_metadata));
+  EXPECT_TRUE(
+      settings.GetMainExecutorSettings().GetAdvancedSettings()->is_benchmark);
+}
+
 TEST(EngineSettingsTest, LlmMetadata) {
   auto model_assets = ModelAssets::Create("test_model_path_1");
   ASSERT_OK(model_assets);
