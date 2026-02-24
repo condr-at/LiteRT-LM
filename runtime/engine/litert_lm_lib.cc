@@ -47,6 +47,10 @@
 #include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "litert/cc/internal/scoped_file.h"  // from @litert
+#include "runtime/components/constrained_decoding/constraint.h"
+#include "runtime/components/constrained_decoding/constraint_provider_factory.h"
+#include "runtime/components/constrained_decoding/llg_constraint_config.h"
+#include "runtime/components/tokenizer.h"
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/engine/engine.h"
@@ -405,6 +409,18 @@ absl::Status BuildContentList(absl::string_view prompt_view, json& content_list,
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::unique_ptr<Constraint>> CreateRegexConstraint(
+    const Tokenizer& tokenizer,
+    const std::vector<std::vector<int>>& stop_token_ids,
+    std::string constraint_regex) {
+  ASSIGN_OR_RETURN(
+      auto constraint_provider,
+      CreateConstraintProvider(LlGuidanceConfig(), tokenizer, stop_token_ids));
+  return constraint_provider->CreateConstraint(
+      LlGuidanceConstraintArg{.constraint_type = LlgConstraintType::kRegex,
+                              .constraint_string = constraint_regex});
+}
+
 absl::Status RunSingleTurnConversation(const std::string& input_prompt,
                                        const LiteRtLmSettings& settings,
                                        litert::lm::Engine* engine,
@@ -475,16 +491,32 @@ absl::Status RunSingleTurnSession(const std::string& input_prompt,
   if (settings.async) {
     return absl::UnimplementedError(
         "Async mode is not supported for single turn session.");
-  } else {
-    std::vector<InputData> inputs;
-    inputs.emplace_back(InputText(input_prompt));
-    RETURN_IF_ERROR(session->RunPrefill(inputs));
-    ASSIGN_OR_RETURN(auto responses, session->RunDecode());
-    for (const auto& response : responses.GetTexts()) {
-      captured_output << response << std::endl << std::flush;
-    }
   }
-  std::cout << captured_output.str() << std::endl << std::flush;
+
+  ABSL_LOG(INFO) << "Running single turn session with prompt: " << input_prompt;
+  DecodeConfig decode_config = DecodeConfig::CreateDefault();
+  if (settings.max_output_tokens > 0) {
+    decode_config.SetMaxOutputTokens(settings.max_output_tokens);
+  }
+
+  std::unique_ptr<Constraint> constraint;
+  if (!settings.constraint_regex.empty()) {
+    ASSIGN_OR_RETURN(
+        constraint,
+        CreateRegexConstraint(engine->GetTokenizer(),
+                              session->GetSessionConfig().GetStopTokenIds(),
+                              settings.constraint_regex));
+    decode_config.SetConstraint(constraint.get());
+  }
+
+  std::vector<InputData> inputs;
+  inputs.emplace_back(InputText(input_prompt));
+  RETURN_IF_ERROR(session->RunPrefill(inputs));
+  ASSIGN_OR_RETURN(auto responses, session->RunDecode(decode_config));
+  for (const auto& response : responses.GetTexts()) {
+    captured_output << response << std::endl << std::flush;
+  }
+  std::cout << "output: " << captured_output.str() << std::endl << std::flush;
   CheckExpectedOutput(captured_output.str(), settings);
   return absl::OkStatus();
 }

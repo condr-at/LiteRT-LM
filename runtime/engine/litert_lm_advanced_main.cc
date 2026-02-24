@@ -169,6 +169,7 @@ absl::Status MainHelper(int argc, char** argv) {
   settings.expected_output = absl::GetFlag(FLAGS_expected_output);
   settings.log_sink_file = absl::GetFlag(FLAGS_log_sink_file);
   settings.max_num_tokens = absl::GetFlag(FLAGS_max_num_tokens);
+  settings.max_output_tokens = absl::GetFlag(FLAGS_max_output_tokens);
   settings.max_num_images = absl::GetFlag(FLAGS_max_num_images);
   ASSIGN_OR_RETURN(
       settings.prefill_batch_sizes,
@@ -216,6 +217,7 @@ absl::Status MainHelper(int argc, char** argv) {
       absl::GetFlag(FLAGS_conv_type) == "float" ? litert::lm::ConvType::kFloat :
       absl::GetFlag(FLAGS_conv_type) == "int8" ? litert::lm::ConvType::kInt8 :
       litert::lm::ConvType::kAuto;
+  settings.constraint_regex = absl::GetFlag(FLAGS_constraint_regex);
 
   // Adjust max_num_tokens and prefill_batch_size if not set on benchmark mode.
   if (settings.benchmark && settings.benchmark_prefill_tokens > 0) {
