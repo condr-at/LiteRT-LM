@@ -42,6 +42,8 @@ ABSL_FLAG(int, max_num_tokens, 0,
           "length will be determined by some heuristic. On benchmark mode, it "
           "will be set to one equal to or greater than "
           "benchmark_prefill_tokens + benchmark_decode_tokens.");
+ABSL_FLAG(int, max_output_tokens, -1,
+          "Maximum number of output tokens for generation.");
 ABSL_FLAG(int, max_num_images, 1,
           "Maximum number of images to use for LLM execution.");
 ABSL_FLAG(std::vector<std::string>, prefill_batch_sizes, {},
@@ -129,3 +131,5 @@ ABSL_FLAG(std::string, conv_type, "auto",
           "be either float32 or float16 depending on the activation data type. "
           "See --force_f32. int8 would have better latency with lower "
           "accuracy. auto will choose the best type based on the model.");
+ABSL_FLAG(std::string, constraint_regex, "",
+          "Regular expression to constrain the output generation.");

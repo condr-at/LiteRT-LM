@@ -71,6 +71,7 @@ struct LiteRtLmSettings {
   std::optional<std::string> expected_output = std::nullopt;
   std::optional<std::string> log_sink_file = std::nullopt;
   int max_num_tokens = 0;
+  int max_output_tokens = -1;
   int max_num_images = 0;
   absl::LogSeverity min_log_level = absl::LogSeverity::kInfo;
   std::set<int> prefill_batch_sizes;
@@ -108,6 +109,7 @@ struct LiteRtLmSettings {
   std::string litert_dispatch_lib_dir = "";
   bool sampler_handles_input = true;
   ConvType conv_type = ConvType::kAuto;
+  std::string constraint_regex = "";
 };
 
 struct LitertLmMetrics {
