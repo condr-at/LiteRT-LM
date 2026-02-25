@@ -143,11 +143,13 @@ absl::StatusOr<DataProcessorConfig> CreateFunctionGemmaDataProcessorConfig(
       default_function_gemma.constraint_mode()) {
     switch (function_gemma.constraint_mode()) {
       case proto::CONSTRAINT_MODE_FUNCTION_CALL_ONLY:
-        config.constraint_mode = ConstraintMode::kFunctionCallOnly;
+        config.constraint_mode =
+            FunctionGemmaDataProcessorConfig::ConstraintMode::kFunctionCallOnly;
         break;
       case proto::CONSTRAINT_MODE_TEXT_AND_OR:
       default:
-        config.constraint_mode = ConstraintMode::kTextAndOr;
+        config.constraint_mode =
+            FunctionGemmaDataProcessorConfig::ConstraintMode::kTextAndOr;
         break;
     }
   }

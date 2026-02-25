@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "runtime/conversation/model_data_processor/function_gemma_data_processor.h"
+#include "runtime/conversation/model_data_processor/gemma4_data_processor.h"
 
 #include <cstddef>
 #include <memory>
@@ -35,7 +35,7 @@
 #include "runtime/components/tool_use/fc_tool_format_utils.h"
 #include "runtime/components/tool_use/parser_utils.h"
 #include "runtime/conversation/io_types.h"
-#include "runtime/conversation/model_data_processor/function_gemma_data_processor_config.h"
+#include "runtime/conversation/model_data_processor/gemma4_data_processor_config.h"
 #include "runtime/engine/io_types.h"
 #include "runtime/util/status_macros.h"
 #include "sentencepiece_model.pb.h"  // from @sentencepiece
@@ -175,12 +175,12 @@ bool IsToolMessage(const nlohmann::ordered_json& template_input,
 
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<FunctionGemmaDataProcessor>>
-FunctionGemmaDataProcessor::Create(
-    FunctionGemmaDataProcessorConfig config, std::optional<Preface> preface,
-    const Tokenizer* tokenizer,
-    const std::vector<std::vector<int>>& stop_token_ids,
-    bool enable_constrained_decoding) {
+absl::StatusOr<std::unique_ptr<Gemma4DataProcessor>>
+Gemma4DataProcessor::Create(Gemma4DataProcessorConfig config,
+                            std::optional<Preface> preface,
+                            const Tokenizer* tokenizer,
+                            const std::vector<std::vector<int>>& stop_token_ids,
+                            bool enable_constrained_decoding) {
   std::unique_ptr<LiteRtLmGemmaModelConstraintProvider,
                   decltype(&LiteRtLmGemmaModelConstraintProvider_Destroy)>
       constraint_provider(nullptr,
@@ -214,12 +214,12 @@ FunctionGemmaDataProcessor::Create(
     }
     constraint_provider.reset(provider);
   }
-  return absl::WrapUnique(new FunctionGemmaDataProcessor(
-      std::move(constraint_provider), config, preface));
+  return absl::WrapUnique(
+      new Gemma4DataProcessor(std::move(constraint_provider), config, preface));
 }
 
 absl::StatusOr<nlohmann::ordered_json>
-FunctionGemmaDataProcessor::MessageToTemplateInput(
+Gemma4DataProcessor::MessageToTemplateInput(
     const nlohmann::ordered_json& message) const {
   if (config_.use_template_for_fc_format) {
     return message;
@@ -283,18 +283,18 @@ FunctionGemmaDataProcessor::MessageToTemplateInput(
 }
 
 absl::StatusOr<std::vector<InputData>>
-FunctionGemmaDataProcessor::ToInputDataVectorImpl(
+Gemma4DataProcessor::ToInputDataVectorImpl(
     const std::string& rendered_template_prompt,
     const nlohmann::ordered_json& messages,
-    const FunctionGemmaDataProcessorArguments& args) const {
+    const Gemma4DataProcessorArguments& args) const {
   std::vector<InputData> input_data;
   input_data.push_back(InputText(rendered_template_prompt));
   return input_data;
 }
 
-absl::StatusOr<Message> FunctionGemmaDataProcessor::ToMessageImpl(
+absl::StatusOr<Message> Gemma4DataProcessor::ToMessageImpl(
     const Responses& responses,
-    const FunctionGemmaDataProcessorArguments& args) const {
+    const Gemma4DataProcessorArguments& args) const {
   absl::string_view response_text = responses.GetTexts()[0];
   nlohmann::ordered_json message = {{"role", "assistant"}};
   if (preface_.has_value() && std::holds_alternative<JsonPreface>(*preface_) &&
@@ -318,7 +318,7 @@ absl::StatusOr<Message> FunctionGemmaDataProcessor::ToMessageImpl(
   return message;
 }
 
-absl::StatusOr<nlohmann::ordered_json> FunctionGemmaDataProcessor::FormatTools(
+absl::StatusOr<nlohmann::ordered_json> Gemma4DataProcessor::FormatTools(
     const nlohmann::ordered_json& tools) const {
   if (config_.use_template_for_fc_format) {
     return tools;
@@ -336,7 +336,7 @@ absl::StatusOr<nlohmann::ordered_json> FunctionGemmaDataProcessor::FormatTools(
 }
 
 absl::StatusOr<std::unique_ptr<Constraint>>
-FunctionGemmaDataProcessor::CreateConstraint(
+Gemma4DataProcessor::CreateConstraint(
     const nlohmann::ordered_json& tools) const {
   if (constraint_provider_c_ == nullptr) {
     return nullptr;
@@ -361,11 +361,11 @@ FunctionGemmaDataProcessor::CreateConstraint(
       .close_quote = config_.close_quote.c_str(),
       .function_response_start = config_.function_response_start.c_str()};
   switch (config_.constraint_mode) {
-    case FunctionGemmaDataProcessorConfig::ConstraintMode::kFunctionCallOnly:
+    case Gemma4DataProcessorConfig::ConstraintMode::kFunctionCallOnly:
       gemma_options.constraint_mode =
           kLiteRtLmGemmaConstraintModeFunctionCallOnly;
       break;
-    case FunctionGemmaDataProcessorConfig::ConstraintMode::kTextAndOr:
+    case Gemma4DataProcessorConfig::ConstraintMode::kTextAndOr:
     default:
       gemma_options.constraint_mode = kLiteRtLmGemmaConstraintModeTextAndOr;
       break;
@@ -380,11 +380,11 @@ FunctionGemmaDataProcessor::CreateConstraint(
   return absl::WrapUnique(reinterpret_cast<Constraint*>(constraint));
 }
 
-absl::string_view FunctionGemmaDataProcessor::CodeFenceStart() const {
+absl::string_view Gemma4DataProcessor::CodeFenceStart() const {
   return config_.code_fence_start;
 }
 
-absl::string_view FunctionGemmaDataProcessor::CodeFenceEnd() const {
+absl::string_view Gemma4DataProcessor::CodeFenceEnd() const {
   return config_.code_fence_end;
 }
 

@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef THIRD_PARTY_ODML_LITERT_LM_RUNTIME_CONVERSATION_MODEL_DATA_PROCESSOR_FUNCTION_GEMMA_DATA_PROCESSOR_CONFIG_H_
-#define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_CONVERSATION_MODEL_DATA_PROCESSOR_FUNCTION_GEMMA_DATA_PROCESSOR_CONFIG_H_
+#ifndef THIRD_PARTY_ODML_LITERT_LM_RUNTIME_CONVERSATION_MODEL_DATA_PROCESSOR_GEMMA4_DATA_PROCESSOR_CONFIG_H_
+#define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_CONVERSATION_MODEL_DATA_PROCESSOR_GEMMA4_DATA_PROCESSOR_CONFIG_H_
 
 #include <string>
 
 namespace litert::lm {
 
-// Config for FunctionGemmaDataProcessor.
-struct FunctionGemmaDataProcessorConfig {
+// Config for Gemma4DataProcessor.
+struct Gemma4DataProcessorConfig {
   // The constraint mode when constrained decoding is enabled.
   enum class ConstraintMode {
     kUnspecified,
@@ -29,6 +29,16 @@ struct FunctionGemmaDataProcessorConfig {
     // Only function call is allowed.
     kFunctionCallOnly,
   };
+  // The string for beginning of image token.
+  std::string boi_token = "<start_of_image>";
+  // The string for end of image token.
+  std::string eoi_token = "<end_of_image>";
+
+  // The string for beginning of audio token.
+  std::string boa_token = "<start_of_audio>";
+  // The string for end of audio token.
+  std::string eoa_token = "<end_of_audio>";
+
   // Signifies the beginning of a tool call.
   std::string code_fence_start = "<start_function_call>";
   // Signifies the end of tool call.
@@ -49,9 +59,9 @@ struct FunctionGemmaDataProcessorConfig {
   ConstraintMode constraint_mode = ConstraintMode::kTextAndOr;
 };
 
-// Arguments for FunctionGemmaDataProcessor.
-struct FunctionGemmaDataProcessorArguments {};
+// Arguments for Gemma4DataProcessor.
+struct Gemma4DataProcessorArguments {};
 
 }  // namespace litert::lm
 
-#endif  // THIRD_PARTY_ODML_LITERT_LM_RUNTIME_CONVERSATION_MODEL_DATA_PROCESSOR_FUNCTION_GEMMA_DATA_PROCESSOR_CONFIG_H_
+#endif  // THIRD_PARTY_ODML_LITERT_LM_RUNTIME_CONVERSATION_MODEL_DATA_PROCESSOR_GEMMA4_DATA_PROCESSOR_CONFIG_H_
