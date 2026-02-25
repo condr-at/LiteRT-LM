@@ -25,7 +25,6 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "runtime/executor/llm_executor.h"
-#include "runtime/executor/llm_executor_google.h"
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/executor/llm_executor_settings.h"
 #include "runtime/util/status_macros.h"  // NOLINT

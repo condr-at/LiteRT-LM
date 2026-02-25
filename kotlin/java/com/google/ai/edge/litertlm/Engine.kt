@@ -91,6 +91,9 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
           getNativeLibraryDir(engineConfig.audioBackend),
           mainBackendNumThreads,
           audioBackendNumThreads,
+          engineConfig.engineMode.nativeValue,
+          engineConfig.gpuActivationPrecision.name,
+          engineConfig.gpuCacheMode.name,
         )
     }
   }
@@ -165,7 +168,10 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
       checkInitialized()
 
       // Using !! is okay. Checked initialization already.
-      return Session(LiteRtLmJni.nativeCreateSession(handle!!, sessionConfig.samplerConfig))
+      return Session(
+        LiteRtLmJni.nativeCreateSession(handle!!, sessionConfig.samplerConfig),
+        engineConfig.engineMode,
+      )
     }
   }
 

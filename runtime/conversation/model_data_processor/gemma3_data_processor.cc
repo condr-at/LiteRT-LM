@@ -42,8 +42,10 @@
 #include "runtime/components/prompt_template.h"
 #include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
+#if !defined(__ANDROID__)
 #include "runtime/components/tool_use/parser_utils.h"
 #include "runtime/components/tool_use/python_tool_format_utils.h"
+#endif
 #include "runtime/conversation/io_types.h"
 #include "runtime/conversation/model_data_processor/data_utils.h"
 #include "runtime/conversation/model_data_processor/gemma3_data_processor_config.h"
@@ -102,6 +104,10 @@ bool IsToolMessage(const ordered_json& message) {
 
 absl::StatusOr<std::string> FormatToolResponse(
     const ordered_json& tool_response) {
+#if defined(__ANDROID__)
+  return absl::UnimplementedError(
+      "Tool response formatting is unavailable in Android local build.");
+#else
   absl::string_view tool_response_key;
   if (tool_response.contains("tool_response")) {
     tool_response_key = "tool_response";
@@ -112,6 +118,7 @@ absl::StatusOr<std::string> FormatToolResponse(
   }
 
   return FormatValueAsPython(tool_response[tool_response_key]);
+#endif
 }
 
 }  // namespace
@@ -234,9 +241,13 @@ absl::StatusOr<ordered_json> Gemma3DataProcessor::MessageToTemplateInput(
       if (function.contains("arguments")) {
         if (function["arguments"].is_object()) {
           for (const auto& [key, value] : function["arguments"].items()) {
+#if defined(__ANDROID__)
+            tool_call_input["function"]["arguments"][key] = value;
+#else
             ASSIGN_OR_RETURN(std::string formatted_value,
                              FormatValueAsPython(value));
             tool_call_input["function"]["arguments"][key] = formatted_value;
+#endif
           }
         } else {
           tool_call_input["function"]["arguments"] = function["arguments"];
@@ -443,6 +454,11 @@ absl::StatusOr<Message> Gemma3DataProcessor::ToMessageImpl(
     const Gemma3DataProcessorArguments& args) const {
   absl::string_view response_text = responses.GetTexts()[0];
   ordered_json message = {{"role", "assistant"}};
+#if defined(__ANDROID__)
+  message["content"] = ordered_json::array(
+      {{{"type", "text"}, {"text", std::string(response_text)}}});
+  return message;
+#else
   if (preface_.has_value() && std::holds_alternative<JsonPreface>(*preface_) &&
       !std::get<JsonPreface>(*preface_).tools.empty()) {
     ASSIGN_OR_RETURN(
@@ -462,10 +478,14 @@ absl::StatusOr<Message> Gemma3DataProcessor::ToMessageImpl(
         {{{"type", "text"}, {"text", std::string(response_text)}}});
   }
   return message;
+#endif
 }
 
 absl::StatusOr<ordered_json> Gemma3DataProcessor::FormatTools(
     const ordered_json& tools) const {
+#if defined(__ANDROID__)
+  return tools;
+#else
   if (!tools.is_array()) {
     return absl::InvalidArgumentError("Tools must be an array.");
   }
@@ -475,6 +495,7 @@ absl::StatusOr<ordered_json> Gemma3DataProcessor::FormatTools(
     formatted_tools.push_back(formatted_tool);
   }
   return formatted_tools;
+#endif
 }
 
 absl::StatusOr<std::unique_ptr<Constraint>>
