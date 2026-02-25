@@ -77,3 +77,35 @@ cc_test(
         "//runtime/util:test_utils",
     ],
 )
+
+cc_library(
+    name = "resource_registry",
+    hdrs = ["resource_registry.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_test(
+    name = "resource_registry_test",
+    srcs = ["resource_registry_test.cc"],
+    deps = [
+        ":resource_ids",
+        ":resource_registry",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_library(
+    name = "resource_ids",
+    hdrs = ["resource_ids.h"],
+)
