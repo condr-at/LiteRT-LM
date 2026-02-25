@@ -26,6 +26,25 @@ enum class Backend {
   NPU, // NPU LiteRT backend.
 }
 
+/** Runtime engine mode for LiteRT-LM. */
+enum class EngineMode(val nativeValue: Int) {
+  BASIC(0),
+  ADVANCED(1),
+}
+
+/** Override for GPU activation precision. */
+enum class GpuActivationPrecision {
+  DEFAULT,
+  FP16,
+  FP32,
+}
+
+/** Override for GPU cache behavior. */
+enum class GpuCacheMode {
+  DEFAULT,
+  NOCACHE,
+}
+
 /**
  * Configuration for the LiteRT-LM engine.
  *
@@ -40,6 +59,9 @@ enum class Backend {
  * @property cacheDir The directory for placing cache files. It should be a directory with write
  *   access. If not set, it uses the directory of the [modelPath]. Set to ":nocache" to disable
  *   caching at all.
+ * @property engineMode Runtime engine mode. `BASIC` is default for backward compatibility.
+ * @property gpuActivationPrecision Optional GPU activation precision override.
+ * @property gpuCacheMode Optional GPU cache override.
  */
 data class EngineConfig(
   val modelPath: String,
@@ -48,6 +70,9 @@ data class EngineConfig(
   val audioBackend: Backend? = null,
   val maxNumTokens: Int? = null,
   val cacheDir: String? = null,
+  val engineMode: EngineMode = EngineMode.BASIC,
+  val gpuActivationPrecision: GpuActivationPrecision = GpuActivationPrecision.DEFAULT,
+  val gpuCacheMode: GpuCacheMode = GpuCacheMode.DEFAULT,
 ) {
   init {
     require(maxNumTokens == null || maxNumTokens > 0) {

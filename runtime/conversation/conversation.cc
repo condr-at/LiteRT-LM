@@ -548,6 +548,11 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Clone() {
   if (!status.ok() && !absl::IsUnimplemented(status)) {
     return status;
   }
+  if (absl::IsUnimplemented(status)) {
+    ABSL_LOG(WARNING) << "Conversation::Clone: CloneState unimplemented, "
+                      << "proceeding in degraded state (without cloned "
+                      << "ModelDataProcessor state).";
+  }
   std::unique_ptr<ConstraintProvider> constraint_provider;
   if (config_.constraint_provider_config().has_value()) {
     ASSIGN_OR_RETURN(constraint_provider,

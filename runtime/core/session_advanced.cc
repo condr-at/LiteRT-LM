@@ -46,6 +46,27 @@ namespace {
 
 using TaskController = Engine::Session::TaskController;
 
+absl::Status BuildStructuredCancelledStatus(absl::string_view reason_code,
+                                            absl::string_view origin_component,
+                                            SessionId session_id,
+                                            bool is_prefill, bool is_decode) {
+  return absl::CancelledError(absl::StrCat(
+      "cancel_reason_code=", reason_code, ";origin_component=",
+      origin_component, ";generation_id=0;session_id=", session_id,
+      ";is_prefill=", is_prefill ? "1" : "0", ";is_decode=",
+      is_decode ? "1" : "0", ";op_id=0"));
+}
+
+void ClearLastTaskIdsWithReason(SessionId session_id,
+                                absl::flat_hash_set<TaskId>& last_task_ids,
+                                absl::string_view reason) {
+  ABSL_LOG(WARNING) << "session_last_task_ids_cleared"
+                    << " session_id=" << session_id
+                    << " reason=" << reason
+                    << " prev_count=" << last_task_ids.size();
+  last_task_ids.clear();
+}
+
 }  // namespace
 
 // static
@@ -69,11 +90,41 @@ absl::StatusOr<std::unique_ptr<SessionAdvanced>> SessionAdvanced::Create(
 
 absl::Status SessionAdvanced::RunPrefill(
     const std::vector<InputData>& contents) {
+  ABSL_LOG(INFO) << "session_run_prefill_start session_id=" << session_id_
+                 << " session_state=" << static_cast<int>(session_state_)
+                 << " input_count=" << contents.size();
   absl::Status status = absl::OkStatus();
   ASSIGN_OR_RETURN(
       auto task_controller,
-      RunPrefillAsync(contents, [&status](absl::StatusOr<Responses> responses) {
-        status = responses.status();
+      RunPrefillAsync(contents,
+                      [this, &status](absl::StatusOr<Responses> responses) {
+        if (!responses.ok()) {
+          ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                     "prefill_sync_callback_error_status");
+          status = responses.status();
+          return;
+        }
+        if (responses->GetTaskState() == TaskState::kCancelled ||
+            responses->GetTaskState() == TaskState::kDependentTaskCancelled) {
+          ABSL_LOG(WARNING)
+              << "session_run_prefill_cancelled session_id=" << session_id_
+              << " task_state=" << responses->GetTaskState();
+          ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                     "prefill_sync_callback_cancelled_state");
+          status = BuildStructuredCancelledStatus(
+              "PREFILL_TASK_CANCELLED_STATE", "SCHEDULER", session_id_,
+              /*is_prefill=*/true, /*is_decode=*/false);
+          return;
+        }
+        if (responses->GetTaskState() == TaskState::kFailed ||
+            responses->GetTaskState() == TaskState::kDependentTaskFailed) {
+          ABSL_LOG(WARNING) << "session_run_prefill_failed session_id="
+                            << session_id_
+                            << " task_state=" << responses->GetTaskState();
+          ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                     "prefill_sync_callback_failed_state");
+        }
+        status = absl::OkStatus();
       }));
   RETURN_IF_ERROR(task_controller->WaitUntilDone(Engine::kDefaultTimeout));
   return status;
@@ -118,6 +169,9 @@ SessionAdvanced::RunPrefillAsync(
                            *tokenizer_, session_info_->benchmark_info));
   }
   ASSIGN_OR_RETURN(auto task_id, execution_manager_lock->GetNewTaskId());
+  ABSL_LOG(INFO) << "session_prefill_task_created session_id=" << session_id_
+                 << " task_id=" << task_id
+                 << " dep_count=" << last_task_ids_.size();
   RETURN_IF_ERROR(execution_manager_lock->AddPrefillTask(
       session_id_, task_id, std::move(preprocessed_contents), last_task_ids_,
       cancelled, std::move(callback)));
@@ -148,11 +202,35 @@ absl::StatusOr<Responses> SessionAdvanced::RunDecode(
                 std::vector<float>(
                     session_info_->session_config.GetNumOutputCandidates()));
   int num_decode_tokens = 0;
-  auto decode_sync_callback = [&collected_responses, &num_decode_tokens](
+  auto decode_sync_callback = [this, &collected_responses, &num_decode_tokens](
                                   absl::StatusOr<Responses> responses) {
     if (!responses.ok()) {
+      ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                 "decode_sync_callback_error_status");
       collected_responses = responses.status();
       return;
+    }
+    if (responses->GetTaskState() == TaskState::kCancelled ||
+        responses->GetTaskState() == TaskState::kDependentTaskCancelled) {
+      ABSL_LOG(WARNING)
+          << "session_run_decode_cancelled session_id=" << session_id_
+          << " task_state=" << responses->GetTaskState();
+      ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                 "decode_sync_callback_cancelled_state");
+      collected_responses =
+          BuildStructuredCancelledStatus("DECODE_TASK_CANCELLED_STATE",
+                                         "SCHEDULER", session_id_,
+                                         /*is_prefill=*/false,
+                                         /*is_decode=*/true);
+      return;
+    }
+    if (responses->GetTaskState() == TaskState::kFailed ||
+        responses->GetTaskState() == TaskState::kDependentTaskFailed) {
+      ABSL_LOG(WARNING) << "session_run_decode_failed session_id="
+                        << session_id_
+                        << " task_state=" << responses->GetTaskState();
+      ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                 "decode_sync_callback_failed_state");
     }
     collected_responses->SetTaskState(responses->GetTaskState());
     // If the task is not completed and there is no text or score, we can
@@ -234,6 +312,9 @@ absl::StatusOr<std::unique_ptr<TaskController>> SessionAdvanced::RunDecodeAsync(
                              *tokenizer_, session_info_->benchmark_info));
       auto noop_callback = [](absl::StatusOr<Responses> responses) {};
       ASSIGN_OR_RETURN(auto task_id, execution_manager_lock->GetNewTaskId());
+      ABSL_LOG(INFO) << "session_prefill_tail_task_created session_id="
+                     << session_id_ << " task_id=" << task_id
+                     << " dep_count=" << last_task_ids_.size();
       RETURN_IF_ERROR(execution_manager_lock->AddPrefillTask(
           session_id_, task_id, std::move(preprocessed_contents),
           last_task_ids_, cancelled, std::move(noop_callback)));
@@ -243,10 +324,31 @@ absl::StatusOr<std::unique_ptr<TaskController>> SessionAdvanced::RunDecodeAsync(
   session_state_ = SessionState::kDecoded;
 
   ASSIGN_OR_RETURN(auto task_id, execution_manager_lock->GetNewTaskId());
+  ABSL_LOG(INFO) << "session_decode_task_created session_id=" << session_id_
+                 << " task_id=" << task_id
+                 << " dep_count=" << last_task_ids_.size();
+
+  auto wrapped_callback =
+      [this, callback = std::move(callback)](
+          absl::StatusOr<Responses> responses) mutable {
+        if (!responses.ok()) {
+          ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                     "decode_async_callback_error_status");
+        } else if (responses->GetTaskState() == TaskState::kCancelled ||
+                   responses->GetTaskState() ==
+                       TaskState::kDependentTaskCancelled ||
+                   responses->GetTaskState() == TaskState::kFailed ||
+                   responses->GetTaskState() ==
+                       TaskState::kDependentTaskFailed) {
+          ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                     "decode_async_callback_terminal_state");
+        }
+        callback(std::move(responses));
+      };
 
   RETURN_IF_ERROR(execution_manager_lock->AddDecodeTask(
       session_id_, task_id, last_task_ids_, decode_config.GetConstraint(),
-      cancelled, std::move(callback),
+      cancelled, std::move(wrapped_callback),
       decode_config.GetMaxOutputTokens().value_or(
           session_info_->session_config.GetMaxOutputTokens())));
 
@@ -326,6 +428,8 @@ absl::Status SessionAdvanced::GenerateContentStream(
       [this, decode_config, stream_callback = std::move(callback)](
           absl::StatusOr<Responses> prefill_responses) mutable {
         if (!prefill_responses.ok()) {
+          ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                     "stream_prefill_callback_error_status");
           stream_callback(prefill_responses.status());
           return;
         }
@@ -337,8 +441,15 @@ absl::Status SessionAdvanced::GenerateContentStream(
                             << decode_task_controller.status();
           }
         } else if (IsTaskEndState(prefill_responses->GetTaskState())) {
-          stream_callback(absl::CancelledError(
-              "Prefill task finished in cancelled state."));
+          ABSL_LOG(WARNING)
+              << "session_stream_prefill_end_non_done session_id="
+              << session_id_
+              << " prefill_state=" << prefill_responses->GetTaskState();
+          ClearLastTaskIdsWithReason(session_id_, last_task_ids_,
+                                     "stream_prefill_callback_end_non_done");
+          stream_callback(BuildStructuredCancelledStatus(
+              "PREFILL_TASK_CANCELLED_STATE", "SCHEDULER", session_id_,
+              /*is_prefill=*/true, /*is_decode=*/false));
         }
       };
 

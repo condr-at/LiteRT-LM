@@ -51,6 +51,9 @@ internal object LiteRtLmJni {
     cacheDir: String,
     enableBenchmark: Boolean,
     npuLibrariesDir: String,
+    engineMode: Int,
+    gpuActivationPrecision: String,
+    gpuCacheMode: String,
   ): Long
 
   /**
@@ -95,13 +98,22 @@ internal object LiteRtLmJni {
   external fun nativeDeleteSession(sessionPointer: Long)
 
   /**
+   * Clones an existing LiteRT-LM session.
+   *
+   * @param sessionPointer A pointer to the source native session instance.
+   * @return A pointer to the cloned native session instance.
+   * @throws LiteRtLmJniException if the underlying native method fails.
+   */
+  external fun nativeCloneSession(sessionPointer: Long): Long
+
+  /**
    * Runs the prefill step for the given input data.
    *
    * @param sessionPointer A pointer to the native session instance.
    * @param inputData An array of {@link InputData} to be processed by the model.
    * @throws LiteRtLmJniException if the underlying native method fails.
    */
-  external fun nativeRunPrefill(sessionPointer: Long, inputData: Array<InputData>)
+  external fun nativeRunPrefill(sessionPointer: Long, inputData: Array<InputData>, opId: Long)
 
   /**
    * Runs the decode step.
@@ -110,7 +122,7 @@ internal object LiteRtLmJni {
    * @return The generated content.
    * @throws LiteRtLmJniException if the underlying native method fails.
    */
-  external fun nativeRunDecode(sessionPointer: Long): String
+  external fun nativeRunDecode(sessionPointer: Long, opId: Long): String
 
   /**
    * Generates content from the given input data.
@@ -119,7 +131,11 @@ internal object LiteRtLmJni {
    * @param inputData An array of {@link InputData} to be processed by the model.
    * @return The generated content.
    */
-  external fun nativeGenerateContent(sessionPointer: Long, inputData: Array<InputData>): String
+  external fun nativeGenerateContent(
+    sessionPointer: Long,
+    inputData: Array<InputData>,
+    opId: Long,
+  ): String
 
   /**
    * Generates content from the given input data in a streaming fashion.
@@ -133,6 +149,7 @@ internal object LiteRtLmJni {
   external fun nativeGenerateContentStream(
     sessionPointer: Long,
     inputData: Array<InputData>,
+    opId: Long,
     callback: JniInferenceCallback,
   )
 

@@ -164,6 +164,7 @@ build:android --define=xnn_enable_avxvnniint8=false
 
 # Sets the default Apple platform to macOS.
 build:macos --apple_platform_type=macos
+build:macos --macos_sdk_version=26.2
 
 # gRPC on MacOS requires this #define
 build:macos --copt=-DGRPC_BAZEL_BUILD

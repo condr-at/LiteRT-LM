@@ -15,9 +15,13 @@
 #include <jni.h>
 #include <sys/stat.h>
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -28,6 +32,8 @@
 #include "absl/log/globals.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json_fwd.hpp"  // from @nlohmann_json
 #include "litert/c/internal/litert_logging.h"  // from @litert
@@ -76,6 +82,75 @@ using litert::lm::Preface;
 using litert::lm::Responses;
 using litert::lm::SessionConfig;
 using litert::lm::proto::SamplerParameters;
+
+std::atomic<int64_t> g_native_op_seq{1};
+
+int64_t NextNativeOpId() { return g_native_op_seq.fetch_add(1); }
+
+std::optional<std::string> ParseDiagField(absl::string_view message,
+                                          absl::string_view key) {
+  std::string needle = absl::StrCat(key, "=");
+  size_t start = message.find(needle);
+  if (start == absl::string_view::npos) {
+    return std::nullopt;
+  }
+  start += needle.size();
+  size_t end = message.find(';', start);
+  if (end == absl::string_view::npos) {
+    end = message.size();
+  }
+  return std::string(message.substr(start, end - start));
+}
+
+void LogCancelDiagnostic(const absl::Status& status, int64_t op_id,
+                         int64_t session_id, bool is_prefill, bool is_decode) {
+  if (!absl::IsCancelled(status)) {
+    return;
+  }
+  std::string reason = ParseDiagField(status.message(), "cancel_reason_code")
+                           .value_or("UNKNOWN_INTERNAL");
+  std::string origin = ParseDiagField(status.message(), "origin_component")
+                           .value_or("RUNTIME_INTERNAL");
+  std::string sid = ParseDiagField(status.message(), "session_id")
+                        .value_or(absl::StrCat(session_id));
+  std::string gid = ParseDiagField(status.message(), "generation_id")
+                        .value_or("0");
+  std::string stage_prefill =
+      ParseDiagField(status.message(), "is_prefill").value_or(
+          is_prefill ? "1" : "0");
+  std::string stage_decode =
+      ParseDiagField(status.message(), "is_decode").value_or(
+          is_decode ? "1" : "0");
+  std::string op =
+      ParseDiagField(status.message(), "op_id").value_or(absl::StrCat(op_id));
+  if (op.empty() || op == "0") {
+    op = absl::StrCat(op_id);
+  }
+
+  std::ostringstream tid_stream;
+  tid_stream << std::this_thread::get_id();
+  ABSL_LOG(ERROR) << "prefill_cancelled"
+                  << " cancel_reason_code=" << reason
+                  << " origin_component=" << origin
+                  << " generation_id=" << gid
+                  << " session_id=" << sid
+                  << " thread_id=" << tid_stream.str()
+                  << " is_prefill=" << stage_prefill
+                  << " is_decode=" << stage_decode << " op_id=" << op;
+}
+
+absl::StatusOr<EngineFactory::EngineType> EngineTypeFromJniMode(
+    jint engine_mode) {
+  switch (engine_mode) {
+    case 0:
+      return EngineFactory::EngineType::kLiteRTCompiledModel;
+    case 1:
+      return EngineFactory::EngineType::kAdvancedLiteRTCompiledModel;
+    default:
+      return absl::InvalidArgumentError(
+          "Unknown engine mode, expected BASIC(0) or ADVANCED(1).");
+  }
+}
 
 void ThrowLiteRtLmJniException(JNIEnv* env, const std::string& message) {
   jclass exClass =
@@ -360,7 +435,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSetMinLogSeverity)(
 LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(
     JNIEnv* env, jclass thiz, jstring model_path, jstring backend,
     jstring vision_backend, jstring audio_backend, jint max_num_tokens,
-    jstring cache_dir, jboolean enable_benchmark, jstring npu_libraries_dir) {
+    jstring cache_dir, jboolean enable_benchmark, jstring npu_libraries_dir,
+    jint engine_mode) {
   const char* model_path_chars = env->GetStringUTFChars(model_path, nullptr);
   std::string model_path_str(model_path_chars);
   env->ReleaseStringUTFChars(model_path, model_path_chars);
@@ -470,10 +546,17 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(
     settings->GetMutableBenchmarkParams();
   }
 
-  auto engine = EngineFactory::CreateAny(*settings);
-  if (!engine.ok()) {
+  auto engine_type = EngineTypeFromJniMode(engine_mode);
+  if (!engine_type.ok()) {
     ThrowLiteRtLmJniException(
-        env, "Failed to create engine: " + engine.status().ToString());
+        env, "Failed to resolve engine mode: " + engine_type.status().ToString());
+    return 0;
+  }
+
+  auto engine = EngineFactory::Create(*engine_type, *settings);
+  if (!engine.ok()) {
+    ThrowLiteRtLmJniException(env, "Failed to create engine for requested mode: " +
+                                       engine.status().ToString());
     return 0;
   }
 
@@ -569,10 +652,32 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
   delete reinterpret_cast<Engine::Session*>(session_pointer);
 }
 
+LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCloneSession)(
+    JNIEnv* env, jclass thiz, jlong session_pointer) {
+  Engine::Session* session =
+      reinterpret_cast<Engine::Session*>(session_pointer);
+  if (session == nullptr) {
+    ThrowLiteRtLmJniException(env, "Session pointer is null.");
+    return 0;
+  }
+
+  auto cloned_session = session->Clone();
+  if (!cloned_session.ok()) {
+    ThrowLiteRtLmJniException(
+        env, "Failed to clone session: " + cloned_session.status().ToString());
+    return 0;
+  }
+
+  return reinterpret_cast<jlong>(cloned_session->release());
+}
+
 LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
     JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
+  const int64_t effective_op_id = NextNativeOpId();
+  ABSL_LOG(INFO) << "litertlm_op_start op_id=" << effective_op_id
+                 << " op=prefill session_id=" << session_pointer;
 
   std::vector<InputData> contents = GetNativeInputData(env, input_data);
   // return if there is pending exceptions (e.g., if ThrowLiteRtLmJniException
@@ -584,6 +689,8 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
   auto status = session->RunPrefill(contents);
 
   if (!status.ok()) {
+    LogCancelDiagnostic(status, effective_op_id, session_pointer,
+                        /*is_prefill=*/true, /*is_decode=*/false);
     ThrowLiteRtLmJniException(env,
                               "Failed to run prefill: " + status.ToString());
   }
@@ -593,10 +700,15 @@ LITERTLM_JNIEXPORT jstring JNICALL
 JNI_METHOD(nativeRunDecode)(JNIEnv* env, jclass thiz, jlong session_pointer) {
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
+  const int64_t effective_op_id = NextNativeOpId();
+  ABSL_LOG(INFO) << "litertlm_op_start op_id=" << effective_op_id
+                 << " op=decode session_id=" << session_pointer;
 
   auto responses = session->RunDecode();
 
   if (!responses.ok()) {
+    LogCancelDiagnostic(responses.status(), effective_op_id, session_pointer,
+                        /*is_prefill=*/false, /*is_decode=*/true);
     ThrowLiteRtLmJniException(
         env, "Failed to run decode: " + responses.status().ToString());
     return nullptr;
@@ -615,6 +727,9 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
     JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
+  const int64_t effective_op_id = NextNativeOpId();
+  ABSL_LOG(INFO) << "litertlm_op_start op_id=" << effective_op_id
+                 << " op=generate_content session_id=" << session_pointer;
 
   std::vector<InputData> contents = GetNativeInputData(env, input_data);
   // return if there is pending exceptions (e.g., if ThrowLiteRtLmJniException
@@ -626,6 +741,8 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
   auto responses = session->GenerateContent(contents);
 
   if (!responses.ok()) {
+    LogCancelDiagnostic(responses.status(), effective_op_id, session_pointer,
+                        /*is_prefill=*/false, /*is_decode=*/false);
     ThrowLiteRtLmJniException(
         env, "Failed to generate content: " + responses.status().ToString());
     return nullptr;
@@ -641,6 +758,12 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
 LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
     JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
     jobject callback) {
+  if (callback == nullptr) {
+    ThrowLiteRtLmJniException(
+        env, "nativeGenerateContentStream callback must not be null");
+    return;
+  }
+
   JavaVM* jvm = nullptr;
   if (env->GetJavaVM(&jvm) != JNI_OK) {
     ThrowLiteRtLmJniException(env, "Failed to get JavaVM");
@@ -649,6 +772,10 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
 
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
+  const int64_t effective_op_id = NextNativeOpId();
+  ABSL_LOG(INFO) << "litertlm_op_start op_id=" << effective_op_id
+                 << " op=generate_content_stream session_id="
+                 << session_pointer;
 
   std::vector<InputData> contents = GetNativeInputData(env, input_data);
   if (env->ExceptionCheck()) {
@@ -656,16 +783,44 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
   }
 
   jobject callback_global = env->NewGlobalRef(callback);
+  if (callback_global == nullptr) {
+    ThrowLiteRtLmJniException(
+        env,
+        "Failed to create global reference for nativeGenerateContentStream "
+        "callback");
+    return;
+  }
   jclass callback_class = env->GetObjectClass(callback_global);
+  if (callback_class == nullptr) {
+    env->DeleteGlobalRef(callback_global);
+    ThrowLiteRtLmJniException(
+        env, "Failed to resolve callback class in nativeGenerateContentStream");
+    return;
+  }
   jmethodID on_response_mid =
       env->GetMethodID(callback_class, "onNext", "(Ljava/lang/String;)V");
   jmethodID on_done_mid = env->GetMethodID(callback_class, "onDone", "()V");
   jmethodID on_error_mid =
       env->GetMethodID(callback_class, "onError", "(ILjava/lang/String;)V");
   env->DeleteLocalRef(callback_class);
+  if (on_response_mid == nullptr || on_done_mid == nullptr ||
+      on_error_mid == nullptr || env->ExceptionCheck()) {
+    env->DeleteGlobalRef(callback_global);
+    ThrowLiteRtLmJniException(
+        env,
+        "Callback methods (onNext/onDone/onError) are missing for "
+        "nativeGenerateContentStream");
+    return;
+  }
+
+  auto callback_closed = std::make_shared<std::atomic<bool>>(false);
 
   // This lambda is to clean up the global reference.
-  absl::AnyInvocable<void()> cleanup_callback_ref = [jvm, callback_global]() {
+  absl::AnyInvocable<void()> cleanup_callback_ref =
+      [jvm, callback_global, callback_closed]() {
+    if (callback_closed->exchange(true)) {
+      return;
+    }
     bool attached = false;
     JNIEnv* env = GetJniEnvAndAttach(jvm, &attached);
     if (env) {
@@ -676,11 +831,19 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
 
   absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback_fn =
       [jvm, callback_global, on_response_mid, on_done_mid, on_error_mid,
+       effective_op_id, session_pointer,
+       callback_closed,
        cleanup_callback_ref = std::move(cleanup_callback_ref)](
           absl::StatusOr<Responses> responses) mutable {
         bool attached = false;
         JNIEnv* env = GetJniEnvAndAttach(jvm, &attached);
         if (!env) return;
+        if (callback_closed->load()) {
+          if (attached && jvm->DetachCurrentThread() != JNI_OK) {
+            ABSL_LOG(ERROR) << "Failed to detach from JVM in callback_fn.";
+          }
+          return;
+        }
 
         if (responses.ok()) {
           if (responses->GetTaskState() == litert::lm::TaskState::kDone) {
@@ -702,6 +865,9 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
             env->DeleteLocalRef(response_jstr);
           }
         } else {
+          LogCancelDiagnostic(responses.status(), effective_op_id,
+                              session_pointer, /*is_prefill=*/false,
+                              /*is_decode=*/false);
           ABSL_LOG(WARNING)
               << "Receive callback OnError: " << responses.status();
           jstring message = NewStringStandardUTF(

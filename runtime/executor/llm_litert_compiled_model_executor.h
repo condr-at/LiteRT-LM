@@ -104,6 +104,17 @@ class LlmLiteRtCompiledModelExecutorBase : public LlmExecutor {
   // Sets the current step of the executor.
   absl::Status SetCurrentStep(int new_step) override;
 
+  absl::StatusOr<std::unique_ptr<LlmContext>> CloneContext() const override;
+  absl::Status RestoreContext(std::unique_ptr<LlmContext> llm_context) override;
+  absl::Status UpdateRuntimeConfig(const RuntimeConfig& runtime_config) override;
+  absl::StatusOr<RuntimeConfig> GetRuntimeConfig() const override;
+  absl::Status UpdateRuntimeState(const RuntimeState& runtime_state) override;
+  absl::StatusOr<RuntimeState> GetRuntimeState() const override;
+  absl::StatusOr<std::unique_ptr<LlmContext>> CreateNewContext(
+      std::optional<uint32_t> lora_id,
+      RuntimeConfig runtime_config) override;
+  absl::StatusOr<const ProcessedTokens*> GetProcessedTokens() const override;
+
   // Resets all of the internal states.
   absl::Status Reset() override;
 
@@ -195,6 +206,18 @@ class LlmLiteRtCompiledModelExecutorBase : public LlmExecutor {
       absl::flat_hash_map<absl::string_view /*input_name*/, TensorBuffer>&
           prefill_input_buffers,
       absl::Span<const int> ids, bool async);
+
+  // Adds runtime context to prefill failures for easier triage.
+  absl::Status AnnotatePrefillStatus(const absl::Status& status,
+                                     absl::string_view stage,
+                                     absl::string_view prefill_signature,
+                                     size_t ids_size, int prefill_length,
+                                     bool async) const;
+
+  // Best-effort recovery to keep executor state consistent after a prefill
+  // failure. This is important for CPU fallback after a failed GPU init.
+  void RecoverAfterPrefillFailure(int step_before_prefill,
+                                  absl::string_view stage);
 
   // Helper function of PrefillInternal to bind input/output tensors for prefill
   // and run prefill signature.

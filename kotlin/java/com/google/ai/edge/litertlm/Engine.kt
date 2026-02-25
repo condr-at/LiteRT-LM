@@ -74,6 +74,9 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
           engineConfig.cacheDir ?: "",
           @OptIn(ExperimentalApi::class) ExperimentalFlags.enableBenchmark,
           @OptIn(ExperimentalApi::class) ExperimentalFlags.npuLibrariesDir,
+          engineConfig.engineMode.nativeValue,
+          engineConfig.gpuActivationPrecision.name,
+          engineConfig.gpuCacheMode.name,
         )
     }
   }
@@ -148,7 +151,10 @@ class Engine(val engineConfig: EngineConfig) : AutoCloseable {
       checkInitialized()
 
       // Using !! is okay. Checked initialization already.
-      return Session(LiteRtLmJni.nativeCreateSession(handle!!, sessionConfig.samplerConfig))
+      return Session(
+        LiteRtLmJni.nativeCreateSession(handle!!, sessionConfig.samplerConfig),
+        engineConfig.engineMode,
+      )
     }
   }
 

@@ -17,14 +17,20 @@ package com.google.ai.edge.litertlm
 
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Manages the lifecycle of a LiteRT-LM session, providing an interface for interacting with the
  * native library.
  *
  * @param handle The pointer to the underlying native session object.
+ * @param engineMode The mode of the owning engine.
  */
-class Session(private val handle: Long) : AutoCloseable {
+class Session(private val handle: Long, private val engineMode: EngineMode) : AutoCloseable {
+  private companion object {
+    private val nextOpId = AtomicLong(1L)
+  }
+
   private val _isAlive = AtomicBoolean(true)
 
   /** Whether the session is alive and ready to be used, */
@@ -57,7 +63,9 @@ class Session(private val handle: Long) : AutoCloseable {
    */
   fun runPrefill(inputData: List<InputData>) {
     checkIsAlive()
-    return LiteRtLmJni.nativeRunPrefill(handle, inputData.toTypedArray())
+    val opId = nextOpId.getAndIncrement()
+    println("litertlm_op_start op_id=$opId op=prefill session_ptr=$handle")
+    return LiteRtLmJni.nativeRunPrefill(handle, inputData.toTypedArray(), opId)
   }
 
   /**
@@ -71,7 +79,9 @@ class Session(private val handle: Long) : AutoCloseable {
    */
   fun runDecode(): String {
     checkIsAlive()
-    return LiteRtLmJni.nativeRunDecode(handle)
+    val opId = nextOpId.getAndIncrement()
+    println("litertlm_op_start op_id=$opId op=decode session_ptr=$handle")
+    return LiteRtLmJni.nativeRunDecode(handle, opId)
   }
 
   /**
@@ -87,7 +97,9 @@ class Session(private val handle: Long) : AutoCloseable {
    */
   fun generateContent(inputData: List<InputData>): String {
     checkIsAlive()
-    return LiteRtLmJni.nativeGenerateContent(handle, inputData.toTypedArray())
+    val opId = nextOpId.getAndIncrement()
+    println("litertlm_op_start op_id=$opId op=generate_content session_ptr=$handle")
+    return LiteRtLmJni.nativeGenerateContent(handle, inputData.toTypedArray(), opId)
   }
 
   /**
@@ -101,8 +113,10 @@ class Session(private val handle: Long) : AutoCloseable {
    */
   fun generateContentStream(inputData: List<InputData>, responseCallback: ResponseCallback) {
     checkIsAlive()
+    val opId = nextOpId.getAndIncrement()
+    println("litertlm_op_start op_id=$opId op=generate_content_stream session_ptr=$handle")
     val jniCallback = JniInferenceCallbackImpl(responseCallback)
-    LiteRtLmJni.nativeGenerateContentStream(handle, inputData.toTypedArray(), jniCallback)
+    LiteRtLmJni.nativeGenerateContentStream(handle, inputData.toTypedArray(), opId, jniCallback)
   }
 
   private inner class JniInferenceCallbackImpl(private val callback: ResponseCallback) :
@@ -134,6 +148,21 @@ class Session(private val handle: Long) : AutoCloseable {
   fun cancelProcess() {
     checkIsAlive()
     LiteRtLmJni.nativeCancelProcess(handle)
+  }
+
+  /**
+   * Creates a clone of this session at its current state.
+   *
+   * @return A new [Session] with copied model state.
+   * @throws IllegalStateException if the session is not alive.
+   * @throws LiteRtLmJniException if cloning fails in native code.
+   */
+  fun clone(): Session {
+    checkIsAlive()
+    if (engineMode != EngineMode.ADVANCED) {
+      throw LiteRtLmJniException("Session.clone() requires EngineMode.ADVANCED")
+    }
+    return Session(LiteRtLmJni.nativeCloneSession(handle), engineMode)
   }
 
   /** Throws [IllegalStateException] if the session is not alive. */
