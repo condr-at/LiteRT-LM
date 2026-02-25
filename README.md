@@ -59,7 +59,7 @@ stack, and more flexibility. LiteRT-LM can help with all three.
         support it.
         [See more details here](./docs/api/cpp/conversation.md#multimodal-data-content)
     -   Kotlin API for Android and JVM (Linux, MacOS, Windows):
-        [Link to LiteRT-LM Kotlin API](./docs/api/kotlin.md)
+        [Link to LiteRT-LM Kotlin API](./docs/api/kotlin/getting_started.md)
     -   Conversation API:
         [Link to Conversation API](./docs/api/cpp/conversation.md)
     -   Function calling support: [Link to Tool Use](./docs/api/cpp/tool-use.md)

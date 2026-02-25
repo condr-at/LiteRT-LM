@@ -28,10 +28,10 @@ suspend fun main() {
 }
 ```
 
-![](./kotlin_demo.gif)
+![](demo.gif)
 
 To try out the above sample, clone the repo and run with
-[example/Main.kt](./java/com/google/ai/edge/litertlm/example/Main.kt):
+[example/Main.kt](../../../kotlin/java/com/google/ai/edge/litertlm/example/Main.kt):
 
 ```bazel
 bazel run -c opt //kotlin/java/com/google/ai/edge/litertlm/example:main -- <abs_model_path>
@@ -437,7 +437,7 @@ if (responseMessage.toolCalls.isNotEmpty()) {
 #### Example
 
 To try out tool use, clone the repo and run with
-[example/ToolMain.kt](./java/com/google/ai/edge/litertlm/example/ToolMain.kt):
+[example/ToolMain.kt](../../../kotlin/java/com/google/ai/edge/litertlm/example/ToolMain.kt):
 
 ```bazel
 bazel run -c opt //kotlin/java/com/google/ai/edge/litertlm/example:tool -- <abs_model_path>

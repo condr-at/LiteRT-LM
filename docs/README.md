@@ -23,7 +23,7 @@ Here you will find detailed information about the LiteRT-LM APIs.
     *   [Tool Use](./api/cpp/tool-use.md)
     *   [Advanced: ANTLR for Tool Use](./api/cpp/tool-use-antlr.md)
 *   **Kotlin API**
-    *   [Kotlin API](./api/kotlin.md)
+    *   [Kotlin API](./api/kotlin/getting_started.md)
 
 ## Reporting Issues
 
