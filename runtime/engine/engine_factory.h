@@ -64,6 +64,8 @@ class EngineFactory {
   // Returns the string representation of the engine type.
   static std::string EngineTypeToString(EngineType engine_type) {
     switch (engine_type) {
+      case EngineType::kAdvancedLiteRTCompiledModel:
+        return "kAdvancedLiteRTCompiledModel";
       case EngineType::kLiteRTCompiledModel:
         return "kLiteRTCompiledModel";
       default:
@@ -102,8 +104,8 @@ class EngineFactory {
     auto& instance = Instance();
     auto it = instance.registry_.find(engine_type);
     if (it == instance.registry_.end()) {
-      return absl::NotFoundError(
-          absl::StrCat("Engine type not found: ", engine_type));
+      return absl::NotFoundError(absl::StrCat(
+          "Engine type not found: ", EngineTypeToString(engine_type)));
     }
     return it->second(std::move(settings), input_prompt_as_hint);
   };

@@ -21,6 +21,7 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/executor/llm_executor_io_types.h"
+#include "runtime/executor/llm_executor_processed_tokens.h"
 #include "runtime/executor/llm_executor_settings.h"
 
 namespace litert::lm {
@@ -106,6 +107,63 @@ class LlmExecutorBase {
         absl::StrCat("SetCurrentStep not implemented for backend: ",
                      ExecutorBackendName()));
   };
+
+  // Clones the current context from executor.
+  virtual absl::StatusOr<std::unique_ptr<LlmContext>> CloneContext() const {
+    return absl::UnimplementedError(absl::StrCat(
+        "CloneContext not implemented for backend: ", ExecutorBackendName()));
+  }
+
+  // Restores context into executor.
+  virtual absl::Status RestoreContext(std::unique_ptr<LlmContext> llm_context) {
+    return absl::UnimplementedError(absl::StrCat(
+        "RestoreContext not implemented for backend: ", ExecutorBackendName()));
+  }
+
+  virtual absl::Status UpdateRuntimeConfig(
+      const RuntimeConfig& runtime_config) {
+    return absl::UnimplementedError(
+        absl::StrCat("UpdateRuntimeConfig not implemented for backend: ",
+                     ExecutorBackendName()));
+  }
+
+  virtual absl::StatusOr<RuntimeConfig> GetRuntimeConfig() const {
+    return absl::UnimplementedError(
+        absl::StrCat("GetRuntimeConfig not implemented for backend: ",
+                     ExecutorBackendName()));
+  }
+
+  virtual absl::Status UpdateRuntimeState(const RuntimeState& runtime_state) {
+    return absl::UnimplementedError(
+        absl::StrCat("UpdateRuntimeState not implemented for backend: ",
+                     ExecutorBackendName()));
+  }
+
+  virtual absl::StatusOr<RuntimeState> GetRuntimeState() const {
+    return absl::UnimplementedError(
+        absl::StrCat("GetRuntimeState not implemented for backend: ",
+                     ExecutorBackendName()));
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<LlmContext>> CreateNewContext(
+      std::optional<uint32_t> lora_id, RuntimeConfig runtime_config) {
+    return absl::UnimplementedError(
+        absl::StrCat("CreateNewContext not implemented for backend: ",
+                     ExecutorBackendName()));
+  }
+
+  virtual absl::StatusOr<const ProcessedTokens*> GetProcessedTokens() const {
+    return absl::UnimplementedError(
+        absl::StrCat("GetProcessedTokens not implemented for backend: ",
+                     ExecutorBackendName()));
+  }
+
+  virtual absl::Status LoadLoRA(uint32_t lora_id,
+                                const ModelAssets& model_assets) {
+    return absl::UnimplementedError(
+        absl::StrCat("LoadLoRA not implemented for backend: ",
+                     ExecutorBackendName()));
+  }
 
   // Gets the executor settings of the executor.
   virtual absl::StatusOr<LlmExecutorSettings> GetExecutorSettings() const {

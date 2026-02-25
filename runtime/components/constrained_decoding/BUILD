@@ -320,7 +320,10 @@ cc_test(
 
 cc_library(
     name = "constraint_provider_factory",
-    srcs = ["constraint_provider_factory.cc"],
+    srcs = select({
+        "@platforms//os:android": ["constraint_provider_factory_no_llg.cc"],
+        "//conditions:default": ["constraint_provider_factory.cc"],
+    }),
     hdrs = ["constraint_provider_factory.h"],
     deps = [
         ":constraint_provider",
@@ -328,11 +331,13 @@ cc_library(
         ":external_constraint_config",
         ":external_constraint_provider",
         ":llg_constraint_config",
-        ":llg_constraint_provider",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "//runtime/components:tokenizer",
-    ],
+    ] + select({
+        "@platforms//os:android": [],
+        "//conditions:default": [":llg_constraint_provider"],
+    }),
 )
 
 cc_test(
