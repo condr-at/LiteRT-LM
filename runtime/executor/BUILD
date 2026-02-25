@@ -903,3 +903,26 @@ cc_test(
         "//runtime/util:test_utils",  # buildcleaner: keep
     ],
 )
+
+cc_library(
+    name = "kv_cache_interface",
+    hdrs = ["kv_cache_interface.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "llm_executor_interface",
+    hdrs = ["llm_executor_interface.h"],
+    deps = [
+        ":executor_settings_base",
+        ":kv_cache_interface",
+        ":llm_executor_io_types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@litert//litert/cc:litert_tensor_buffer",
+    ],
+)
