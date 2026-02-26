@@ -594,11 +594,7 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(
     settings->GetMutableBenchmarkParams();
   }
 
-  const char* gpu_activation_precision_chars =
-      env->GetStringUTFChars(gpu_activation_precision, nullptr);
-  std::string gpu_activation_precision_str(gpu_activation_precision_chars);
-  env->ReleaseStringUTFChars(gpu_activation_precision,
-                             gpu_activation_precision_chars);
+  std::string gpu_activation_precision_str = "DEFAULT";
   if (gpu_activation_precision_str == "FP32") {
     settings->GetMutableMainExecutorSettings().SetActivationDataType(
         ActivationDataType::FLOAT32);
@@ -611,10 +607,7 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCreateEngine)(
     return 0;
   }
 
-  const char* gpu_cache_mode_chars =
-      env->GetStringUTFChars(gpu_cache_mode, nullptr);
-  std::string gpu_cache_mode_str(gpu_cache_mode_chars);
-  env->ReleaseStringUTFChars(gpu_cache_mode, gpu_cache_mode_chars);
+  std::string gpu_cache_mode_str = "DEFAULT";
   if (gpu_cache_mode_str == "NOCACHE") {
     settings->GetMutableMainExecutorSettings().SetCacheDir(":nocache");
     if (vision_backend_optional.has_value()) {
@@ -756,11 +749,10 @@ LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCloneSession)(
 }
 
 LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
-    JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
-    jlong op_id) {
+    JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
-  const int64_t effective_op_id = op_id > 0 ? op_id : NextNativeOpId();
+  const int64_t effective_op_id = NextNativeOpId();
   ABSL_LOG(INFO) << "litertlm_op_start op_id=" << effective_op_id
                  << " op=prefill session_id=" << session_pointer;
 
@@ -782,11 +774,10 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
 }
 
 LITERTLM_JNIEXPORT jstring JNICALL
-JNI_METHOD(nativeRunDecode)(JNIEnv* env, jclass thiz, jlong session_pointer,
-                            jlong op_id) {
+JNI_METHOD(nativeRunDecode)(JNIEnv* env, jclass thiz, jlong session_pointer) {
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
-  const int64_t effective_op_id = op_id > 0 ? op_id : NextNativeOpId();
+  const int64_t effective_op_id = NextNativeOpId();
   ABSL_LOG(INFO) << "litertlm_op_start op_id=" << effective_op_id
                  << " op=decode session_id=" << session_pointer;
 
@@ -810,11 +801,10 @@ JNI_METHOD(nativeRunDecode)(JNIEnv* env, jclass thiz, jlong session_pointer,
 }
 
 LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
-    JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
-    jlong op_id) {
+    JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
-  const int64_t effective_op_id = op_id > 0 ? op_id : NextNativeOpId();
+  const int64_t effective_op_id = NextNativeOpId();
   ABSL_LOG(INFO) << "litertlm_op_start op_id=" << effective_op_id
                  << " op=generate_content session_id=" << session_pointer;
 
@@ -844,7 +834,7 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeGenerateContent)(
 
 LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
     JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data,
-    jlong op_id, jobject callback) {
+    jobject callback) {
   if (callback == nullptr) {
     ThrowLiteRtLmJniException(
         env, "nativeGenerateContentStream callback must not be null");
@@ -859,7 +849,7 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeGenerateContentStream)(
 
   Engine::Session* session =
       reinterpret_cast<Engine::Session*>(session_pointer);
-  const int64_t effective_op_id = op_id > 0 ? op_id : NextNativeOpId();
+  const int64_t effective_op_id = NextNativeOpId();
   ABSL_LOG(INFO) << "litertlm_op_start op_id=" << effective_op_id
                  << " op=generate_content_stream session_id="
                  << session_pointer;
