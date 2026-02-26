@@ -183,9 +183,7 @@ TEST_F(ExecutionManagerTest, AddPrefillTask) {
 
   EXPECT_OK(execution_manager_->WaitUntilDone(task_id, absl::Seconds(3)));
 
-  EXPECT_THAT(task_states,
-              ElementsAre(TaskState::kCreated, TaskState::kQueued,
-                          TaskState::kProcessing, TaskState::kDone));
+  EXPECT_THAT(task_states, ElementsAre(TaskState::kCreated, TaskState::kDone));
 }
 
 TEST_F(ExecutionManagerTest, AddPrefillTaskInvalidAudioInput) {
@@ -226,8 +224,7 @@ TEST_F(ExecutionManagerTest, AddPrefillTaskInvalidAudioInput) {
   EXPECT_OK(execution_manager_->WaitUntilDone(task_id, absl::Seconds(3)));
 
   EXPECT_THAT(task_states,
-              ElementsAre(TaskState::kCreated, TaskState::kQueued,
-                          TaskState::kProcessing, TaskState::kFailed));
+              ElementsAre(TaskState::kCreated, TaskState::kFailed));
 }
 
 TEST_F(ExecutionManagerTest, AddPrefillTaskInvalidImageInput) {
@@ -270,8 +267,7 @@ TEST_F(ExecutionManagerTest, AddPrefillTaskInvalidImageInput) {
   EXPECT_OK(execution_manager_->WaitUntilDone(task_id, absl::Seconds(3)));
 
   EXPECT_THAT(task_states,
-              ElementsAre(TaskState::kCreated, TaskState::kQueued,
-                          TaskState::kProcessing, TaskState::kFailed));
+              ElementsAre(TaskState::kCreated, TaskState::kFailed));
 }
 
 TEST_F(ExecutionManagerTest, AddDecodeTaskWithInternalSampler) {
@@ -321,9 +317,7 @@ TEST_F(ExecutionManagerTest, AddDecodeTaskWithInternalSampler) {
       execution_manager_->WaitUntilDone(decode_task_id, absl::Seconds(3)));
 
   EXPECT_THAT(task_states,
-              ElementsAre(TaskState::kCreated, TaskState::kQueued,
-                          TaskState::kProcessing, TaskState::kProcessing,
-                          TaskState::kProcessing, TaskState::kDone));
+              ElementsAre(TaskState::kCreated, TaskState::kDone));
 
   EXPECT_THAT(responses_texts, ElementsAre("4", "5"));
 }
@@ -381,9 +375,7 @@ TEST_F(ExecutionManagerTest, AddDecodeTaskWithExternalSampler) {
       execution_manager_->WaitUntilDone(decode_task_id, absl::Seconds(3)));
 
   EXPECT_THAT(task_states,
-              ElementsAre(TaskState::kCreated, TaskState::kQueued,
-                          TaskState::kProcessing, TaskState::kProcessing,
-                          TaskState::kProcessing, TaskState::kDone));
+              ElementsAre(TaskState::kCreated, TaskState::kDone));
 
   EXPECT_THAT(responses_texts, ElementsAre("4", "5"));
 }
@@ -811,10 +803,7 @@ TEST_F(ExecutionManagerTest, AddTextScoringTask) {
   EXPECT_OK(
       execution_manager_->WaitUntilDone(scoring_task_id, absl::Seconds(3)));
 
-  EXPECT_THAT(task_states,
-              ElementsAre(TaskState::kCreated, TaskState::kQueued,
-                          TaskState::kProcessing, TaskState::kDone));
-
+  EXPECT_THAT(task_states, ElementsAre(TaskState::kCreated, TaskState::kDone));
   // The FakeLlmExecutor is set up to expect tokens 4, 5, 6.
   // The target text "45" corresponds to tokens 4, 5.
   // The fake executor will produce logits that give prob 1 to the next
@@ -823,6 +812,40 @@ TEST_F(ExecutionManagerTest, AddTextScoringTask) {
   // log-prob is 0. Total score is 0.
   ASSERT_EQ(scores.size(), 1);
   EXPECT_FLOAT_EQ(scores[0], 0.0f);
+}
+
+TEST_F(ExecutionManagerTest, AddPrefillTaskTerminalCallbackDeliveredExactlyOnce) {
+  CreateExecutionManager(CreateDefaultFakeLlmExecutor());
+  ASSERT_OK_AND_ASSIGN(auto session_config, CreateDefaultSessionConfig());
+  ASSERT_OK_AND_ASSIGN(const SessionId session_id,
+                       execution_manager_->RegisterNewSession(session_config));
+
+  int callback_count = 0;
+  int terminal_count = 0;
+  absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback =
+      [&callback_count, &terminal_count](absl::StatusOr<Responses> responses) {
+        ++callback_count;
+        ASSERT_OK(responses);
+        if (IsTaskEndState(responses->GetTaskState())) {
+          ++terminal_count;
+        }
+      };
+
+  std::vector<InputData> inputs;
+  ASSERT_OK_AND_ASSIGN(auto input_text,
+                       tokenizer_->TokenIdsToTensorBuffer({1, 2, 3}));
+  inputs.push_back(InputText(std::move(input_text)));
+
+  ASSERT_OK_AND_ASSIGN(const TaskId task_id,
+                       execution_manager_->GetNewTaskId());
+
+  ASSERT_OK(execution_manager_->AddPrefillTask(
+      session_id, task_id, std::move(inputs), {},
+      std::make_shared<std::atomic<bool>>(false), std::move(callback)));
+
+  EXPECT_OK(execution_manager_->WaitUntilDone(task_id, absl::Seconds(3)));
+  EXPECT_EQ(terminal_count, 1);
+  EXPECT_GE(callback_count, 1);
 }
 
 }  // namespace
