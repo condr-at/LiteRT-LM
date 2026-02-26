@@ -33,6 +33,7 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
+#include "absl/synchronization/notification.h"  // from @com_google_absl
 #include "runtime/components/tokenizer.h"
 #include "runtime/core/session_utils.h"
 #include "runtime/engine/engine.h"
@@ -483,18 +484,20 @@ absl::StatusOr<BenchmarkInfo*> SessionAdvanced::GetMutableBenchmarkInfo() {
 }
 
 absl::StatusOr<std::unique_ptr<Engine::Session>> SessionAdvanced::Clone() {
-  absl::Status status = absl::OkStatus();
-  std::unique_ptr<Engine::Session> session;
-  {
-    absl::MutexLock lock(mutex_);
-    ASSIGN_OR_RETURN(session,
-                     CloneAsyncLocked([&status](
-                                        absl::StatusOr<Responses> responses) {
-                       status = responses.status();
-                     }));
-  }
+  auto status = std::make_shared<absl::Status>(absl::OkStatus());
+  auto callback_done = std::make_shared<absl::Notification>();
+  ASSIGN_OR_RETURN(auto session,
+                   CloneAsync([status, callback_done](
+                                  absl::StatusOr<Responses> responses) {
+                     *status = responses.status();
+                     callback_done->Notify();
+                   }));
   RETURN_IF_ERROR(WaitUntilDone());
-  RETURN_IF_ERROR(status);
+  if (!callback_done->WaitForNotificationWithTimeout(Engine::kDefaultTimeout)) {
+    return absl::DeadlineExceededError(
+        "Timed out waiting for clone callback completion.");
+  }
+  RETURN_IF_ERROR(*status);
   return session;
 }
 
