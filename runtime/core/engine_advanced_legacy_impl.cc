@@ -327,37 +327,18 @@ absl::StatusOr<std::unique_ptr<Engine>> EngineAdvancedLegacyImpl::Create(
 
   std::unique_ptr<VisionExecutorSettings> vision_executor_settings_ptr;
   if (engine_settings.GetVisionExecutorSettings().has_value()) {
-    ASSIGN_OR_RETURN(
-        auto vision_executor_settings,
-        VisionExecutorSettings::CreateDefault(
-            engine_settings.GetMainExecutorSettings().GetModelAssets(),
-            /*encoder_backend=*/
-            engine_settings.GetVisionExecutorSettings()->GetBackend(),
-            /*adapter_backend=*/Backend::CPU));
-    if (engine_settings.GetVisionExecutorSettings()
-            ->GetLegacyVisionExecutorSettings()
-            .has_value()) {
-      vision_executor_settings.SetLegacyVisionExecutorSettings(
-          engine_settings.GetVisionExecutorSettings()
-              ->GetLegacyVisionExecutorSettings()
-              .value());
-    }
     vision_executor_settings_ptr = std::make_unique<VisionExecutorSettings>(
-        std::move(vision_executor_settings));
+        std::move(engine_settings.GetVisionExecutorSettings().value()));
+    if (vision_executor_settings_ptr->GetAdapterBackend() != Backend::CPU) {
+      ABSL_LOG(WARNING) << "Vision adapter backend is not CPU, which may cause "
+                           "precision loss.";
+    }
   }
 
   std::unique_ptr<AudioExecutorSettings> audio_executor_settings_ptr;
   if (engine_settings.GetAudioExecutorSettings().has_value()) {
-    const auto audio_backend =
-        engine_settings.GetAudioExecutorSettings()->GetBackend();
-    ASSIGN_OR_RETURN(
-        auto audio_executor_settings,
-        AudioExecutorSettings::CreateDefault(
-            engine_settings.GetMainExecutorSettings().GetModelAssets(),
-            engine_settings.GetMainExecutorSettings().GetMaxNumTokens(),
-            audio_backend));
     audio_executor_settings_ptr = std::make_unique<AudioExecutorSettings>(
-        std::move(audio_executor_settings));
+        std::move(engine_settings.GetAudioExecutorSettings().value()));
   }
 
   if (benchmark_info.has_value()) {
