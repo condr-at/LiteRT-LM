@@ -257,6 +257,9 @@ class ExecutionManager {
       : tokenizer_(std::move(tokenizer)),
         resource_manager_(std::move(resource_manager)),
         litert_env_(litert_env) {
+    // Keep task execution single-threaded. Clone/context-switch logic in
+    // ResourceManager reads runtime state from current executor state and
+    // depends on deterministic sequencing.
     execution_thread_pool_ =
         std::make_unique<ThreadPool>(/*name_prefix=*/"execution_thread_pool",
                                      /*max_num_threads=*/1);
@@ -319,6 +322,11 @@ class ExecutionManager {
       TaskId task_id, absl::StatusOr<Responses> responses,
       absl::AnyInvocable<void(absl::StatusOr<Responses>)> absl_nonnull callback)
       ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
+
+  // Dispatches callback on callback thread pool.
+  void DispatchCallback(
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+      absl::StatusOr<Responses> responses);
 
   // Returns all following tasks that are waiting.
   // - task_id: The task ID of the task.
