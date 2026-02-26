@@ -320,6 +320,11 @@ class ExecutionManager {
       absl::AnyInvocable<void(absl::StatusOr<Responses>)> absl_nonnull callback)
       ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
 
+  // Moves task callback out of task lookup for terminal propagation in early
+  // start failures.
+  absl::AnyInvocable<void(absl::StatusOr<Responses>)> TakeTaskCallback(
+      TaskId task_id) ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
+
   // Returns all following tasks that are waiting.
   // - task_id: The task ID of the task.
   // Returns:

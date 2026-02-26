@@ -436,6 +436,15 @@ void ExecutionManager::FinishTaskAndLogErrors(
   }
 }
 
+absl::AnyInvocable<void(absl::StatusOr<Responses>)>
+ExecutionManager::TakeTaskCallback(TaskId task_id) {
+  absl::MutexLock lock(session_and_task_lookup_mutex_);
+  if (!task_lookup_.contains(task_id)) {
+    return {};
+  }
+  return std::move(task_lookup_.at(task_id).callback);
+}
+
 absl::StatusOr<absl::flat_hash_set<TaskId>>
 ExecutionManager::FollowingWaitingTasks(TaskId task_id) {
   absl::flat_hash_set<TaskId> following_waiting_tasks;
@@ -666,7 +675,7 @@ absl::Status ExecutionManager::AddPrefillTask(
     auto task_info = StartTask(task_id);
     if (!task_info.ok()) {
       FinishTaskAndLogErrors(task_id, task_info.status(),
-                             [](absl::StatusOr<Responses> responses) {});
+                             TakeTaskCallback(task_id));
       return;
     }
     auto [session_info, cancelled, callback] = std::move(task_info.value());
@@ -754,7 +763,7 @@ absl::Status ExecutionManager::AddDecodeTask(
     auto task_info = StartTask(task_id);
     if (!task_info.ok()) {
       FinishTaskAndLogErrors(task_id, task_info.status(),
-                             [](absl::StatusOr<Responses> responses) {});
+                             TakeTaskCallback(task_id));
       return;
     }
     auto [session_info, cancelled, callback] = std::move(task_info.value());
@@ -828,7 +837,7 @@ absl::Status ExecutionManager::AddCloneSessionTask(
     auto task_info = StartTask(task_id);
     if (!task_info.ok()) {
       FinishTaskAndLogErrors(task_id, task_info.status(),
-                             [](absl::StatusOr<Responses> responses) {});
+                             TakeTaskCallback(task_id));
       return;
     }
     auto [session_info, cancelled, callback] = std::move(task_info.value());
@@ -933,7 +942,7 @@ absl::Status ExecutionManager::AddTextScoringTask(
     auto task_info = StartTask(task_id);
     if (!task_info.ok()) {
       FinishTaskAndLogErrors(task_id, task_info.status(),
-                             [](absl::StatusOr<Responses> responses) {});
+                             TakeTaskCallback(task_id));
       return;
     }
     auto [session_info, cancelled, callback] = std::move(task_info.value());
