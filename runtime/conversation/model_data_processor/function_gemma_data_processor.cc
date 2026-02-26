@@ -29,7 +29,9 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/components/constrained_decoding/constraint.h"
+#if !defined(LITERT_LM_GEMMA_CONSTRAINT_DISABLED)
 #include "runtime/components/constrained_decoding/gemma_model_constraint_provider.h"
+#endif
 #include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/components/tool_use/fc_tool_format_utils.h"
@@ -181,6 +183,13 @@ FunctionGemmaDataProcessor::Create(
     const Tokenizer* tokenizer,
     const std::vector<std::vector<int>>& stop_token_ids,
     bool enable_constrained_decoding) {
+#if defined(LITERT_LM_GEMMA_CONSTRAINT_DISABLED)
+  if (enable_constrained_decoding) {
+    return absl::FailedPreconditionError(
+        "Constrained decoding was disabled at build time.");
+  }
+  return absl::WrapUnique(new FunctionGemmaDataProcessor(config, preface));
+#else
   std::unique_ptr<LiteRtLmGemmaModelConstraintProvider,
                   decltype(&LiteRtLmGemmaModelConstraintProvider_Destroy)>
       constraint_provider(nullptr,
@@ -216,6 +225,7 @@ FunctionGemmaDataProcessor::Create(
   }
   return absl::WrapUnique(new FunctionGemmaDataProcessor(
       std::move(constraint_provider), config, preface));
+#endif
 }
 
 absl::StatusOr<nlohmann::ordered_json>
@@ -338,6 +348,11 @@ absl::StatusOr<nlohmann::ordered_json> FunctionGemmaDataProcessor::FormatTools(
 absl::StatusOr<std::unique_ptr<Constraint>>
 FunctionGemmaDataProcessor::CreateConstraint(
     const nlohmann::ordered_json& tools) const {
+#if defined(LITERT_LM_GEMMA_CONSTRAINT_DISABLED)
+  return absl::FailedPreconditionError(
+      "Constrained decoding is disabled at build time, but it was requested "
+      "for inference.");
+#else
   if (constraint_provider_c_ == nullptr) {
     return nullptr;
   }
@@ -378,6 +393,7 @@ FunctionGemmaDataProcessor::CreateConstraint(
     return absl::InternalError("Failed to create constraint with tools.");
   }
   return absl::WrapUnique(reinterpret_cast<Constraint*>(constraint));
+#endif
 }
 
 absl::string_view FunctionGemmaDataProcessor::CodeFenceStart() const {
