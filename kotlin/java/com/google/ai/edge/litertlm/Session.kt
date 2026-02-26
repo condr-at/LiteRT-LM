@@ -64,7 +64,6 @@ class Session(private val handle: Long, private val engineMode: EngineMode) : Au
   fun runPrefill(inputData: List<InputData>) {
     checkIsAlive()
     val opId = nextOpId.getAndIncrement()
-    println("litertlm_op_start op_id=$opId op=prefill session_ptr=$handle")
     return LiteRtLmJni.nativeRunPrefill(handle, inputData.toTypedArray(), opId)
   }
 
@@ -80,7 +79,6 @@ class Session(private val handle: Long, private val engineMode: EngineMode) : Au
   fun runDecode(): String {
     checkIsAlive()
     val opId = nextOpId.getAndIncrement()
-    println("litertlm_op_start op_id=$opId op=decode session_ptr=$handle")
     return LiteRtLmJni.nativeRunDecode(handle, opId)
   }
 
@@ -98,7 +96,6 @@ class Session(private val handle: Long, private val engineMode: EngineMode) : Au
   fun generateContent(inputData: List<InputData>): String {
     checkIsAlive()
     val opId = nextOpId.getAndIncrement()
-    println("litertlm_op_start op_id=$opId op=generate_content session_ptr=$handle")
     return LiteRtLmJni.nativeGenerateContent(handle, inputData.toTypedArray(), opId)
   }
 
@@ -114,7 +111,6 @@ class Session(private val handle: Long, private val engineMode: EngineMode) : Au
   fun generateContentStream(inputData: List<InputData>, responseCallback: ResponseCallback) {
     checkIsAlive()
     val opId = nextOpId.getAndIncrement()
-    println("litertlm_op_start op_id=$opId op=generate_content_stream session_ptr=$handle")
     val jniCallback = JniInferenceCallbackImpl(responseCallback)
     LiteRtLmJni.nativeGenerateContentStream(handle, inputData.toTypedArray(), opId, jniCallback)
   }

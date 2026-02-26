@@ -218,7 +218,7 @@ class LockedLlmExecutor : public LlmExecutor {
     }
     ASSIGN_OR_RETURN(const ProcessedTokens* processed_tokens,
                      llm_executor_->GetProcessedTokens());
-    // clone35: Clamp current_step to token_count to prevent
+    // Clamp current_step to token_count to prevent
     // "New step cannot be greater than the max step" when a context switch
     // has restored a context with fewer tokens than the previous session's
     // current_step. This is a safe no-op when current_step <= token_count.
@@ -250,7 +250,7 @@ class LockedLlmExecutor : public LlmExecutor {
     // the input_ids and current_step by removing the matching tokens.
     RETURN_IF_ERROR(RemoveMatchingTokens(processed_tokens->GetCopyOfTokens()[0],
                                          &input_ids_vec, &current_step));
-    // clone35: Re-clamp after RemoveMatchingTokens in case it moved
+    // Re-clamp after RemoveMatchingTokens in case it moved
     // current_step beyond token_count.
     if (current_step > token_count) {
       ABSL_LOG(WARNING)
