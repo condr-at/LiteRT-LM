@@ -17,7 +17,7 @@ It reads the file's header, system metadata, and section information, and prints
 them to the console.
 
 Example usage:
-  bazel run  third_party/odml/litert_lm/schema/py:litertlm_peek_main -- \
+  bazel run  schema/py:litertlm_peek_main -- \
   --litertlm_file=<path/to/your/file.litertlm>
 """
 

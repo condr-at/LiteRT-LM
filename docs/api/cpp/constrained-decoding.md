@@ -19,7 +19,7 @@ To use constrained decoding, you must enable it in the `ConversationConfig` when
 creating your `Conversation` instance.
 
 ```cpp
-#include "third_party/odml/litert_lm/runtime/conversation/conversation.h"
+#include "runtime/conversation/conversation.h"
 
 // ...
 
@@ -60,7 +60,7 @@ LLGuidance constraints can be specified as Regex, JSON Schema, or Lark grammars.
 Constrain the output to match a regular expression.
 
 ```cpp
-#include "third_party/odml/litert_lm/runtime/components/constrained_decoding/llg_constraint_config.h"
+#include "runtime/components/constrained_decoding/llg_constraint_config.h"
 
 // ...
 

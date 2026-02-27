@@ -18,7 +18,7 @@ There are two ways to use this tool:
 1. Building the file by specifying the components as CLI arguments:
 
 ```
-bazel run //third_party/odml/litert_lm/schema/py:litertlm_builder_cli -- \
+bazel run //schema/py:litertlm_builder_cli -- \
   system_metadata --str Authors "ODML team" \
   llm_metadata --path llm.pb \
   tflite_model --path embedder.tflite --model_type embedder  --str_metadata model_version "1.0.1" \
@@ -69,7 +69,7 @@ additional_metadata = [
 ```
 
 ```
-bazel run //third_party/odml/litert_lm/schema/py:litertlm_builder_cli -- \
+bazel run //schema/py:litertlm_builder_cli -- \
   toml --path example.toml output --path output.litertlm
 ```
 
