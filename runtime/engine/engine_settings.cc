@@ -196,6 +196,14 @@ absl::Status EngineSettings::MaybeUpdateAndValidate(
     main_executor_settings_.SetMaxNumTokens(max_num_tokens);
   }
 
+  // By default, the audio executor is configured to use the same max num
+  // tokens as the main executor.
+  if (audio_executor_settings_.has_value() &&
+      audio_executor_settings_->GetMaxSequenceLength() == 0) {
+    audio_executor_settings_->SetMaxSequenceLength(
+        main_executor_settings_.GetMaxNumTokens());
+  }
+
   if (num_prompt_tokens > 0) {
     AdvancedSettings advanced_settings;
     if (main_executor_settings_.GetAdvancedSettings()) {
