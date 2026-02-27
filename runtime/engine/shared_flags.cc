@@ -140,3 +140,5 @@ ABSL_FLAG(bool, cache_compiled_shaders_only, false,
           "depending on backend) will be cached.");
 ABSL_FLAG(std::string, constraint_regex, "",
           "Regular expression to constrain the output generation.");
+ABSL_FLAG(bool, use_submodel, false,
+          "Whether the submodel should be used if available.");

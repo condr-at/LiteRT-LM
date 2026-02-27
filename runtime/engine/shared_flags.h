@@ -64,5 +64,6 @@ ABSL_DECLARE_FLAG(bool, sampler_handles_input);
 ABSL_DECLARE_FLAG(std::string, conv_type);
 ABSL_DECLARE_FLAG(bool, cache_compiled_shaders_only);
 ABSL_DECLARE_FLAG(std::string, constraint_regex);
+ABSL_DECLARE_FLAG(bool, use_submodel);
 
 #endif  // THIRD_PARTY_ODML_LITERT_LM_RUNTIME_ENGINE_SHARED_FLAGS_H_

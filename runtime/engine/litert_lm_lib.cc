@@ -197,6 +197,11 @@ absl::StatusOr<EngineSettings> CreateEngineSettings(
   if (backend == Backend::GPU_ARTISAN) {
     auto& executor_settings = engine_settings.GetMutableMainExecutorSettings();
     executor_settings.SetMaxNumImages(settings.max_num_images);
+    ASSIGN_OR_RETURN(
+        auto gpu_artisan_settings,
+        executor_settings.MutableBackendConfig<litert::lm::GpuArtisanConfig>());
+    gpu_artisan_settings.use_submodel = settings.use_submodel;
+    executor_settings.SetBackendConfig(gpu_artisan_settings);
   }
   const std::optional<Backend> sampler_backend = GetSamplerBackend(settings);
   if (sampler_backend.has_value()) {

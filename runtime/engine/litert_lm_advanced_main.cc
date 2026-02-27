@@ -224,6 +224,7 @@ absl::Status MainHelper(int argc, char** argv) {
       absl::GetFlag(FLAGS_conv_type) == "int8" ? litert::lm::ConvType::kInt8 :
       litert::lm::ConvType::kAuto;
   settings.constraint_regex = absl::GetFlag(FLAGS_constraint_regex);
+  settings.use_submodel = absl::GetFlag(FLAGS_use_submodel);
 
   // Adjust max_num_tokens and prefill_batch_size if not set on benchmark mode.
   if (settings.benchmark && settings.benchmark_prefill_tokens > 0) {

@@ -112,6 +112,7 @@ struct LiteRtLmSettings {
   ConvType conv_type = ConvType::kAuto;
   bool cache_compiled_shaders_only = false;
   std::string constraint_regex = "";
+  bool use_submodel = false;
 };
 
 struct LitertLmMetrics {
