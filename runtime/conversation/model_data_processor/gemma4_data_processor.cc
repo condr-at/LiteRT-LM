@@ -368,6 +368,7 @@ Gemma4DataProcessor::ToInputDataVectorImpl(
                                image_file->length())),
                            image_params));
       input_data.emplace_back(InputImage(std::move(preprocessed_image)));
+      input_data.emplace_back(InputImageEnd());
     } else if (IsAudio(part)) {
       input_data.emplace_back(
           InputText(absl::StrCat(text_part, config_.boa_token)));
