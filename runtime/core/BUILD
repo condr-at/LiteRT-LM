@@ -32,8 +32,11 @@ package_group(
     packages = [
         # for ":engine_impl_selected".
         "//runtime/engine",
+        "//kotlin/java/com/google/ai/edge/litertlm/jni",
+        "//third_party/odml/litert_lm/js/packages/core/src/cpp",
         # for e2e tests.
         "//runtime/e2e_tests/...",
+        "//third_party/odml/litert_lm/c/...",
         "//c/...",
     ],
 )
@@ -102,6 +105,17 @@ cc_library(
     name = "engine_impl_cpu_only",
     srcs = ["engine_impl.cc"],
     deps = ENGINE_IMPL_COMMON_DEPS,
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "engine_advanced_impl",
+    srcs = ["engine_advanced_impl.cc"],
+    visibility = [":engine_impl_users"],
+    deps = ENGINE_IMPL_COMMON_DEPS + [
+        ":session_advanced",
+        "//runtime/framework/resource_management:execution_manager",
+    ],
     alwayslink = 1,
 )
 
@@ -314,6 +328,34 @@ cc_library(
         "//runtime/executor:llm_executor",
         "//runtime/executor:vision_executor",
         "//runtime/framework:threadpool",
+        "//runtime/proto:sampler_params_cc_proto",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_library(
+    name = "session_advanced",
+    srcs = ["session_advanced.cc"],
+    hdrs = ["session_advanced.h"],
+    deps = [
+        ":session_utils",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "//runtime/components:tokenizer",
+        "//runtime/engine:engine_interface",
+        "//runtime/engine:engine_settings",
+        "//runtime/engine:io_types",
+        "//runtime/framework/resource_management:execution_manager",
         "//runtime/proto:sampler_params_cc_proto",
         "//runtime/util:litert_status_util",
     ],

@@ -33,7 +33,7 @@
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "runtime/components/model_resources.h"
 #include "runtime/components/tokenizer.h"
-#include "runtime/core/session_factory.h"
+#include "runtime/core/session_advanced.h"
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
@@ -164,9 +164,9 @@ class EngineAdvancedImpl : public Engine {
     ABSL_CHECK(litert_model_resources_ != nullptr);
 
     ASSIGN_OR_RETURN(
-        auto session,
-        InitializeSessionAdvanced(execution_manager_, tokenizer_.get(), config,
-                                  std::move(session_benchmark_info)));
+        auto session, SessionAdvanced::Create(execution_manager_,
+                                              tokenizer_.get(), config,
+                                              std::move(session_benchmark_info)));
 
     if (benchmark_info_.has_value()) {
       auto session_benchmark_info_or = session->GetMutableBenchmarkInfo();
@@ -285,18 +285,29 @@ absl::StatusOr<std::unique_ptr<Engine>> EngineAdvancedImpl::Create(
 
   std::unique_ptr<VisionExecutorSettings> vision_executor_settings_ptr;
   if (engine_settings.GetVisionExecutorSettings().has_value()) {
+    ASSIGN_OR_RETURN(
+        auto vision_executor_settings,
+        VisionExecutorSettings::CreateDefault(
+            engine_settings.GetMainExecutorSettings().GetModelAssets(),
+            /*encoder_backend=*/
+            engine_settings.GetVisionExecutorSettings()->GetBackend(),
+            /*adapter_backend=*/Backend::CPU));
     vision_executor_settings_ptr = std::make_unique<VisionExecutorSettings>(
-        std::move(engine_settings.GetVisionExecutorSettings().value()));
-    if (vision_executor_settings_ptr->GetAdapterBackend() != Backend::CPU) {
-      ABSL_LOG(WARNING) << "Vision adapter backend is not CPU, which may cause "
-                           "precision loss.";
-    }
+        std::move(vision_executor_settings));
   }
 
   std::unique_ptr<AudioExecutorSettings> audio_executor_settings_ptr;
   if (engine_settings.GetAudioExecutorSettings().has_value()) {
+    const auto audio_backend =
+        engine_settings.GetAudioExecutorSettings()->GetBackend();
+    ASSIGN_OR_RETURN(
+        auto audio_executor_settings,
+        AudioExecutorSettings::CreateDefault(
+            engine_settings.GetMainExecutorSettings().GetModelAssets(),
+            engine_settings.GetMainExecutorSettings().GetMaxNumTokens(),
+            audio_backend));
     audio_executor_settings_ptr = std::make_unique<AudioExecutorSettings>(
-        std::move(engine_settings.GetAudioExecutorSettings().value()));
+        std::move(audio_executor_settings));
   }
 
   ASSIGN_OR_RETURN(
