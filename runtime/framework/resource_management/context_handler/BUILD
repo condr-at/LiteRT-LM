@@ -23,3 +23,18 @@ package(
 )
 
 licenses(["notice"])
+
+cc_library(
+    name = "context_handler",
+    srcs = ["context_handler.cc"],
+    hdrs = ["context_handler.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "//runtime/executor:llm_executor",
+        "//runtime/executor:llm_executor_io_types",
+        "//runtime/executor:llm_executor_settings",
+        "//runtime/util:litert_status_util",
+    ],
+)

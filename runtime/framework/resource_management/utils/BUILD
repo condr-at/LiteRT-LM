@@ -23,3 +23,22 @@ package(
 )
 
 licenses(["notice"])
+
+cc_library(
+    name = "movable_mutex_lock",
+    hdrs = ["movable_mutex_lock.h"],
+    deps = [
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "resource_manager_utils",
+    srcs = ["resource_manager_utils.cc"],
+    hdrs = ["resource_manager_utils.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "//runtime/util:litert_status_util",
+    ],
+)

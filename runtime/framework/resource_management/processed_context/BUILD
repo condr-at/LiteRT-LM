@@ -22,3 +22,13 @@ package(
 )
 
 licenses(["notice"])
+
+cc_library(
+    name = "litert_processed_context",
+    hdrs = ["litert_processed_context.h"],
+    deps = [
+        "@com_google_absl//absl/log:absl_check",
+        "//runtime/executor:llm_executor_io_types",
+        "//runtime/executor:llm_executor_processed_tokens",
+    ],
+)
