@@ -79,7 +79,7 @@ device and your development platform.
 > 1.  Running GPU on Windows needs DirectXShaderCompiler. See
 >     [this Note](../../README.md#windows_gpu) for more details.
 
-<details>
+<details> <span id="deploy_to_windows"></span>
 <summary><strong>Deploy to Windows</strong></summary>
 
 Building on Windows requires several prerequisites to be installed first.
@@ -132,7 +132,7 @@ bazel-bin\runtime\engine\litert_lm_main.exe `
 
 </details>
 
-<details>
+<details> <span id="deploy_to_linux"></span>
 <summary><strong>Deploy to Linux / Embedded</strong></summary>
 
 `clang` is used to build LiteRT-LM on linux. Build `litert_lm_main`, a CLI
@@ -164,7 +164,7 @@ bazel-bin/runtime/engine/litert_lm_main \
 
 </details>
 
-<details>
+<details> <span id="deploy_to_macos"></span>
 <summary><strong>Deploy to MacOS</strong></summary>
 
 Xcode command line tools include clang. Run `xcode-select --install` if not
@@ -193,7 +193,7 @@ bazel-bin/runtime/engine/litert_lm_main \
 
 </details>
 
-<details>
+<details> <span id="deploy_to_android"></span>
 <summary><strong>Deploy to Android</strong></summary>
 
 To be able to interact with your Android device, please make sure you've
