@@ -203,11 +203,15 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@nlohmann_json//:json",
-        "//runtime/components/tool_use:parser_utils",
         "//runtime/conversation:io_types",
         "//runtime/engine:io_types",
         "//runtime/util:litert_status_util",
-    ],
+    ] + select({
+        "@platforms//os:android": [],
+        "//conditions:default": [
+            "//runtime/components/tool_use:parser_utils",
+        ],
+    }),
 )
 
 cc_test(
@@ -248,8 +252,6 @@ cc_library(
         "//runtime/components/preprocessor:audio_preprocessor_miniaudio",
         "//runtime/components/preprocessor:image_preprocessor",
         "//runtime/components/preprocessor:stb_image_preprocessor",
-        "//runtime/components/tool_use:parser_utils",
-        "//runtime/components/tool_use:python_tool_format_utils",
         "//runtime/conversation:io_types",
         "//runtime/conversation:prompt_utils",
         "//runtime/engine:io_types",
@@ -257,7 +259,13 @@ cc_library(
         "//runtime/util:memory_mapped_file",
         "@com_googlesource_code_re2//:re2",
         "@sentencepiece//:sentencepiece_model_cc_proto",
-    ],
+    ] + select({
+        "@platforms//os:android": [],
+        "//conditions:default": [
+            "//runtime/components/tool_use:parser_utils",
+            "//runtime/components/tool_use:python_tool_format_utils",
+        ],
+    }),
 )
 
 cc_test(
@@ -308,13 +316,17 @@ cc_library(
         "//runtime/components:tokenizer",
         "//runtime/components/constrained_decoding:constraint",
         "//runtime/components/constrained_decoding:gemma_model_constraint_provider_lib",
-        "//runtime/components/tool_use:fc_tool_format_utils",
-        "//runtime/components/tool_use:parser_utils",
         "//runtime/conversation:io_types",
         "//runtime/engine:io_types",
         "//runtime/util:litert_status_util",
         "@sentencepiece//:sentencepiece_model_cc_proto",
-    ],
+    ] + select({
+        "@platforms//os:android": [],
+        "//conditions:default": [
+            "//runtime/components/tool_use:fc_tool_format_utils",
+            "//runtime/components/tool_use:parser_utils",
+        ],
+    }),
 )
 
 cc_test(

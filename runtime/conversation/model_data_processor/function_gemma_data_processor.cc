@@ -29,13 +29,13 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/components/constrained_decoding/constraint.h"
-#if !defined(LITERT_LM_GEMMA_CONSTRAINT_DISABLED)
 #include "runtime/components/constrained_decoding/gemma_model_constraint_provider.h"
-#endif
 #include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
+#if !defined(__ANDROID__)
 #include "runtime/components/tool_use/fc_tool_format_utils.h"
 #include "runtime/components/tool_use/parser_utils.h"
+#endif
 #include "runtime/conversation/io_types.h"
 #include "runtime/conversation/model_data_processor/function_gemma_data_processor_config.h"
 #include "runtime/engine/io_types.h"
@@ -90,6 +90,10 @@ namespace {
 // name.
 absl::StatusOr<std::string> FormatToolResponse(
     const nlohmann::ordered_json& tool_response) {
+#if defined(__ANDROID__)
+  return absl::UnimplementedError(
+      "Tool response formatting is unavailable in Android local build.");
+#else
   std::optional<std::string> tool_name;
   if (tool_response.contains("name") && tool_response["name"].is_string()) {
     tool_name = tool_response["name"].get<std::string>();
@@ -125,6 +129,7 @@ absl::StatusOr<std::string> FormatToolResponse(
   fields.erase("name");
   ASSIGN_OR_RETURN(std::string value, FormatValueAsFc(fields));
   return absl::StrCat(*tool_name, value);
+#endif
 }
 
 // Formats "content" as a tool response in FC format.
@@ -140,6 +145,9 @@ absl::StatusOr<std::string> FormatToolResponse(
 // Case 3: If "content" is neither an object nor an array, returns it unchanged.
 absl::StatusOr<nlohmann::ordered_json> FormatToolResponses(
     const nlohmann::ordered_json& content) {
+#if defined(__ANDROID__)
+  return content;
+#else
   if (content.is_object()) {
     return FormatToolResponse(content);
   }
@@ -167,6 +175,7 @@ absl::StatusOr<nlohmann::ordered_json> FormatToolResponses(
   // If the content of the message is not an array or object, pass it through
   // unchanged.
   return content;
+#endif
 }
 
 // A message is a tool response if its role is "tool".
@@ -183,13 +192,6 @@ FunctionGemmaDataProcessor::Create(
     const Tokenizer* tokenizer,
     const std::vector<std::vector<int>>& stop_token_ids,
     bool enable_constrained_decoding) {
-#if defined(LITERT_LM_GEMMA_CONSTRAINT_DISABLED)
-  if (enable_constrained_decoding) {
-    return absl::FailedPreconditionError(
-        "Constrained decoding was disabled at build time.");
-  }
-  return absl::WrapUnique(new FunctionGemmaDataProcessor(config, preface));
-#else
   std::unique_ptr<LiteRtLmGemmaModelConstraintProvider,
                   decltype(&LiteRtLmGemmaModelConstraintProvider_Destroy)>
       constraint_provider(nullptr,
@@ -225,7 +227,6 @@ FunctionGemmaDataProcessor::Create(
   }
   return absl::WrapUnique(new FunctionGemmaDataProcessor(
       std::move(constraint_provider), config, preface));
-#endif
 }
 
 absl::StatusOr<nlohmann::ordered_json>
@@ -275,9 +276,13 @@ FunctionGemmaDataProcessor::MessageToTemplateInput(
         if (function["arguments"].is_object()) {
           // If `arguments` is an object, format the values in FC format.
           for (const auto& [key, value] : function["arguments"].items()) {
+#if defined(__ANDROID__)
+            tool_call_input["function"]["arguments"][key] = value;
+#else
             ASSIGN_OR_RETURN(std::string formatted_value,
                              FormatValueAsFc(value));
             tool_call_input["function"]["arguments"][key] = formatted_value;
+#endif
           }
         } else {
           // Otherwise, pass through `arguments` unchanged.
@@ -307,6 +312,11 @@ absl::StatusOr<Message> FunctionGemmaDataProcessor::ToMessageImpl(
     const FunctionGemmaDataProcessorArguments& args) const {
   absl::string_view response_text = responses.GetTexts()[0];
   nlohmann::ordered_json message = {{"role", "assistant"}};
+#if defined(__ANDROID__)
+  message["content"] = nlohmann::ordered_json::array(
+      {{{"type", "text"}, {"text", std::string(response_text)}}});
+  return message;
+#else
   if (preface_.has_value() && std::holds_alternative<JsonPreface>(*preface_) &&
       !std::get<JsonPreface>(*preface_).tools.empty()) {
     ASSIGN_OR_RETURN(
@@ -326,10 +336,14 @@ absl::StatusOr<Message> FunctionGemmaDataProcessor::ToMessageImpl(
         {{{"type", "text"}, {"text", std::string(response_text)}}});
   }
   return message;
+#endif
 }
 
 absl::StatusOr<nlohmann::ordered_json> FunctionGemmaDataProcessor::FormatTools(
     const nlohmann::ordered_json& tools) const {
+#if defined(__ANDROID__)
+  return tools;
+#else
   if (config_.use_template_for_fc_format) {
     return tools;
   }
@@ -343,16 +357,12 @@ absl::StatusOr<nlohmann::ordered_json> FunctionGemmaDataProcessor::FormatTools(
     formatted_tools.push_back(formatted_tool);
   }
   return formatted_tools;
+#endif
 }
 
 absl::StatusOr<std::unique_ptr<Constraint>>
 FunctionGemmaDataProcessor::CreateConstraint(
     const nlohmann::ordered_json& tools) const {
-#if defined(LITERT_LM_GEMMA_CONSTRAINT_DISABLED)
-  return absl::FailedPreconditionError(
-      "Constrained decoding is disabled at build time, but it was requested "
-      "for inference.");
-#else
   if (constraint_provider_c_ == nullptr) {
     return nullptr;
   }
@@ -393,7 +403,6 @@ FunctionGemmaDataProcessor::CreateConstraint(
     return absl::InternalError("Failed to create constraint with tools.");
   }
   return absl::WrapUnique(reinterpret_cast<Constraint*>(constraint));
-#endif
 }
 
 absl::string_view FunctionGemmaDataProcessor::CodeFenceStart() const {
