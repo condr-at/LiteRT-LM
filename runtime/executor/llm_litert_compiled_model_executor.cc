@@ -1394,6 +1394,90 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::SetCurrentStep(int new_step) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::unique_ptr<LlmContext>>
+LlmLiteRtCompiledModelExecutorBase::CloneContext() const {
+  const auto* processed_context =
+      dynamic_cast<const LlmProcessedContext*>(&llm_context_->processed_context());
+  if (processed_context == nullptr) {
+    return absl::InternalError("Failed to cast processed context.");
+  }
+
+  auto cloned_processed_context = std::make_unique<LlmProcessedContext>(
+      processed_context->lora_id(),
+      absl::flat_hash_map<absl::string_view, TensorBuffer>(),
+      processed_context->processed_tokens());
+  auto runtime_config =
+      std::make_unique<RuntimeConfig>(llm_context_->runtime_config());
+  auto runtime_state =
+      std::make_unique<RuntimeState>(llm_context_->runtime_state());
+  if (llm_context_->runtime_state().rand_gen != nullptr) {
+    runtime_state->rand_gen = std::make_shared<std::default_random_engine>(
+        *llm_context_->runtime_state().rand_gen);
+  }
+  return std::make_unique<LlmContext>(std::move(cloned_processed_context),
+                                      std::move(runtime_config),
+                                      std::move(runtime_state));
+}
+
+absl::Status LlmLiteRtCompiledModelExecutorBase::RestoreContext(
+    std::unique_ptr<LlmContext> llm_context) {
+  if (llm_context == nullptr) {
+    return absl::InvalidArgumentError("Llm context must not be null.");
+  }
+  llm_context_ = std::move(llm_context);
+  return absl::OkStatus();
+}
+
+absl::Status LlmLiteRtCompiledModelExecutorBase::UpdateRuntimeConfig(
+    const RuntimeConfig& runtime_config) {
+  llm_context_->runtime_config() = runtime_config;
+  return absl::OkStatus();
+}
+
+absl::StatusOr<RuntimeConfig>
+LlmLiteRtCompiledModelExecutorBase::GetRuntimeConfig() const {
+  return llm_context_->runtime_config();
+}
+
+absl::Status LlmLiteRtCompiledModelExecutorBase::UpdateRuntimeState(
+    const RuntimeState& runtime_state) {
+  llm_context_->runtime_state() = runtime_state;
+  return absl::OkStatus();
+}
+
+absl::StatusOr<RuntimeState>
+LlmLiteRtCompiledModelExecutorBase::GetRuntimeState() const {
+  return llm_context_->runtime_state();
+}
+
+absl::StatusOr<std::unique_ptr<LlmContext>>
+LlmLiteRtCompiledModelExecutorBase::CreateNewContext(
+    std::optional<uint32_t> lora_id, RuntimeConfig runtime_config) {
+  const auto* processed_context =
+      dynamic_cast<const LlmProcessedContext*>(&llm_context_->processed_context());
+  if (processed_context == nullptr) {
+    return absl::InternalError("Failed to cast processed context.");
+  }
+  auto new_processed_context = std::make_unique<LlmProcessedContext>(
+      lora_id, absl::flat_hash_map<absl::string_view, TensorBuffer>(),
+      ProcessedTokens());
+  auto new_runtime_config = std::make_unique<RuntimeConfig>(runtime_config);
+  auto new_runtime_state = std::make_unique<RuntimeState>();
+  return std::make_unique<LlmContext>(std::move(new_processed_context),
+                                      std::move(new_runtime_config),
+                                      std::move(new_runtime_state));
+}
+
+absl::StatusOr<const ProcessedTokens*>
+LlmLiteRtCompiledModelExecutorBase::GetProcessedTokens() const {
+  const auto* processed_context =
+      dynamic_cast<const LlmProcessedContext*>(&llm_context_->processed_context());
+  if (processed_context == nullptr) {
+    return absl::InternalError("Failed to cast processed context.");
+  }
+  return &processed_context->processed_tokens();
+}
+
 absl::Status LlmLiteRtCompiledModelExecutorBase::Reset() {
   llm_context_->runtime_state().current_step = 0;
   return absl::OkStatus();
@@ -1710,9 +1794,10 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
       } else {
         ABSL_LOG(WARNING) << "Can't use cache: " << weight_cache_file.status();
       }
-      auto default_xnn_options = TfLiteXNNPackDelegateOptionsDefault();
+      LITERT_ASSIGN_OR_RETURN(const uint32_t default_xnnpack_flags,
+                              cpu_compilation_options.GetXNNPackFlags());
       cpu_compilation_options.SetXNNPackFlags(
-          default_xnn_options.flags |
+          default_xnnpack_flags |
           TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS);
       LITERT_ASSIGN_OR_RETURN(auto& runtime_options,
                               compilation_options.GetRuntimeOptions());
@@ -2127,9 +2212,10 @@ LlmLiteRtCompiledModelExecutorDynamic::Create(
     }
     RET_CHECK_GT(kv_increament_size, 0)
         << "KV increment size must be greater than 0.";
-    auto default_xnn_options = TfLiteXNNPackDelegateOptionsDefault();
+    LITERT_ASSIGN_OR_RETURN(const uint32_t default_xnnpack_flags,
+                            cpu_compilation_options.GetXNNPackFlags());
     cpu_compilation_options.SetXNNPackFlags(
-        default_xnn_options.flags |
+        default_xnnpack_flags |
         TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS);
     LITERT_ASSIGN_OR_RETURN(auto& runtime_options,
                             compilation_options.GetRuntimeOptions());

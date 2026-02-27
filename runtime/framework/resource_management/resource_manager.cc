@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
@@ -61,16 +62,23 @@ namespace {
 absl::Status SaveProcessedContextAndSeparateLoadedHandler(
     std::shared_ptr<ContextHandler> context_handler,
     std::shared_ptr<LlmExecutor> llm_executor) {
-  RET_CHECK_EQ(
-      context_handler->HasRuntimeConfig() ||
-          context_handler->HasRuntimeState() ||
-          context_handler->shared_processed_context()->HasProcessedContext(),
-      false)
-      << "The context_handler "
-         "should not own any RuntimeState, RuntimeConfig and actual "
-         "ProcessedContext within it, as they should all be owned by the "
-         "llm_executor when calling "
-         "SaveProcessedContextAndSeparateLoadedHandler.";
+  const bool has_runtime_config = context_handler->HasRuntimeConfig();
+  const bool has_runtime_state = context_handler->HasRuntimeState();
+  const bool has_processed_context =
+      context_handler->shared_processed_context()->HasProcessedContext();
+  if (has_runtime_config || has_runtime_state || has_processed_context) {
+    ABSL_LOG(ERROR)
+        << "SaveProcessedContextAndSeparateLoadedHandler: context handler "
+           "owns context artifacts unexpectedly; refusing unsafe normalization "
+           "and failing fast."
+        << " has_runtime_config=" << has_runtime_config
+        << " has_runtime_state=" << has_runtime_state
+        << " has_processed_context=" << has_processed_context;
+    return absl::InternalError(
+        "OWNERSHIP_INVARIANT_VIOLATION: context_handler should not own any "
+        "RuntimeState, RuntimeConfig and actual ProcessedContext within it "
+        "when calling SaveProcessedContextAndSeparateLoadedHandler.");
+  }
   ASSIGN_OR_RETURN(auto llm_context, llm_executor->CloneContext());
   ASSIGN_OR_RETURN(auto current_processed_context,
                    llm_context->RetrieveProcessedContext());
@@ -198,10 +206,22 @@ class LockedLlmExecutor : public LlmExecutor {
     }
     ASSIGN_OR_RETURN(const ProcessedTokens* processed_tokens,
                      llm_executor_->GetProcessedTokens());
+    // Clamp current_step to token_count to prevent
+    // "New step cannot be greater than the max step" when a context switch
+    // has restored a context with fewer tokens than the previous session's
+    // current_step. This is a safe no-op when current_step <= token_count.
+    const int token_count = processed_tokens->TokenCount();
+    if (current_step > token_count) {
+      ABSL_LOG(WARNING)
+          << "prefill_current_step_clamped"
+          << " original_current_step=" << current_step
+          << " token_count=" << token_count;
+      current_step = token_count;
+    }
     // If the current_step is pointing at the step right after the last
     // processed token, call executor directly, no optimization for the
     // input can be done.
-    if (processed_tokens->TokenCount() == current_step) {
+    if (token_count == current_step) {
       return llm_executor_->Prefill(inputs, prefill_params);
     }
 
@@ -218,6 +238,15 @@ class LockedLlmExecutor : public LlmExecutor {
     // the input_ids and current_step by removing the matching tokens.
     RETURN_IF_ERROR(RemoveMatchingTokens(processed_tokens->GetCopyOfTokens()[0],
                                          &input_ids_vec, &current_step));
+    // Re-clamp after RemoveMatchingTokens in case it moved
+    // current_step beyond token_count.
+    if (current_step > token_count) {
+      ABSL_LOG(WARNING)
+          << "prefill_current_step_clamped_post_remove_matching"
+          << " original_current_step=" << current_step
+          << " token_count=" << token_count;
+      current_step = token_count;
+    }
     // If the updated input_ids is empty, meaning all required prefill
     // tokens have been processed previously, just set the current step and
     // return.
@@ -504,39 +533,7 @@ ResourceManager::CreateContextHandler(const SessionConfig& session_config) {
     MovableMutexLock lock(&executor_mutex_);
     RETURN_IF_ERROR(llm_executor_->LoadLoRA(lora_id.value(), model_assets));
   }
-  // TODO: b/462517405 - Remove this conversion from SamplerParams to
-  // SamplerParams once the SamplerParams is cleaned up.
-  odml::infra::proto::SamplerParameters sampler_params;
-  switch (session_config.GetSamplerParams().type()) {
-    case proto::SamplerParameters::TYPE_UNSPECIFIED: {
-      sampler_params.set_type(
-          odml::infra::proto::SamplerParameters::TYPE_UNSPECIFIED);
-      break;
-    }
-    case proto::SamplerParameters::TOP_K: {
-      sampler_params.set_type(odml::infra::proto::SamplerParameters::TOP_K);
-      break;
-    }
-    case proto::SamplerParameters::TOP_P: {
-      sampler_params.set_type(odml::infra::proto::SamplerParameters::TOP_P);
-      break;
-    }
-    case proto::SamplerParameters::GREEDY: {
-      sampler_params.set_type(odml::infra::proto::SamplerParameters::GREEDY);
-      break;
-    }
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported sampler type: ",
-                       session_config.GetSamplerParams().type()));
-  }
-  sampler_params.set_k(session_config.GetSamplerParams().k());
-  sampler_params.set_p(session_config.GetSamplerParams().p());
-  sampler_params.set_temperature(
-      session_config.GetSamplerParams().temperature());
-
   auto runtime_config = RuntimeConfig{
-      .sampler_params = sampler_params,
       .output_heads = session_config.GetNumOutputCandidates(),
       // b/368348506 - Make tokens_per_decode configurable.
       .tokens_per_decode = 1,
@@ -575,6 +572,18 @@ ResourceManager::CloneContextHandler(
 
   RuntimeConfig runtime_config;
   RuntimeState runtime_state;
+  ABSL_LOG(INFO) << "resource_manager_clone_context_handler_begin"
+                 << " source_has_runtime_config="
+                 << (llm_context_handler->HasRuntimeConfig() ? "1" : "0")
+                 << " source_has_runtime_state="
+                 << (llm_context_handler->HasRuntimeState() ? "1" : "0")
+                 << " source_has_processed_context="
+                 << (llm_context_handler->shared_processed_context()
+                             ->HasProcessedContext()
+                         ? "1"
+                         : "0")
+                 << " source_is_current_handler="
+                 << ((current_handler_ == llm_context_handler) ? "1" : "0");
 
   // If the context handler has the runtime config and runtime state, use
   // them directly.
@@ -585,13 +594,16 @@ ResourceManager::CloneContextHandler(
   } else {
     // Otherwise, assume the context handler is loaded by the manager to the
     // executor, and get the runtime config and runtime state from the
-    // executor.
+    // executor. This is safe because ExecutionManager runs tasks on a single
+    // execution thread, so runtime state reads here observe deterministic
+    // sequencing across clone/context-switch operations.
     MovableMutexLock lock(&executor_mutex_);
-    RET_CHECK_EQ(current_handler_, llm_context_handler)
-        << "The provided context handler does not have the runtime config "
-           "and "
-           "runtime state, assuming it is loaded by the manager, but the "
-           "manager does not have the same handler.";
+    if (current_handler_ != llm_context_handler) {
+      return absl::InternalError(
+          "CLONE_RUNTIME_STATE_SOURCE_INVALID: context handler has no runtime "
+          "config/state and is not current_handler_. Refusing to clone with "
+          "executor state from a different active handler.");
+    }
     ASSIGN_OR_RETURN(runtime_config, llm_executor_->GetRuntimeConfig());
     ASSIGN_OR_RETURN(runtime_state, llm_executor_->GetRuntimeState());
   }
@@ -632,6 +644,46 @@ ResourceManager::AcquireExecutorWithContextHandler(
                                           "please do not delete the shared "
                                           "executor in ResourceManager at "
                                           "any time.";
+  ABSL_LOG(INFO) << "resource_manager_switch_begin"
+                 << " has_current_handler="
+                 << (current_handler_ != nullptr ? "1" : "0")
+                 << " same_handler="
+                 << (new_context_handler == current_handler_ ? "1" : "0")
+                 << " same_shared_processed_context="
+                 << ((current_handler_ != nullptr &&
+                      new_context_handler->shared_processed_context() ==
+                          current_handler_->shared_processed_context())
+                         ? "1"
+                         : "0")
+                 << " target_has_runtime_config="
+                 << (new_context_handler->HasRuntimeConfig() ? "1" : "0")
+                 << " target_has_runtime_state="
+                 << (new_context_handler->HasRuntimeState() ? "1" : "0")
+                 << " target_has_processed_context="
+                 << (new_context_handler->shared_processed_context()
+                             ->HasProcessedContext()
+                         ? "1"
+                         : "0");
+  auto take_runtime_config_for_switch =
+      [this](std::shared_ptr<ContextHandler> handler)
+      -> absl::StatusOr<std::unique_ptr<RuntimeConfig>> {
+    if (handler->HasRuntimeConfig()) {
+      return handler->RetrieveRuntimeConfig();
+    }
+    return absl::InternalError(
+        "SWITCH_RUNTIME_CONFIG_MISSING: target context handler has no runtime "
+        "config while being activated.");
+  };
+  auto take_runtime_state_for_switch =
+      [this](std::shared_ptr<ContextHandler> handler)
+      -> absl::StatusOr<std::unique_ptr<RuntimeState>> {
+    if (handler->HasRuntimeState()) {
+      return handler->RetrieveRuntimeState();
+    }
+    return absl::InternalError(
+        "SWITCH_RUNTIME_STATE_MISSING: target context handler has no runtime "
+        "state while being activated.");
+  };
 
   // If the new handler is the same as the current handler, return the
   // executor directly.
@@ -656,9 +708,30 @@ ResourceManager::AcquireExecutorWithContextHandler(
         std::make_unique<RuntimeState>(current_runtime_state)));
 
     ASSIGN_OR_RETURN(auto new_runtime_config,
-                     new_context_handler->RetrieveRuntimeConfig());
+                     take_runtime_config_for_switch(new_context_handler));
     ASSIGN_OR_RETURN(auto new_runtime_state,
-                     new_context_handler->RetrieveRuntimeState());
+                     take_runtime_state_for_switch(new_context_handler));
+    ASSIGN_OR_RETURN(const ProcessedTokens* active_processed_tokens,
+                     llm_executor_->GetProcessedTokens());
+    const int active_token_count = active_processed_tokens->TokenCount();
+    if (new_runtime_state->current_step > active_token_count) {
+      ABSL_LOG(WARNING)
+          << "resource_manager_runtime_state_clamped_same_processed_context"
+          << " original_current_step=" << new_runtime_state->current_step
+          << " token_count=" << active_token_count;
+      new_runtime_state->current_step = active_token_count;
+    }
+    if (new_runtime_state->current_step < 0) {
+      ABSL_LOG(WARNING)
+          << "resource_manager_runtime_state_clamped_negative_step"
+          << " original_current_step=" << new_runtime_state->current_step;
+      new_runtime_state->current_step = 0;
+    }
+    ABSL_LOG(INFO) << "resource_manager_switch_same_processed_context"
+                   << " current_session_handler="
+                   << (current_handler_ != nullptr ? "1" : "0")
+                   << " target_runtime_config_taken=1"
+                   << " target_runtime_state_taken=1";
     RETURN_IF_ERROR(llm_executor_->UpdateRuntimeConfig(*new_runtime_config));
     RETURN_IF_ERROR(llm_executor_->UpdateRuntimeState(*new_runtime_state));
   } else {
@@ -684,16 +757,61 @@ ResourceManager::AcquireExecutorWithContextHandler(
     }
 
     ASSIGN_OR_RETURN(auto new_runtime_config,
-                     new_context_handler->RetrieveRuntimeConfig());
+                     take_runtime_config_for_switch(new_context_handler));
     ASSIGN_OR_RETURN(auto new_runtime_state,
-                     new_context_handler->RetrieveRuntimeState());
+                     take_runtime_state_for_switch(new_context_handler));
     ASSIGN_OR_RETURN(auto new_processed_context,
                      new_context_handler->shared_processed_context()
                          ->RetrieveProcessedContext());
-    auto llm_context = std::make_unique<LlmContext>(
-        std::move(new_processed_context), std::move(new_runtime_config),
-        std::move(new_runtime_state));
-    RETURN_IF_ERROR(llm_executor_->RestoreContext(std::move(llm_context)));
+    const int target_token_count = new_processed_context == nullptr
+                                       ? 0
+                                       : new_processed_context->processed_tokens()
+                                             .TokenCount();
+    if (new_runtime_state->current_step > target_token_count) {
+      ABSL_LOG(WARNING)
+          << "resource_manager_runtime_state_clamped_restored_context"
+          << " original_current_step=" << new_runtime_state->current_step
+          << " token_count=" << target_token_count;
+      new_runtime_state->current_step = target_token_count;
+    }
+    if (new_runtime_state->current_step < 0) {
+      ABSL_LOG(WARNING)
+          << "resource_manager_runtime_state_clamped_negative_step"
+          << " original_current_step=" << new_runtime_state->current_step;
+      new_runtime_state->current_step = 0;
+    }
+    const int token_count = new_processed_context == nullptr
+                                ? 0
+                                : new_processed_context->processed_tokens()
+                                      .TokenCount();
+    const bool is_fresh_context =
+        token_count == 0 && new_runtime_state->current_step == 0 &&
+        !new_runtime_state->ran_decode;
+    ABSL_LOG(INFO) << "resource_manager_restore_context_decision"
+                   << " token_count=" << token_count
+                   << " current_step=" << new_runtime_state->current_step
+                   << " ran_decode=" << new_runtime_state->ran_decode
+                   << " has_processed_context="
+                   << (new_processed_context != nullptr ? "1" : "0")
+                   << " path="
+                   << (is_fresh_context ? "fresh_create_new_context"
+                                        : "restore_provided_context");
+    if (is_fresh_context) {
+      std::optional<uint32_t> lora_id = std::nullopt;
+      if (new_processed_context != nullptr) {
+        lora_id = new_processed_context->lora_id();
+      }
+      ASSIGN_OR_RETURN(auto llm_context,
+                       llm_executor_->CreateNewContext(
+                           lora_id, std::move(*new_runtime_config)));
+      RETURN_IF_ERROR(llm_executor_->RestoreContext(std::move(llm_context)));
+      RETURN_IF_ERROR(llm_executor_->UpdateRuntimeState(*new_runtime_state));
+    } else {
+      auto llm_context = std::make_unique<LlmContext>(
+          std::move(new_processed_context), std::move(new_runtime_config),
+          std::move(new_runtime_state));
+      RETURN_IF_ERROR(llm_executor_->RestoreContext(std::move(llm_context)));
+    }
   }
 
   // If the current handler has an audio context, update and save the audio
@@ -720,6 +838,17 @@ ResourceManager::AcquireExecutorWithContextHandler(
   }
 
   current_handler_ = new_context_handler;
+  ABSL_LOG(INFO) << "resource_manager_switch_end"
+                 << " new_current_handler_set=1"
+                 << " current_has_runtime_config="
+                 << (current_handler_->HasRuntimeConfig() ? "1" : "0")
+                 << " current_has_runtime_state="
+                 << (current_handler_->HasRuntimeState() ? "1" : "0")
+                 << " current_has_processed_context="
+                 << (current_handler_->shared_processed_context()
+                             ->HasProcessedContext()
+                         ? "1"
+                         : "0");
 
   return std::make_unique<LockedLlmExecutor>(llm_executor_, std::move(lock),
                                              current_handler_);
