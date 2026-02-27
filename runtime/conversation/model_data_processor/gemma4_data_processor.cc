@@ -1,4 +1,4 @@
-// Copyright 2025 The ODML Authors.
+// Copyright 2026 The ODML Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #include "runtime/conversation/model_data_processor/gemma4_data_processor.h"
 
 #include <cstddef>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,14 +31,21 @@
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/components/constrained_decoding/constraint.h"
 #include "runtime/components/constrained_decoding/gemma_model_constraint_provider.h"
+#include "runtime/components/preprocessor/audio_preprocessor.h"
+#include "runtime/components/preprocessor/audio_preprocessor_miniaudio.h"
+#include "runtime/components/preprocessor/image_preprocessor.h"
+#include "runtime/components/preprocessor/stb_image_preprocessor.h"
 #include "runtime/components/sentencepiece_tokenizer.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/components/tool_use/fc_tool_format_utils.h"
 #include "runtime/components/tool_use/parser_utils.h"
 #include "runtime/conversation/io_types.h"
+#include "runtime/conversation/model_data_processor/data_utils.h"
 #include "runtime/conversation/model_data_processor/gemma4_data_processor_config.h"
 #include "runtime/engine/io_types.h"
+#include "runtime/util/memory_mapped_file.h"
 #include "runtime/util/status_macros.h"
+#include "re2/re2.h"  // from @com_googlesource_code_re2
 #include "sentencepiece_model.pb.h"  // from @sentencepiece
 
 namespace litert::lm {
@@ -87,7 +95,7 @@ namespace {
 // valid tool response in FC format, but it's the best we can do without a tool
 // name.
 absl::StatusOr<std::string> FormatToolResponse(
-    const nlohmann::ordered_json& tool_response) {
+    const nlohmann::ordered_json& tool_response, absl::string_view escape_tag) {
   std::optional<std::string> tool_name;
   if (tool_response.contains("name") && tool_response["name"].is_string()) {
     tool_name = tool_response["name"].get<std::string>();
@@ -97,7 +105,7 @@ absl::StatusOr<std::string> FormatToolResponse(
   }
 
   if (!tool_name.has_value()) {
-    return FormatValueAsFc(tool_response);
+    return FormatValueAsFc(tool_response, escape_tag);
   }
 
   // If the contents of the tool response are contained inside a "response" or
@@ -112,7 +120,7 @@ absl::StatusOr<std::string> FormatToolResponse(
   }
 
   if (!response.is_null()) {
-    ASSIGN_OR_RETURN(std::string value, FormatValueAsFc(response));
+    ASSIGN_OR_RETURN(std::string value, FormatValueAsFc(response, escape_tag));
     return absl::StrCat(*tool_name, value);
   }
 
@@ -121,7 +129,7 @@ absl::StatusOr<std::string> FormatToolResponse(
   nlohmann::ordered_json fields = tool_response;
   fields.erase("tool_name");
   fields.erase("name");
-  ASSIGN_OR_RETURN(std::string value, FormatValueAsFc(fields));
+  ASSIGN_OR_RETURN(std::string value, FormatValueAsFc(fields, escape_tag));
   return absl::StrCat(*tool_name, value);
 }
 
@@ -137,9 +145,9 @@ absl::StatusOr<std::string> FormatToolResponse(
 //
 // Case 3: If "content" is neither an object nor an array, returns it unchanged.
 absl::StatusOr<nlohmann::ordered_json> FormatToolResponses(
-    const nlohmann::ordered_json& content) {
+    const nlohmann::ordered_json& content, absl::string_view escape_tag) {
   if (content.is_object()) {
-    return FormatToolResponse(content);
+    return FormatToolResponse(content, escape_tag);
   }
 
   if (content.is_array()) {
@@ -154,7 +162,7 @@ absl::StatusOr<nlohmann::ordered_json> FormatToolResponses(
 
       // Format each tool response in FC format and add it as a text item.
       ASSIGN_OR_RETURN(std::string formatted_tool_response,
-                       FormatToolResponse(tool_response));
+                       FormatToolResponse(tool_response, escape_tag));
       tool_content.push_back(
           {{"type", "text"}, {"text", formatted_tool_response}});
     }
@@ -171,6 +179,14 @@ absl::StatusOr<nlohmann::ordered_json> FormatToolResponses(
 bool IsToolMessage(const nlohmann::ordered_json& template_input,
                    const nlohmann::ordered_json& message) {
   return template_input.contains("role") && template_input["role"] == "tool";
+}
+
+bool IsImage(absl::string_view part) {
+  return part == "<start_of_image>" || part == "<image_soft_token>";
+}
+
+bool IsAudio(absl::string_view part) {
+  return part == "<start_of_audio>" || part == "<audio_soft_token>";
 }
 
 }  // namespace
@@ -214,8 +230,23 @@ Gemma4DataProcessor::Create(Gemma4DataProcessorConfig config,
     }
     constraint_provider.reset(provider);
   }
-  return absl::WrapUnique(
-      new Gemma4DataProcessor(std::move(constraint_provider), config, preface));
+  ASSIGN_OR_RETURN(
+      auto audio_preprocessor,
+      AudioPreprocessorMiniAudio::Create(AudioPreprocessorConfig::Create(
+          /* sample_rate_hz= */ 16000,
+          /* num_channels= */ 1,
+          /* frame_length= */ 320,
+          /* hop_length= */ 160,
+          /* fft_length = */ 512,
+          /* input_scale = */ 32768,
+          /* pre_emphasis_factor = */ 0.97,
+          /* num_mel_bins= */ 128,
+          /* mel_low_hz= */ 125.0,
+          /* mel_high_hz= */ 7500.0,
+          /* mel_floor= */ 1e-6)));
+  return absl::WrapUnique(new Gemma4DataProcessor(
+      std::move(constraint_provider), config, preface,
+      std::make_unique<StbImagePreprocessor>(), std::move(audio_preprocessor)));
 }
 
 absl::StatusOr<nlohmann::ordered_json>
@@ -239,8 +270,9 @@ Gemma4DataProcessor::MessageToTemplateInput(
   if (message.contains("content")) {
     if (IsToolMessage(template_input, message)) {
       // Convert tool responses to FC format.
-      ASSIGN_OR_RETURN(template_input["content"],
-                       FormatToolResponses(message["content"]));
+      ASSIGN_OR_RETURN(
+          template_input["content"],
+          FormatToolResponses(message["content"], config_.open_quote));
     } else {
       // If the role is not "tool" or "content" is a string, pass through the
       // content unchanged.
@@ -266,7 +298,7 @@ Gemma4DataProcessor::MessageToTemplateInput(
           // If `arguments` is an object, format the values in FC format.
           for (const auto& [key, value] : function["arguments"].items()) {
             ASSIGN_OR_RETURN(std::string formatted_value,
-                             FormatValueAsFc(value));
+                             FormatValueAsFc(value, config_.open_quote));
             tool_call_input["function"]["arguments"][key] = formatted_value;
           }
         } else {
@@ -288,7 +320,84 @@ Gemma4DataProcessor::ToInputDataVectorImpl(
     const nlohmann::ordered_json& messages,
     const Gemma4DataProcessorArguments& args) const {
   std::vector<InputData> input_data;
-  input_data.push_back(InputText(rendered_template_prompt));
+  std::deque<std::unique_ptr<MemoryMappedFile>> image_files;
+  std::deque<std::unique_ptr<MemoryMappedFile>> audio_files;
+  // Find all images and audio contained in the messages.
+  for (const auto& message : messages) {
+    if (message.contains("content") && message["content"].is_array()) {
+      for (const auto& item : message["content"]) {
+        if (item.is_string()) {
+          continue;
+        }
+        ASSIGN_OR_RETURN(std::unique_ptr<MemoryMappedFile> mmap_file,
+                         LoadItemData(item));
+        if (item["type"] == "image") {
+          image_files.push_back(std::move(mmap_file));
+        } else if (item["type"] == "audio") {
+          audio_files.push_back(std::move(mmap_file));
+        }
+      }
+    }
+  }
+  RE2 re_delimiter(
+      "(<start_of_image>|<image_soft_token>|<start_of_audio>|<audio_soft_token>"
+      ")");
+  absl::string_view prompt_view(rendered_template_prompt);
+  const char* start = prompt_view.data();
+  std::string part;
+  ImagePreprocessParameter image_params;
+  // Replace the placeholders with the actual data.
+  while (RE2::FindAndConsume(&prompt_view, re_delimiter, &part)) {
+    absl::string_view text_part(start, prompt_view.data() - part.size());
+    start = prompt_view.data();
+    if (IsImage(part)) {
+      // Vision modality needs double newlines before the image soft token.
+      // while audio modality does not. See b/476152260.
+      input_data.emplace_back(
+          InputText(absl::StrCat(text_part, "\n\n", config_.boi_token)));
+      if (image_files.empty()) {
+        return absl::InvalidArgumentError(
+            "Provided less images than expected in the prompt.");
+      }
+      auto image_file = std::move(image_files.front());
+      image_files.pop_front();
+      ASSIGN_OR_RETURN(auto preprocessed_image,
+                       image_preprocessor_->Preprocess(
+                           InputImage(std::string(
+                               static_cast<const char*>(image_file->data()),
+                               image_file->length())),
+                           image_params));
+      input_data.emplace_back(InputImage(std::move(preprocessed_image)));
+    } else if (IsAudio(part)) {
+      input_data.emplace_back(
+          InputText(absl::StrCat(text_part, config_.boa_token)));
+      if (audio_files.empty()) {
+        return absl::InvalidArgumentError(
+            "Provided less audio than expected in the prompt.");
+      }
+      auto audio_file = std::move(audio_files.front());
+      audio_files.pop_front();
+      ASSIGN_OR_RETURN(auto preprocessed_audio,
+                       audio_preprocessor_->Preprocess(InputAudio(std::string(
+                           static_cast<const char*>(audio_file->data()),
+                           audio_file->length()))));
+      audio_preprocessor_->Reset();
+      input_data.emplace_back(InputAudio(std::move(preprocessed_audio)));
+      input_data.emplace_back(InputAudioEnd());
+    }
+  }
+  if (!image_files.empty()) {
+    return absl::InvalidArgumentError(
+        "Provided more images than expected in the prompt.");
+  }
+  if (!audio_files.empty()) {
+    return absl::InvalidArgumentError(
+        "Provided more audio than expected in the prompt.");
+  }
+  // Add the remaining text in the prompt.
+  if (!prompt_view.empty()) {
+    input_data.push_back(InputText(std::string(prompt_view)));
+  }
   return input_data;
 }
 
@@ -329,7 +438,8 @@ absl::StatusOr<nlohmann::ordered_json> Gemma4DataProcessor::FormatTools(
   }
   nlohmann::ordered_json formatted_tools = nlohmann::ordered_json::array();
   for (const auto& tool : tools) {
-    ASSIGN_OR_RETURN(std::string formatted_tool, FormatToolAsFc(tool));
+    ASSIGN_OR_RETURN(std::string formatted_tool,
+                     FormatToolAsFc(tool, config_.open_quote));
     formatted_tools.push_back(formatted_tool);
   }
   return formatted_tools;

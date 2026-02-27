@@ -1,4 +1,4 @@
-// Copyright 2025 The ODML Authors.
+// Copyright 2026 The ODML Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/components/constrained_decoding/constraint.h"
 #include "runtime/components/constrained_decoding/gemma_model_constraint_provider.h"
+#include "runtime/components/preprocessor/audio_preprocessor.h"
+#include "runtime/components/preprocessor/image_preprocessor.h"
 #include "runtime/components/tokenizer.h"
 #include "runtime/conversation/io_types.h"
 #include "runtime/conversation/model_data_processor/gemma4_data_processor_config.h"
@@ -78,10 +80,14 @@ class Gemma4DataProcessor
                       decltype(&LiteRtLmGemmaModelConstraintProvider_Destroy)>
           constraint_provider,
       const Gemma4DataProcessorConfig& config = Gemma4DataProcessorConfig(),
-      std::optional<Preface> preface = std::nullopt)
+      std::optional<Preface> preface = std::nullopt,
+      std::unique_ptr<ImagePreprocessor> image_preprocessor = nullptr,
+      std::unique_ptr<AudioPreprocessor> audio_preprocessor = nullptr)
       : constraint_provider_c_(std::move(constraint_provider)),
         config_(config),
-        preface_(preface) {};
+        preface_(preface),
+        image_preprocessor_(std::move(image_preprocessor)),
+        audio_preprocessor_(std::move(audio_preprocessor)) {};
 
   absl::StatusOr<std::vector<InputData>> ToInputDataVectorImpl(
       const std::string& rendered_template_prompt,
@@ -105,6 +111,8 @@ class Gemma4DataProcessor
       constraint_provider_c_;
   Gemma4DataProcessorConfig config_;
   std::optional<Preface> preface_;
+  std::unique_ptr<ImagePreprocessor> image_preprocessor_;
+  std::unique_ptr<AudioPreprocessor> audio_preprocessor_;
 };
 
 }  // namespace litert::lm

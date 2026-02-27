@@ -1,4 +1,4 @@
-// Copyright 2025 The ODML Authors.
+// Copyright 2026 The ODML Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,12 +40,12 @@ struct Gemma4DataProcessorConfig {
   std::string eoa_token = "<end_of_audio>";
 
   // Signifies the beginning of a tool call.
-  std::string code_fence_start = "<start_function_call>";
+  std::string code_fence_start = "<ctrl42>";
   // Signifies the end of tool call.
-  std::string code_fence_end = "<end_function_call>";
-  std::string open_quote = "<escape>";
-  std::string close_quote = "<escape>";
-  std::string function_response_start = "<start_function_response>";
+  std::string code_fence_end = "<ctrl43>";
+  std::string open_quote = "<ctrl46>";
+  std::string close_quote = "<ctrl46>";
+  std::string function_response_start = "<ctrl44>";
   // The syntax type of the tool call.
   std::string syntax_type = "fc";
   // Whether to escape the fence strings for regex matching.
