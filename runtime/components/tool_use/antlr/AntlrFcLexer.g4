@@ -7,6 +7,7 @@ OPEN_BRACKET : '[';
 CLOSE_BRACKET : ']';
 COMMA : ',';
 COLON : ':';
+ESCAPE : '<escape>' | '<ctrl46>';
 
 // Literals
 BOOLEAN : 'true' | 'false';
@@ -19,7 +20,7 @@ fragment INT : '0' | [1-9] [0-9]*;
 fragment FRAC : '.' [0-9]+;
 fragment EXP : [eE] [+-]? [0-9]+;
 
-ESCAPED_STRING : '<escape>' .*? '<escape>';
+ESCAPED_STRING : ESCAPE .*? ESCAPE ;
 
 CALL : 'call';
 ID : [a-zA-Z_] [a-zA-Z_0-9]*;

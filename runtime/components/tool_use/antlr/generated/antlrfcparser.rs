@@ -43,13 +43,14 @@ pub const AntlrFcParser_OPEN_BRACKET: i32 = 3;
 pub const AntlrFcParser_CLOSE_BRACKET: i32 = 4;
 pub const AntlrFcParser_COMMA: i32 = 5;
 pub const AntlrFcParser_COLON: i32 = 6;
-pub const AntlrFcParser_BOOLEAN: i32 = 7;
-pub const AntlrFcParser_NULL_LITERAL: i32 = 8;
-pub const AntlrFcParser_NUMBER: i32 = 9;
-pub const AntlrFcParser_ESCAPED_STRING: i32 = 10;
-pub const AntlrFcParser_CALL: i32 = 11;
-pub const AntlrFcParser_ID: i32 = 12;
-pub const AntlrFcParser_WS: i32 = 13;
+pub const AntlrFcParser_ESCAPE: i32 = 7;
+pub const AntlrFcParser_BOOLEAN: i32 = 8;
+pub const AntlrFcParser_NULL_LITERAL: i32 = 9;
+pub const AntlrFcParser_NUMBER: i32 = 10;
+pub const AntlrFcParser_ESCAPED_STRING: i32 = 11;
+pub const AntlrFcParser_CALL: i32 = 12;
+pub const AntlrFcParser_ID: i32 = 13;
+pub const AntlrFcParser_WS: i32 = 14;
 pub const AntlrFcParser_EOF: i32 = EOF;
 pub const RULE_start: usize = 0;
 pub const RULE_functionCall: usize = 1;
@@ -60,7 +61,7 @@ pub const RULE_array: usize = 5;
 pub const ruleNames: [&'static str; 6] =
     ["start", "functionCall", "object", "pair", "value", "array"];
 
-pub const _LITERAL_NAMES: [Option<&'static str>; 12] = [
+pub const _LITERAL_NAMES: [Option<&'static str>; 13] = [
     None,
     Some("'{'"),
     Some("'}'"),
@@ -69,12 +70,13 @@ pub const _LITERAL_NAMES: [Option<&'static str>; 12] = [
     Some("','"),
     Some("':'"),
     None,
+    None,
     Some("'null'"),
     None,
     None,
     Some("'call'"),
 ];
-pub const _SYMBOLIC_NAMES: [Option<&'static str>; 14] = [
+pub const _SYMBOLIC_NAMES: [Option<&'static str>; 15] = [
     None,
     Some("OPEN_BRACE"),
     Some("CLOSE_BRACE"),
@@ -82,6 +84,7 @@ pub const _SYMBOLIC_NAMES: [Option<&'static str>; 14] = [
     Some("CLOSE_BRACKET"),
     Some("COMMA"),
     Some("COLON"),
+    Some("ESCAPE"),
     Some("BOOLEAN"),
     Some("NULL_LITERAL"),
     Some("NUMBER"),
@@ -1149,7 +1152,7 @@ where
                 recog.base.set_state(54);
                 recog.err_handler.sync(&mut recog.base)?;
                 _la = recog.base.input.la(1);
-                if ((_la) & !0x3f) == 0 && ((1usize << _la) & 1930) != 0 {
+                if (((_la) & !0x3f) == 0 && ((1usize << _la) & 3850) != 0) {
                     {
                         /*InvokeRule value*/
                         recog.base.set_state(46);
@@ -1211,19 +1214,19 @@ lazy_static! {
         Arc::new(dfa)
     };
     static ref _serializedATN: Vec<i32> = vec![
-        4, 1, 13, 59, 2, 0, 7, 0, 2, 1, 7, 1, 2, 2, 7, 2, 2, 3, 7, 3, 2, 4, 7, 4, 2, 5, 7, 5, 1, 0,
+        4, 1, 14, 59, 2, 0, 7, 0, 2, 1, 7, 1, 2, 2, 7, 2, 2, 3, 7, 3, 2, 4, 7, 4, 2, 5, 7, 5, 1, 0,
         1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 1, 2, 1, 2, 5, 2, 25, 8, 2, 10, 2,
         12, 2, 28, 9, 2, 3, 2, 30, 8, 2, 1, 2, 1, 2, 1, 3, 1, 3, 1, 3, 1, 3, 1, 4, 1, 4, 1, 4, 1,
         4, 1, 4, 1, 4, 3, 4, 44, 8, 4, 1, 5, 1, 5, 1, 5, 1, 5, 5, 5, 50, 8, 5, 10, 5, 12, 5, 53, 9,
         5, 3, 5, 55, 8, 5, 1, 5, 1, 5, 1, 5, 0, 0, 6, 0, 2, 4, 6, 8, 10, 0, 0, 61, 0, 12, 1, 0, 0,
         0, 2, 15, 1, 0, 0, 0, 4, 20, 1, 0, 0, 0, 6, 33, 1, 0, 0, 0, 8, 43, 1, 0, 0, 0, 10, 45, 1,
-        0, 0, 0, 12, 13, 3, 2, 1, 0, 13, 14, 5, 0, 0, 1, 14, 1, 1, 0, 0, 0, 15, 16, 5, 11, 0, 0,
-        16, 17, 5, 6, 0, 0, 17, 18, 5, 12, 0, 0, 18, 19, 3, 4, 2, 0, 19, 3, 1, 0, 0, 0, 20, 29, 5,
+        0, 0, 0, 12, 13, 3, 2, 1, 0, 13, 14, 5, 0, 0, 1, 14, 1, 1, 0, 0, 0, 15, 16, 5, 12, 0, 0,
+        16, 17, 5, 6, 0, 0, 17, 18, 5, 13, 0, 0, 18, 19, 3, 4, 2, 0, 19, 3, 1, 0, 0, 0, 20, 29, 5,
         1, 0, 0, 21, 26, 3, 6, 3, 0, 22, 23, 5, 5, 0, 0, 23, 25, 3, 6, 3, 0, 24, 22, 1, 0, 0, 0,
         25, 28, 1, 0, 0, 0, 26, 24, 1, 0, 0, 0, 26, 27, 1, 0, 0, 0, 27, 30, 1, 0, 0, 0, 28, 26, 1,
         0, 0, 0, 29, 21, 1, 0, 0, 0, 29, 30, 1, 0, 0, 0, 30, 31, 1, 0, 0, 0, 31, 32, 5, 2, 0, 0,
-        32, 5, 1, 0, 0, 0, 33, 34, 5, 12, 0, 0, 34, 35, 5, 6, 0, 0, 35, 36, 3, 8, 4, 0, 36, 7, 1,
-        0, 0, 0, 37, 44, 5, 10, 0, 0, 38, 44, 5, 9, 0, 0, 39, 44, 5, 7, 0, 0, 40, 44, 5, 8, 0, 0,
+        32, 5, 1, 0, 0, 0, 33, 34, 5, 13, 0, 0, 34, 35, 5, 6, 0, 0, 35, 36, 3, 8, 4, 0, 36, 7, 1,
+        0, 0, 0, 37, 44, 5, 11, 0, 0, 38, 44, 5, 10, 0, 0, 39, 44, 5, 8, 0, 0, 40, 44, 5, 9, 0, 0,
         41, 44, 3, 4, 2, 0, 42, 44, 3, 10, 5, 0, 43, 37, 1, 0, 0, 0, 43, 38, 1, 0, 0, 0, 43, 39, 1,
         0, 0, 0, 43, 40, 1, 0, 0, 0, 43, 41, 1, 0, 0, 0, 43, 42, 1, 0, 0, 0, 44, 9, 1, 0, 0, 0, 45,
         54, 5, 3, 0, 0, 46, 51, 3, 8, 4, 0, 47, 48, 5, 5, 0, 0, 48, 50, 3, 8, 4, 0, 49, 47, 1, 0,

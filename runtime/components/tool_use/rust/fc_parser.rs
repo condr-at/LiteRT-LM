@@ -28,8 +28,9 @@ use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 
 fn strip_escape_tokens(text: &str) -> &str {
-    const ESCAPE: &str = "<escape>";
     let mut s = text;
+
+    const ESCAPE: &str = "<escape>";
     if s.starts_with(ESCAPE) {
         s = &s[ESCAPE.len()..];
     }
