@@ -29,6 +29,8 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/cc/litert_common.h"  // from @litert
+#include "runtime/engine/io_types.h"
+#include "runtime/executor/vision_executor_utils.h"
 #include "runtime/util/scoped_file.h"
 #if !defined(LITERT_DISABLE_NPU)
 #include "litert/cc/options/litert_qualcomm_options.h"  // from @litert
@@ -283,10 +285,14 @@ litert::lm::VisionLiteRtCompiledModelExecutor::Create(
   auto expected_input_dimension =
       std::vector<int>(dimensions.begin(), dimensions.end());
 
+  ASSIGN_OR_RETURN(
+      auto vision_executor_properties,
+      GetVisionExecutorPropertiesFromModelResources(*resources.get()));
+
   return absl::WrapUnique(new VisionLiteRtCompiledModelExecutor(
       vision_executor_settings, env, std::move(resources),
       std::move(vision_encoder), std::move(vision_adapter),
-      expected_input_dimension));
+      expected_input_dimension, vision_executor_properties));
 }
 
 absl::StatusOr<ExecutorVisionData> VisionLiteRtCompiledModelExecutor::Encode(
@@ -336,6 +342,11 @@ absl::StatusOr<ExecutorVisionData> VisionLiteRtCompiledModelExecutor::Encode(
 absl::StatusOr<std::vector<int>>
 VisionLiteRtCompiledModelExecutor::GetExpectedInputDimension() const {
   return expected_input_dimension_;
+}
+
+absl::StatusOr<VisionExecutorProperties>
+VisionLiteRtCompiledModelExecutor::GetVisionExecutorProperties() const {
+  return vision_executor_properties_;
 }
 
 }  // namespace litert::lm

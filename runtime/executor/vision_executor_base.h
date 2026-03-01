@@ -17,8 +17,10 @@
 
 #include <vector>
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
+#include "runtime/engine/io_types.h"
 #include "runtime/executor/llm_executor_io_types.h"
 
 namespace litert::lm {
@@ -41,6 +43,12 @@ class VisionExecutorBase {
   // [batch, height, width, channels]
   virtual absl::StatusOr<std::vector<int>> GetExpectedInputDimension()
       const = 0;
+
+  // Get the vision executor properties.
+  virtual absl::StatusOr<VisionExecutorProperties> GetVisionExecutorProperties()
+      const {
+    return absl::UnimplementedError("Not implemented.");
+  }
 };
 
 }  // namespace litert::lm

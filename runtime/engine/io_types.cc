@@ -536,12 +536,20 @@ std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info) {
 DecodeConfig DecodeConfig::CreateDefault() { return DecodeConfig(); }
 
 std::ostream& operator<<(std::ostream& os,
+                         const VisionExecutorProperties& properties) {
+  os << "num_tokens_per_image: " << properties.num_tokens_per_image
+     << std::endl;
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os,
                          const AudioExecutorProperties& properties) {
   os << "is_streaming_model: " << properties.is_streaming_model << std::endl;
   os << "streaming_chunk_size: " << properties.streaming_chunk_size
      << std::endl;
   os << "streaming_chunk_overlap_size: "
      << properties.streaming_chunk_overlap_size << std::endl;
+  os << "audio_shrink_factor: " << properties.audio_shrink_factor << std::endl;
   return os;
 }
 

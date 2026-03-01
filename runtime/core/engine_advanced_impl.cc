@@ -47,6 +47,7 @@
 #include "runtime/executor/llm_litert_compiled_model_executor_factory.h"
 #include "runtime/executor/magic_number_configs_helper.h"
 #include "runtime/executor/vision_executor_settings.h"
+#include "runtime/executor/vision_executor_utils.h"
 #include "runtime/framework/resource_management/execution_manager.h"
 #include "runtime/proto/llm_metadata.pb.h"
 #include "runtime/proto/sampler_params.pb.h"
@@ -190,6 +191,12 @@ class EngineAdvancedImpl : public Engine {
   absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
       const override {
     return GetAudioExecutorPropertiesFromModelResources(
+        *litert_model_resources_);
+  }
+
+  absl::StatusOr<VisionExecutorProperties> GetVisionExecutorProperties()
+      const override {
+    return GetVisionExecutorPropertiesFromModelResources(
         *litert_model_resources_);
   }
 

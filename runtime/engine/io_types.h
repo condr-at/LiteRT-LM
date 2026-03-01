@@ -516,6 +516,18 @@ class DecodeConfig {
 
 // The properties of the audio model. These properties are populated by
 // inspecting the LiteRT compiled model and provide information about the model
+// parameters.
+struct VisionExecutorProperties {
+  // The number of tokens representing each image fed into the LLM.
+  // Note the start of image token is not counted in this number.
+  int num_tokens_per_image = 256;
+};
+
+std::ostream& operator<<(std::ostream& os,
+                         const VisionExecutorProperties& properties);
+
+// The properties of the audio model. These properties are populated by
+// inspecting the LiteRT compiled model and provide information about the model
 // type (static or streaming) and the model parameters (chunk size, overlap
 // size).
 struct AudioExecutorProperties {
@@ -527,6 +539,12 @@ struct AudioExecutorProperties {
 
   // The overlap size of each streaming chunk.
   int streaming_chunk_overlap_size = 0;
+
+  // The factor by which the audio is shrunk after encoding. This is used to
+  // calculate the number of audio tokens fed into the LLM. For example, if the
+  // input audio has 512 frames and the audio_shrink_factor is 16, the audio
+  // embeddings will have 512 / 16 = 32 tokens.
+  int audio_shrink_factor = 1;
 };
 
 std::ostream& operator<<(std::ostream& os,

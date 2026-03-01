@@ -30,6 +30,7 @@
 #include "litert/cc/litert_environment.h"  // from @litert
 #include "runtime/components/model_resources.h"
 #include "runtime/engine/engine_settings.h"
+#include "runtime/engine/io_types.h"
 #include "runtime/executor/audio_executor.h"
 #include "runtime/executor/audio_executor_settings.h"
 #include "runtime/executor/llm_executor.h"
@@ -134,6 +135,14 @@ class ResourceManager {
   // Acquires the audio executor.
   absl::StatusOr<std::unique_ptr<AudioExecutor>> AcquireAudioExecutor()
       ABSL_LOCKS_EXCLUDED(audio_executor_mutex_);
+
+  // Returns the audio executor properties.
+  absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
+      ABSL_LOCKS_EXCLUDED(audio_executor_mutex_);
+
+  // Returns the vision executor properties.
+  absl::StatusOr<VisionExecutorProperties> GetVisionExecutorProperties()
+      ABSL_LOCKS_EXCLUDED(vision_executor_mutex_);
 
  private:
   // Creates the litert environment if it is not created yet.

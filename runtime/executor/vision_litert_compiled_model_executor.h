@@ -27,6 +27,7 @@
 #include "litert/cc/litert_model.h"  // from @litert
 #include "litert/cc/litert_tensor_buffer.h"  // from @litert
 #include "runtime/components/model_resources.h"
+#include "runtime/engine/io_types.h"
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/executor/llm_executor_io_types.h"
 #include "runtime/executor/vision_executor.h"
@@ -56,6 +57,10 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
 
   // Returns the expected input dimension of the vision encoder model.
   absl::StatusOr<std::vector<int>> GetExpectedInputDimension() const override;
+
+  // Returns the vision executor properties.
+  absl::StatusOr<VisionExecutorProperties> GetVisionExecutorProperties()
+      const override;
 
  private:
   // The Vision Encoder LiteRT CompiledModel wrapper manage the input and
@@ -197,13 +202,15 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
       std::unique_ptr<ModelResources> resources,
       std::unique_ptr<VisionEncoder> vision_encoder,
       std::unique_ptr<VisionAdapter> vision_adapter,
-      std::vector<int> expected_input_dimension)
+      std::vector<int> expected_input_dimension,
+      const VisionExecutorProperties& vision_executor_properties)
       : vision_executor_settings_(vision_executor_settings),
         env_(env),
         resources_(std::move(resources)),
         vision_encoder_(std::move(vision_encoder)),
         vision_adapter_(std::move(vision_adapter)),
-        expected_input_dimension_(expected_input_dimension) {}
+        expected_input_dimension_(expected_input_dimension),
+        vision_executor_properties_(vision_executor_properties) {}
 
   // The VisionExecutorSettings for the vision encoder and vision adapter
   // models.
@@ -223,6 +230,9 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
 
   // The expected input dimension of the vision encoder model.
   std::vector<int> expected_input_dimension_;
+
+  // The vision executor properties.
+  VisionExecutorProperties vision_executor_properties_;
 };
 
 }  // namespace litert::lm

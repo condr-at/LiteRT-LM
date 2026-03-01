@@ -248,6 +248,16 @@ class ExecutionManager {
       absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback)
       ABSL_LOCKS_EXCLUDED(session_and_task_lookup_mutex_);
 
+  // Returns the audio executor properties.
+  absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties() const {
+    return resource_manager_->GetAudioExecutorProperties();
+  }
+
+  // Returns the vision executor properties.
+  absl::StatusOr<VisionExecutorProperties> GetVisionExecutorProperties() const {
+    return resource_manager_->GetVisionExecutorProperties();
+  }
+
  private:
   // Private constructor. Use the Create function instead.
   ExecutionManager(

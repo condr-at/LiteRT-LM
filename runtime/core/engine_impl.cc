@@ -203,6 +203,14 @@ class EngineImpl : public Engine {
     return audio_executor_->GetAudioExecutorProperties();
   }
 
+  absl::StatusOr<VisionExecutorProperties> GetVisionExecutorProperties()
+      const override {
+    if (vision_executor_ == nullptr) {
+      return absl::FailedPreconditionError("Vision modality is not enabled.");
+    }
+    return vision_executor_->GetVisionExecutorProperties();
+  }
+
  private:
   // Stored engine settings.
   EngineSettings engine_settings_;

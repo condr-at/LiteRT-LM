@@ -34,6 +34,7 @@ namespace {
 constexpr absl::string_view kPrevMaskName = "prev_mask";
 constexpr absl::string_view kFeatureStatesNamePattern = "feature_state";
 constexpr absl::string_view kSegmentMaskName = "segment_mask";
+constexpr absl::string_view kMaskName = "mask";
 
 bool IsStreamingEncoder(const std::vector<absl::string_view>& input_names) {
   // A huristic to check if the model is a streaming model by checking if the
@@ -43,6 +44,7 @@ bool IsStreamingEncoder(const std::vector<absl::string_view>& input_names) {
                        return absl::StrContains(input_name, kPrevMaskName);
                      });
 }
+
 }  // namespace
 
 absl::StatusOr<AudioExecutorProperties>
@@ -54,6 +56,22 @@ GetAudioExecutorPropertiesFromModelResources(ModelResources& model_resources) {
   LITERT_ASSIGN_OR_RETURN(auto input_names,
                           audio_encoder_model->GetSignatureInputNames());
   properties.is_streaming_model = IsStreamingEncoder(input_names);
+  LITERT_ASSIGN_OR_RETURN(
+      auto mask_tensor_type,
+      audio_encoder_model->GetInputTensorType(
+          0, properties.is_streaming_model ? kSegmentMaskName : kMaskName));
+  LITERT_ASSIGN_OR_RETURN(int input_sequence_length,
+                          mask_tensor_type.Layout().NumElements());
+
+  ASSIGN_OR_RETURN(
+      auto audio_adapter_model,
+      model_resources.GetTFLiteModel(ModelType::kTfLiteAudioAdapter));
+  LITERT_ASSIGN_OR_RETURN(auto adapter_output_tensor_type,
+                          audio_adapter_model->GetOutputTensorType(0, 0));
+  int output_sequence_length =
+      adapter_output_tensor_type.Layout().Dimensions()
+          [adapter_output_tensor_type.Layout().Dimensions().size() - 2];
+
   if (properties.is_streaming_model) {
     // Get the feature states tensor type and use it to get the overlap size.
     std::string feature_states_name =
@@ -80,6 +98,13 @@ GetAudioExecutorPropertiesFromModelResources(ModelResources& model_resources) {
     properties.streaming_chunk_size =
         segment_mask_tensor_type.Layout().Dimensions()
             [segment_mask_tensor_type.Layout().Dimensions().size() - 1];
+
+    properties.audio_shrink_factor =
+        (input_sequence_length - properties.streaming_chunk_overlap_size) /
+        output_sequence_length;
+  } else {
+    properties.audio_shrink_factor =
+        input_sequence_length / output_sequence_length;
   }
   return properties;
 }

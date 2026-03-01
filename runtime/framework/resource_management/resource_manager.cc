@@ -102,6 +102,11 @@ class LockedVisionExecutor : public VisionExecutor {
     return vision_executor_->GetExpectedInputDimension();
   }
 
+  absl::StatusOr<VisionExecutorProperties> GetVisionExecutorProperties()
+      const override {
+    return vision_executor_->GetVisionExecutorProperties();
+  }
+
  private:
   std::shared_ptr<VisionExecutor> vision_executor_;
   // The mutex lock.
@@ -792,6 +797,20 @@ absl::StatusOr<std::unique_ptr<ResourceManager>> ResourceManager::Create(
       std::move(vision_executor_settings), std::move(audio_executor_settings),
       litert_env);
   return llm_resource_manager;
+}
+
+absl::StatusOr<AudioExecutorProperties>
+ResourceManager::GetAudioExecutorProperties() {
+  RETURN_IF_ERROR(TryLoadingAudioExecutor());
+  MovableMutexLock lock(&audio_executor_mutex_);
+  return audio_executor_->GetAudioExecutorProperties();
+}
+
+absl::StatusOr<VisionExecutorProperties>
+ResourceManager::GetVisionExecutorProperties() {
+  RETURN_IF_ERROR(TryLoadingVisionExecutor());
+  absl::MutexLock lock(vision_executor_mutex_);
+  return vision_executor_->GetVisionExecutorProperties();
 }
 
 }  // namespace litert::lm

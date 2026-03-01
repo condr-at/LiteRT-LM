@@ -651,6 +651,19 @@ absl::Status RunLiteRtLm(const LiteRtLmSettings& settings,
   ASSIGN_OR_RETURN(auto engine,
                    litert::lm::EngineFactory::CreateAny(
                        std::move(engine_settings), settings.input_prompt));
+  if (settings.vision_backend.has_value()) {
+    ASSIGN_OR_RETURN(auto vision_executor_properties,
+                     engine->GetVisionExecutorProperties());
+    ABSL_LOG(INFO) << "Vision executor properties: "
+                   << vision_executor_properties;
+  }
+  if (settings.audio_backend.has_value()) {
+    ASSIGN_OR_RETURN(auto audio_executor_properties,
+                     engine->GetAudioExecutorProperties());
+    ABSL_LOG(INFO) << "Audio executor properties: "
+                   << audio_executor_properties;
+  }
+
   // Get the session config.
   SessionConfig session_config = CreateSessionConfig(settings);
 

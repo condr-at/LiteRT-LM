@@ -291,6 +291,11 @@ class Engine {
   virtual absl::StatusOr<AudioExecutorProperties> GetAudioExecutorProperties()
       const = 0;
 
+  // Get the vision model properties for the session. This is only available
+  // if the engine is created with vision modality enabled.
+  virtual absl::StatusOr<VisionExecutorProperties> GetVisionExecutorProperties()
+      const = 0;
+
   // Default timeout duration for the engine/session processes.
   static constexpr absl::Duration kDefaultTimeout = absl::Minutes(10);
 };

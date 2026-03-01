@@ -655,7 +655,9 @@ cc_library(
     hdrs = ["vision_executor_base.h"],
     deps = [
         ":llm_executor_io_types",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "//runtime/engine:io_types",
     ] + select({
         "@litert//litert:litert_link_capi_so": [
             "@litert//litert/cc:litert_api_with_dynamic_runtime",
@@ -676,6 +678,7 @@ cc_library(
         ":llm_executor_io_types",
         ":vision_executor",
         ":vision_executor_settings",
+        ":vision_executor_utils",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/memory",
@@ -685,6 +688,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "//runtime/components:model_resources",
+        "//runtime/engine:io_types",
         "//runtime/util:convert_tensor_buffer",
         "//runtime/util:file_util",
         "//runtime/util:litert_status_util",
@@ -843,6 +847,28 @@ cc_library(
     name = "audio_executor_utils",
     srcs = ["audio_executor_utils.cc"],
     hdrs = ["audio_executor_utils.h"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/components:model_resources",
+        "//runtime/engine:io_types",
+        "//runtime/util:litert_status_util",
+    ] + select({
+        "@litert//litert:litert_link_capi_so": [
+            "@litert//litert/cc:litert_api_with_dynamic_runtime",
+        ],
+        "//conditions:default": [
+            "@litert//litert/cc:litert_macros",
+            "@litert//litert/cc:litert_model",
+        ],
+    }),
+)
+
+cc_library(
+    name = "vision_executor_utils",
+    srcs = ["vision_executor_utils.cc"],
+    hdrs = ["vision_executor_utils.h"],
     deps = [
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

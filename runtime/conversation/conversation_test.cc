@@ -155,6 +155,8 @@ class MockEngine : public Engine {
   MOCK_METHOD(const Tokenizer&, GetTokenizer, (), (const, override));
   MOCK_METHOD(absl::StatusOr<AudioExecutorProperties>,
               GetAudioExecutorProperties, (), (const, override));
+  MOCK_METHOD(absl::StatusOr<VisionExecutorProperties>,
+              GetVisionExecutorProperties, (), (const, override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Session>>, CreateSession,
               (const SessionConfig& session_config), (override));
   MOCK_METHOD(absl::Status, WaitUntilDone, (absl::Duration timeout),
