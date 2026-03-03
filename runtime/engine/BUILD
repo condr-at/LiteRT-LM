@@ -71,6 +71,7 @@ cc_library(
     hdrs = ["io_types.h"],
     deps = [
         "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
@@ -100,6 +101,7 @@ cc_test(
     deps = [
         ":io_types",
         "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",

@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
@@ -94,7 +95,10 @@ class InputImage {
  public:
   // Constructs an InputImage from a raw image bytes string or a TensorBuffer of
   // processed image bytes. The InputImage takes ownership of the provided data.
-  explicit InputImage(std::variant<std::string, TensorBuffer> data)
+  explicit InputImage(
+      std::variant<std::string, TensorBuffer,
+                   absl::flat_hash_map<std::string, TensorBuffer>>
+          data)
       : data_(std::move(data)) {}
 
   // Copy constructor.
@@ -111,6 +115,12 @@ class InputImage {
     return std::holds_alternative<TensorBuffer>(data_);
   }
 
+  // Returns true if the image is preprocessed into a TensorBuffer map.
+  bool IsTensorBufferMap() const {
+    return std::holds_alternative<
+        absl::flat_hash_map<std::string, TensorBuffer>>(data_);
+  }
+
   // Returns the raw image bytes. Returns an error if the image is preprocessed.
   absl::StatusOr<absl::string_view> GetRawImageBytes() const;
 
@@ -118,13 +128,20 @@ class InputImage {
   // not preprocessed.
   absl::StatusOr<const TensorBuffer*> GetPreprocessedImageTensor() const;
 
+  // Returns the preprocessed image tensor map. Returns an error if the image is
+  // not preprocessed.
+  absl::StatusOr<const absl::flat_hash_map<std::string, TensorBuffer>*>
+  GetPreprocessedImageTensorMap() const;
+
   // Creates a copy of the InputImage.
   // If the image is preprocessed, the copy will be a TensorBuffer shallow copy.
   // Otherwise, the copy will be a string byte deep copy.
   absl::StatusOr<InputImage> CreateCopy() const;
 
  private:
-  std::variant<std::string, TensorBuffer> data_;
+  std::variant<std::string, TensorBuffer,
+               absl::flat_hash_map<std::string, TensorBuffer>>
+      data_;
 };
 
 inline std::ostream& operator<<(std::ostream& os,

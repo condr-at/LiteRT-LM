@@ -28,6 +28,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/log/log.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -87,6 +88,16 @@ absl::StatusOr<const TensorBuffer*> InputImage::GetPreprocessedImageTensor()
       "The image is not preprocessed and does not have a tensor.");
 }
 
+absl::StatusOr<const absl::flat_hash_map<std::string, TensorBuffer>*>
+InputImage::GetPreprocessedImageTensorMap() const {
+  if (std::holds_alternative<absl::flat_hash_map<std::string, TensorBuffer>>(
+          data_)) {
+    return &std::get<absl::flat_hash_map<std::string, TensorBuffer>>(data_);
+  }
+  return absl::FailedPreconditionError(
+      "The image is not preprocessed and does not have a tensor map.");
+}
+
 absl::StatusOr<InputImage> InputImage::CreateCopy() const {
   if (std::holds_alternative<std::string>(data_)) {
     return InputImage(std::move(std::get<std::string>(data_)));
@@ -94,6 +105,16 @@ absl::StatusOr<InputImage> InputImage::CreateCopy() const {
     LITERT_ASSIGN_OR_RETURN(auto tensor_buffer_clone,
                             std::get<TensorBuffer>(data_).Duplicate());
     return InputImage(std::move(tensor_buffer_clone));
+  } else if (std::holds_alternative<
+                 absl::flat_hash_map<std::string, TensorBuffer>>(data_)) {
+    const auto& tensor_buffer_map =
+        std::get<absl::flat_hash_map<std::string, TensorBuffer>>(data_);
+    absl::flat_hash_map<std::string, TensorBuffer> tensor_buffer_map_copy;
+    for (const auto& [key, value] : tensor_buffer_map) {
+      LITERT_ASSIGN_OR_RETURN(auto tensor_buffer_clone, value.Duplicate());
+      tensor_buffer_map_copy[key] = std::move(tensor_buffer_clone);
+    }
+    return InputImage(std::move(tensor_buffer_map_copy));
   }
   return absl::FailedPreconditionError(
       "The data_ is not a string or a TensorBuffer.");

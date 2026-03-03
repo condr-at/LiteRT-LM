@@ -25,6 +25,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/time/clock.h"  // from @com_google_absl
 #include "absl/time/time.h"  // from @com_google_absl
@@ -407,6 +408,26 @@ TEST(CreateInputDataCopyTest, InputImage) {
   ASSERT_OK_AND_ASSIGN(copied_data, CreateInputDataCopy(original_data));
   ASSERT_TRUE(std::holds_alternative<InputImage>(copied_data));
   EXPECT_TRUE(std::get<InputImage>(copied_data).IsTensorBuffer());
+
+  absl::flat_hash_map<std::string, TensorBuffer> original_tensor_map;
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer original_tensor_buffer_1,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
+                                  kTensorSize));
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer original_tensor_buffer_2,
+      TensorBuffer::CreateManaged(env, kTensorBufferType, kTensorType,
+                                  kTensorSize));
+  original_tensor_map["test_key_1"] = std::move(original_tensor_buffer_1);
+  original_tensor_map["test_key_2"] = std::move(original_tensor_buffer_2);
+  original_data = InputImage(std::move(original_tensor_map));
+  ASSERT_OK_AND_ASSIGN(copied_data, CreateInputDataCopy(original_data));
+  ASSERT_TRUE(std::holds_alternative<InputImage>(copied_data));
+  EXPECT_TRUE(std::get<InputImage>(copied_data).IsTensorBufferMap());
+  EXPECT_TRUE(
+      std::get<InputImage>(copied_data).GetPreprocessedImageTensorMap().ok());
+  EXPECT_THAT(std::get<InputImage>(copied_data).GetPreprocessedImageTensor(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(CreateInputDataCopyTest, InputAudio) {
