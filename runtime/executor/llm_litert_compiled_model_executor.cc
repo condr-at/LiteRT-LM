@@ -1321,6 +1321,27 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::InitializeSampler(
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::unique_ptr<CompiledModel>>
+LlmLiteRtCompiledModelExecutorBase::CreateMtpDrafterCompiledModel(
+    ModelResources& resources, Environment& lrt_env,
+    Options& compilation_options) {
+  auto mtp_drafter_model_status_or =
+      resources.GetTFLiteModel(ModelType::kTfLiteMtpDrafter);
+  std::unique_ptr<CompiledModel> mtp_drafter_compiled_model = nullptr;
+  if (mtp_drafter_model_status_or.ok()) {
+    const Model* mtp_drafter_model = *mtp_drafter_model_status_or;
+    if (mtp_drafter_model != nullptr) {
+      LITERT_ASSIGN_OR_RETURN(
+          auto drafter_compiled_model,
+          CompiledModel::Create(lrt_env, mtp_drafter_model->Get(),
+                                compilation_options));
+      mtp_drafter_compiled_model =
+          std::make_unique<CompiledModel>(std::move(drafter_compiled_model));
+    }
+  }
+  return mtp_drafter_compiled_model;
+}
+
 absl::Status LlmLiteRtCompiledModelExecutorBase::SwapSamplerInputTensors() {
   bool has_input_attn_mask = signatures_.input_attn_mask.has_value();
   // Move the input_pos and mask to previous ones.
@@ -1759,6 +1780,11 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
       auto compiled_model,
       CompiledModel::Create(lrt_env, litert_model->Get(), compilation_options));
 
+  LITERT_ASSIGN_OR_RETURN(
+      std::unique_ptr<CompiledModel> mtp_drafter_compiled_model,
+      LlmLiteRtCompiledModelExecutorBase::CreateMtpDrafterCompiledModel(
+          resources, lrt_env, compilation_options));
+
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_input_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_output_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> input_kv_cache_buffers;
@@ -1915,7 +1941,8 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
       std::move(decode_output_kv_cache_buffers), std::move(prefill_runner_set),
       signatures, batch_size, std::move(cache_path),
       std::move(embedding_lookup), std::move(per_layer_embedding_lookup),
-      use_fp16_precision, activation_data_type));
+      use_fp16_precision, activation_data_type,
+      std::move(mtp_drafter_compiled_model)));
 }
 
 /* ===========================================================================*/
@@ -2152,6 +2179,11 @@ LlmLiteRtCompiledModelExecutorDynamic::Create(
       auto compiled_model,
       CompiledModel::Create(lrt_env, litert_model->Get(), compilation_options));
 
+  LITERT_ASSIGN_OR_RETURN(
+      std::unique_ptr<CompiledModel> mtp_drafter_compiled_model,
+      LlmLiteRtCompiledModelExecutorBase::CreateMtpDrafterCompiledModel(
+          resources, lrt_env, compilation_options));
+
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_input_buffers;
   absl::flat_hash_map<absl::string_view, TensorBuffer> decode_output_buffers;
 
@@ -2231,7 +2263,9 @@ LlmLiteRtCompiledModelExecutorDynamic::Create(
       v_dynamic_dim, kv_increament_size, std::move(key_cache_input_names),
       std::move(value_cache_input_names), signatures, batch_size,
       std::move(weight_cache_path), std::move(embedding_lookup),
-      std::move(per_layer_embedding_lookup), /*use_fp16_precision=*/false));
+      std::move(per_layer_embedding_lookup), /*use_fp16_precision=*/false,
+      /*logits_data_type=*/LogitsDataType::FLOAT32,
+      std::move(mtp_drafter_compiled_model)));
 }
 
 }  // namespace litert::lm
