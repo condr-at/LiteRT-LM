@@ -538,6 +538,14 @@ struct VisionExecutorProperties {
   // The number of tokens representing each image fed into the LLM.
   // Note the start of image token is not counted in this number.
   int num_tokens_per_image = 256;
+
+  // The ratio of the input image patch number to the output image patch
+  // number. This is used to calculate the number of image tokens fed into the
+  // LLM. For example, if the input image has 2520 patches and the
+  // patch_num_shrink_factor is 9, the image tokens fed into the LLM will be
+  // 2520 / 9 = 280. Only applicable to models that use transformer encoder,
+  // a.k.a. Vision Transformer (ViT).
+  std::optional<int> patch_num_shrink_factor = std::nullopt;
 };
 
 std::ostream& operator<<(std::ostream& os,

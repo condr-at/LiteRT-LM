@@ -560,6 +560,11 @@ std::ostream& operator<<(std::ostream& os,
                          const VisionExecutorProperties& properties) {
   os << "num_tokens_per_image: " << properties.num_tokens_per_image
      << std::endl;
+  os << "patch_num_shrink_factor: "
+     << (properties.patch_num_shrink_factor.has_value()
+             ? absl::StrCat(properties.patch_num_shrink_factor.value())
+             : "not set")
+     << std::endl;
   return os;
 }
 

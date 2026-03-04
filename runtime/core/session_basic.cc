@@ -150,17 +150,24 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
                                 ids_buffer_span.begin(), ids_buffer_span.end());
     } else if (const auto* input_image =
                    std::get_if<InputImage>(&preprocessed_content)) {
-      ASSIGN_OR_RETURN(const auto* image_tensor,
-                       input_image->GetPreprocessedImageTensor());
-      if (image_tensor == nullptr) {
-        return absl::InvalidArgumentError(
-            "Image tensor is null in preprocessed_contents.");
-      }
       if (benchmark_info_.has_value()) {
         RETURN_IF_ERROR(benchmark_info_->TimeMarkDelta("vision_executor"));
       }
-      ASSIGN_OR_RETURN(auto single_image_data,
-                       vision_executor_->Encode(*image_tensor));
+      ExecutorVisionData single_image_data;
+      if (input_image->IsTensorBuffer()) {
+        ASSIGN_OR_RETURN(auto tensor_buffer,
+                         input_image->GetPreprocessedImageTensor());
+        ASSIGN_OR_RETURN(single_image_data,
+                         vision_executor_->Encode(*tensor_buffer));
+      } else if (input_image->IsTensorBufferMap()) {
+        ASSIGN_OR_RETURN(auto tensor_buffer_map,
+                         input_image->GetPreprocessedImageTensorMap());
+        ASSIGN_OR_RETURN(single_image_data,
+                         vision_executor_->Encode(*tensor_buffer_map));
+      } else {
+        return absl::FailedPreconditionError(
+            "The image is not preprocessed and does not have a tensor.");
+      }
       if (benchmark_info_.has_value()) {
         RETURN_IF_ERROR(benchmark_info_->TimeMarkDelta("vision_executor"));
       }
@@ -172,6 +179,9 @@ absl::StatusOr<ExecutorInputs> SessionBasic::ProcessAndCombineContents(
       combined_token_ids.insert(combined_token_ids.end(), image_token_num,
                                 ExecutorVisionData::kSpecialToken);
       all_image_data.push_back(std::move(single_image_data));
+    } else if (const auto* input_image_end =
+                   std::get_if<InputImageEnd>(&preprocessed_content)) {
+      combined_token_ids.push_back(ExecutorVisionData::kEndToken);
     } else if (const auto* input_audio =
                    std::get_if<InputAudio>(&preprocessed_content)) {
       ASSIGN_OR_RETURN(const auto* spectrogram_tensor,

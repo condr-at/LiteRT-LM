@@ -219,6 +219,9 @@ class ExecutorVisionData {
   // input.
   static constexpr int kSpecialToken = -1;
 
+  // Special token for the end of image.
+  static constexpr int kEndToken = -3;
+
   ExecutorVisionData() = default;
 
   // Constructor that moves optional TensorBuffers. Note that the embeddings are

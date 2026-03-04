@@ -242,10 +242,9 @@ TEST_F(ExecutionManagerTest, AddPrefillTaskInvalidImageInput) {
         if (!responses.ok()) {
           ASSERT_THAT(responses, testing::status::StatusIs(
                                      absl::StatusCode::kFailedPrecondition));
-          ASSERT_THAT(
-              responses.status().message(),
-              testing::Eq(
-                  "The image is not preprocessed and does not have a tensor."));
+          ASSERT_THAT(responses.status().message(),
+                      testing::Eq("Image tensor or tensor map is null in "
+                                  "preprocessed_contents."));
           task_states.push_back(TaskState::kFailed);
         } else {
           ASSERT_OK(responses);

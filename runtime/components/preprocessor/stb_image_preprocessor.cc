@@ -67,15 +67,20 @@ absl::Status MaybeResizeImageWithSameAspectRatio(
   const int num_patches_h = height / patch_height;
   const int num_patches_w = width / patch_width;
   const int num_patches = num_patches_h * num_patches_w;
-  if (num_patches <= max_num_patches) {
+  if (num_patches <= max_num_patches && (height % patch_height == 0) &&
+      (width % patch_width == 0)) {
     resized_image_data = std::move(image_data);
     return absl::OkStatus();
   }
 
-  float scale = std::sqrt(static_cast<float>(max_num_patches) /
-                          static_cast<float>(num_patches));
-  int new_height = static_cast<int>(height * scale);
-  int new_width = static_cast<int>(width * scale);
+  int new_height = height;
+  int new_width = width;
+  if (num_patches > max_num_patches) {
+    float scale = std::sqrt(static_cast<float>(max_num_patches) /
+                            static_cast<float>(num_patches));
+    new_height = static_cast<int>(height * scale);
+    new_width = static_cast<int>(width * scale);
+  }
 
   // Make sure the new dimensions are multiples of patch size.
   new_height = (new_height / patch_height) * patch_height;
@@ -86,7 +91,7 @@ absl::Status MaybeResizeImageWithSameAspectRatio(
   new_width = std::max(new_width, patch_width);
 
   // If still too many patches (due to rounding up), reduce dimensions.
-  while (static_cast<int64_t>(new_height / patch_height) *
+  while (static_cast<int>(new_height / patch_height) *
              (new_width / patch_width) >
          max_num_patches) {
     if (new_height >= new_width) {
@@ -99,7 +104,7 @@ absl::Status MaybeResizeImageWithSameAspectRatio(
   }
   ABSL_LOG(INFO) << "Resize image from " << width << "x" << height << " to "
                  << new_width << "x" << new_height << " which will result in "
-                 << static_cast<int64_t>(new_width / patch_width) *
+                 << static_cast<int>(new_width / patch_width) *
                         (new_height / patch_height)
                  << " patches to fit the max_num_patches: " << max_num_patches
                  << " limit.";

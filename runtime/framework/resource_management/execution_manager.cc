@@ -17,7 +17,9 @@
 #include <atomic>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -25,6 +27,7 @@
 #include "absl/base/attributes.h"  // from @com_google_absl
 #include "absl/base/nullability.h"  // from @com_google_absl
 #include "absl/base/thread_annotations.h"  // from @com_google_absl
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/container/flat_hash_set.h"  // from @com_google_absl
 #include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
@@ -519,19 +522,28 @@ absl::StatusOr<ExecutorInputs> ExecutionManager::ProcessAndCombineContents(
                                 ids_buffer_span.begin(), ids_buffer_span.end());
     } else if (const auto* input_image =
                    std::get_if<InputImage>(&preprocessed_content)) {
-      ASSIGN_OR_RETURN(const auto* image_tensor,
-                       input_image->GetPreprocessedImageTensor());
-      if (image_tensor == nullptr) {
-        return absl::InvalidArgumentError(
-            "Image tensor is null in preprocessed_contents.");
-      }
       if (benchmark_info.has_value()) {
         RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("vision_executor"));
       }
-      ASSIGN_OR_RETURN(auto vision_executor,
-                       resource_manager_->AcquireVisionExecutor());
-      ASSIGN_OR_RETURN(auto single_image_data,
-                       vision_executor->Encode(*image_tensor));
+      ExecutorVisionData single_image_data;
+      if (input_image->IsTensorBuffer()) {
+        ASSIGN_OR_RETURN(auto tensor_buffer,
+                         input_image->GetPreprocessedImageTensor());
+        ASSIGN_OR_RETURN(auto vision_executor,
+                         resource_manager_->AcquireVisionExecutor());
+        ASSIGN_OR_RETURN(single_image_data,
+                         vision_executor->Encode(*tensor_buffer));
+      } else if (input_image->IsTensorBufferMap()) {
+        ASSIGN_OR_RETURN(auto tensor_buffer_map,
+                         input_image->GetPreprocessedImageTensorMap());
+        ASSIGN_OR_RETURN(auto vision_executor,
+                         resource_manager_->AcquireVisionExecutor());
+        ASSIGN_OR_RETURN(single_image_data,
+                         vision_executor->Encode(*tensor_buffer_map));
+      } else {
+        return absl::FailedPreconditionError(
+            "Image tensor or tensor map is null in preprocessed_contents.");
+      }
       if (benchmark_info.has_value()) {
         RETURN_IF_ERROR(benchmark_info->TimeMarkDelta("vision_executor"));
       }
@@ -543,6 +555,9 @@ absl::StatusOr<ExecutorInputs> ExecutionManager::ProcessAndCombineContents(
       combined_token_ids.insert(combined_token_ids.end(), image_token_num,
                                 ExecutorVisionData::kSpecialToken);
       all_image_data.push_back(std::move(single_image_data));
+    } else if (const auto* input_image_end =
+                   std::get_if<InputImageEnd>(&preprocessed_content)) {
+      combined_token_ids.push_back(ExecutorVisionData::kEndToken);
     } else if (const auto* input_audio =
                    std::get_if<InputAudio>(&preprocessed_content)) {
       ASSIGN_OR_RETURN(const auto* spectrogram_tensor,

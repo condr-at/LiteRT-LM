@@ -1605,6 +1605,13 @@ LlmLiteRtNpuCompiledModelExecutor::CreateForModelHasPerLayerEmbedding(
         [litert::lm::ExecutorAudioData::kEndToken] =
             maybe_end_of_audio_model.value();
   }
+  absl::StatusOr<const litert::Model*> maybe_end_of_vision_model =
+      resources.GetTFLiteModel(ModelType::kTfLiteEndOfVision);
+  if (maybe_end_of_vision_model.ok()) {
+    end_of_multi_modal_embedding_models
+        [litert::lm::ExecutorVisionData::kEndToken] =
+            maybe_end_of_vision_model.value();
+  }
   ASSIGN_OR_RETURN(
       std::unique_ptr<EmbeddingLookupManager> embedding_lookup_manager,
       EmbeddingLookupManager::Create(embedder_lrt_model,

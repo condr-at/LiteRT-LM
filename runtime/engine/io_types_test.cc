@@ -1011,5 +1011,40 @@ TEST(DecodeConfigTest, SetAndGetMaxOutputTokens) {
   EXPECT_EQ(decode_config.GetMaxOutputTokens(), 42);
 }
 
+TEST(VisionExecutorPropertiesTest, OperatorOutput) {
+  VisionExecutorProperties properties;
+  properties.num_tokens_per_image = 128;
+  properties.patch_num_shrink_factor = 4;
+
+  std::stringstream ss;
+  ss << properties;
+  EXPECT_THAT(ss.str(), ContainsRegex("num_tokens_per_image: 128"));
+  EXPECT_THAT(ss.str(), ContainsRegex("patch_num_shrink_factor: 4"));
+}
+
+TEST(VisionExecutorPropertiesTest, OperatorOutputDefault) {
+  VisionExecutorProperties properties;
+
+  std::stringstream ss;
+  ss << properties;
+  EXPECT_THAT(ss.str(), ContainsRegex("num_tokens_per_image: 256"));
+  EXPECT_THAT(ss.str(), ContainsRegex("patch_num_shrink_factor: not set"));
+}
+
+TEST(AudioExecutorPropertiesTest, OperatorOutput) {
+  AudioExecutorProperties properties;
+  properties.is_streaming_model = true;
+  properties.streaming_chunk_size = 1024;
+  properties.streaming_chunk_overlap_size = 256;
+  properties.audio_shrink_factor = 8;
+
+  std::stringstream ss;
+  ss << properties;
+  EXPECT_THAT(ss.str(), ContainsRegex("is_streaming_model: 1"));
+  EXPECT_THAT(ss.str(), ContainsRegex("streaming_chunk_size: 1024"));
+  EXPECT_THAT(ss.str(), ContainsRegex("streaming_chunk_overlap_size: 256"));
+  EXPECT_THAT(ss.str(), ContainsRegex("audio_shrink_factor: 8"));
+}
+
 }  // namespace
 }  // namespace litert::lm

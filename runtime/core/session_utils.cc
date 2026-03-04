@@ -189,13 +189,16 @@ absl::StatusOr<std::vector<InputData>> PreprocessContents(
         preprocessed_contents.emplace_back(std::move(processed_input_text));
       }
     } else if (const auto* input_image = std::get_if<InputImage>(&content)) {
-      if (input_image->IsTensorBuffer()) {
+      if (input_image->IsTensorBuffer() || input_image->IsTensorBufferMap()) {
         ASSIGN_OR_RETURN(auto input_image_copy, input_image->CreateCopy());
         preprocessed_contents.emplace_back(std::move(input_image_copy));
       } else {
         return absl::InternalError(
             "Image must be preprocessed before being used in SessionAdvanced.");
       }
+    } else if (const auto* input_image_end =
+                   std::get_if<InputImageEnd>(&content)) {
+      preprocessed_contents.emplace_back(InputImageEnd());
     } else if (const auto* input_audio = std::get_if<InputAudio>(&content)) {
       if (input_audio->IsTensorBuffer()) {
         ASSIGN_OR_RETURN(auto input_audio_copy, input_audio->CreateCopy());
@@ -207,6 +210,9 @@ absl::StatusOr<std::vector<InputData>> PreprocessContents(
     } else if (const auto* input_audio_end =
                    std::get_if<InputAudioEnd>(&content)) {
       preprocessed_contents.emplace_back(InputAudioEnd());
+    } else {
+      return absl::InternalError(
+          "Unsupported input type in preprocessed_contents.");
     }
   }
   return preprocessed_contents;

@@ -14,7 +14,9 @@
 
 #include "runtime/executor/vision_executor_utils.h"
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "litert/cc/litert_macros.h"  // from @litert
 #include "runtime/components/model_resources.h"
 #include "runtime/engine/io_types.h"
@@ -28,13 +30,35 @@ GetVisionExecutorPropertiesFromModelResources(ModelResources& model_resources) {
   ASSIGN_OR_RETURN(
       auto vision_adapter_model,
       model_resources.GetTFLiteModel(ModelType::kTfLiteVisionAdapter));
-  LITERT_ASSIGN_OR_RETURN(auto input_tensor_type,
+  LITERT_ASSIGN_OR_RETURN(auto adapter_output_tensor_type,
                           vision_adapter_model->GetOutputTensorType(0, 0));
   // Assume the adapter output tensor has shape [batch_size, num_tokens,
   // embedding_size].
+  if (adapter_output_tensor_type.Layout().Dimensions().size() < 2) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("The adapter output tensor has invalid dimensions: ",
+                     adapter_output_tensor_type.Layout().Dimensions().size()));
+  }
   properties.num_tokens_per_image =
-      input_tensor_type.Layout()
-          .Dimensions()[input_tensor_type.Layout().Dimensions().size() - 2];
+      adapter_output_tensor_type.Layout().Dimensions()
+          [adapter_output_tensor_type.Layout().Dimensions().size() - 2];
+  ASSIGN_OR_RETURN(
+      auto vision_encoder_model,
+      model_resources.GetTFLiteModel(ModelType::kTfLiteVisionEncoder));
+
+  LITERT_ASSIGN_OR_RETURN(auto encoder_input_names,
+                          vision_encoder_model->GetSignatureInputNames(0));
+  if (encoder_input_names.size() == 2) {
+    // If the encoder has two input tensors, we asuume it is Vision Transformer
+    // (ViT) with input shape [batch_size, num_patches, patch_dim] for image
+    // tensor, and [batch_size, num_patches, 2] for the positions tensor.
+    LITERT_ASSIGN_OR_RETURN(auto encoder_input_tensor_type,
+                            vision_encoder_model->GetInputTensorType(0, 0));
+    properties.patch_num_shrink_factor =
+        encoder_input_tensor_type.Layout().Dimensions()
+            [encoder_input_tensor_type.Layout().Dimensions().size() - 2] /
+        properties.num_tokens_per_image;
+  }
   return properties;
 }
 

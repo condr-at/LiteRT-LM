@@ -89,12 +89,22 @@ absl::Status InitializeEmbeddingLookups(
     ModelResources& resources,
     std::unique_ptr<EmbeddingLookupManager>& embedding_lookup,
     std::unique_ptr<EmbeddingLookupManager>& per_layer_embedding_lookup) {
-  auto end_of_audio_model =
-      resources.GetTFLiteModel(ModelType::kTfLiteEndOfAudio);
   absl::flat_hash_map<int, const Model*> end_of_multi_modal_embedding_models;
-  if (end_of_audio_model.ok()) {
-    end_of_multi_modal_embedding_models.insert(
-        {ExecutorAudioData::kEndToken, end_of_audio_model.value()});
+  {
+    auto end_of_audio_model =
+        resources.GetTFLiteModel(ModelType::kTfLiteEndOfAudio);
+    if (end_of_audio_model.ok()) {
+      end_of_multi_modal_embedding_models.insert(
+          {ExecutorAudioData::kEndToken, end_of_audio_model.value()});
+    }
+  }
+  {
+    auto end_of_vision_model =
+        resources.GetTFLiteModel(ModelType::kTfLiteEndOfVision);
+    if (end_of_vision_model.ok()) {
+      end_of_multi_modal_embedding_models.insert(
+          {ExecutorVisionData::kEndToken, end_of_vision_model.value()});
+    }
   }
 
   auto text_embedder_model =

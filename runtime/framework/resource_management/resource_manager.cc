@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
@@ -96,6 +97,12 @@ class LockedVisionExecutor : public VisionExecutor {
   absl::StatusOr<ExecutorVisionData> Encode(
       const TensorBuffer& input_image_tensor) override {
     return vision_executor_->Encode(input_image_tensor);
+  }
+
+  absl::StatusOr<ExecutorVisionData> Encode(
+      const absl::flat_hash_map<std::string, TensorBuffer>& input_tensors)
+      override {
+    return vision_executor_->Encode(std::move(input_tensors));
   }
 
   absl::StatusOr<std::vector<int>> GetExpectedInputDimension() const override {

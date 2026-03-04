@@ -378,7 +378,14 @@ cc_test(
         "//runtime/util:litert_status_util",
         "//runtime/util:tensor_buffer_util",
         "//runtime/util:test_utils",
-    ],
+    ] + select({
+        "@litert//litert:litert_link_capi_so": [
+            "@litert//litert/cc:litert_api_with_dynamic_runtime",
+        ],
+        "//conditions:default": [
+            "@litert//litert/cc:litert_tensor_buffer",
+        ],
+    }),
 )
 
 cc_library(

@@ -16,10 +16,12 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_EXECUTOR_VISION_LITERT_COMPILED_MODEL_EXECUTOR_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "litert/cc/litert_compiled_model.h"  // from @litert
@@ -54,6 +56,10 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
   //   successful, or an error status if failed.
   absl::StatusOr<ExecutorVisionData> Encode(
       const litert::TensorBuffer& input_image_tensor) override;
+
+  absl::StatusOr<ExecutorVisionData> Encode(
+      const absl::flat_hash_map<std::string, litert::TensorBuffer>& input_maps)
+      override;
 
   // Returns the expected input dimension of the vision encoder model.
   absl::StatusOr<std::vector<int>> GetExpectedInputDimension() const override;
@@ -138,10 +144,10 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
     // The vision encoder compiled model.
     CompiledModel compiled_model_;
 
-    // The input buffers for the audio encoder model.
+    // The input buffers for the vision encoder model.
     std::vector<TensorBuffer> input_buffers_;
 
-    // The output buffers for the audio encoder model.
+    // The output buffers for the vision encoder model.
     std::vector<TensorBuffer> output_buffers_;
   };
 
@@ -172,6 +178,16 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
     // Returns the mutable CompiledModel for the vision adapter model.
     CompiledModel& GetMutableCompiledModel() { return compiled_model_; }
 
+    // Returns the input buffers for the vision adapter model.
+    const std::vector<TensorBuffer>& GetInputBuffers() const {
+      return input_buffers_;
+    }
+
+    // Returns the mutable input buffers for the vision adapter model.
+    std::vector<TensorBuffer>& GetMutableInputBuffers() {
+      return input_buffers_;
+    }
+
    private:
     VisionAdapter(Environment& env, const Model* absl_nonnull model,
                   const VisionExecutorSettings& vision_executor_settings)
@@ -195,6 +211,8 @@ class VisionLiteRtCompiledModelExecutor : public VisionExecutor {
 
     // The vision adapter compiled model.
     CompiledModel compiled_model_;
+
+    std::vector<TensorBuffer> input_buffers_;
   };
 
   explicit VisionLiteRtCompiledModelExecutor(
