@@ -170,6 +170,17 @@ absl::StatusOr<EngineSettings> CreateEngineSettings(
       engine_settings.GetMutableAudioExecutorSettings()->SetCacheDir(
           ":nocache");
     }
+  } else if (!settings.cache_dir.empty()) {
+    engine_settings.GetMutableMainExecutorSettings().SetCacheDir(
+        settings.cache_dir);
+    if (settings.vision_backend.has_value()) {
+      engine_settings.GetMutableVisionExecutorSettings()->SetCacheDir(
+          settings.cache_dir);
+    }
+    if (settings.audio_backend.has_value()) {
+      engine_settings.GetMutableAudioExecutorSettings()->SetCacheDir(
+          settings.cache_dir);
+    }
   }
   if (!settings.litert_dispatch_lib_dir.empty()) {
     engine_settings.GetMutableMainExecutorSettings().SetLitertDispatchLibDir(
