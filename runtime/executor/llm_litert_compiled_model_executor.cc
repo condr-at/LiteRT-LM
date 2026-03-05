@@ -1019,7 +1019,7 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::DecodeInternal(
   }
   if (signatures_.input_int32_param.has_value()) {
     RETURN_IF_ERROR(FillSingleBufferCacheParamTensor(
-        decode_input_buffers_[signatures_.input_int32_param.value()], step + 1,
+        decode_input_buffers_[signatures_.input_int32_param.value()], step,
         1));
   }
 
