@@ -7,7 +7,7 @@ OPEN_BRACKET : '[';
 CLOSE_BRACKET : ']';
 COMMA : ',';
 COLON : ':';
-ESCAPE : '<escape>' | '<ctrl46>';
+ESCAPE : '<escape>' | '<ctrl46>' | '<|"|>';
 
 // Literals
 BOOLEAN : 'true' | 'false';
