@@ -320,7 +320,12 @@ class Conversation(
           addProperty("name", functionName)
           add("response", result)
         }
-      toolResponsesJSONArray.add(toolResponseJSONObject)
+      val toolResponseWithTypeJSONObject =
+        JsonObject().apply {
+          addProperty("type", "tool_response")
+          add("tool_response", toolResponseJSONObject)
+        }
+      toolResponsesJSONArray.add(toolResponseWithTypeJSONObject)
     }
     return JsonObject().apply {
       addProperty("role", "tool")
