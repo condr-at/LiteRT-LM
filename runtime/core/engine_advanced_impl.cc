@@ -227,6 +227,8 @@ absl::StatusOr<std::unique_ptr<Engine>> EngineAdvancedImpl::Create(
           : std::nullopt;
 
   if (benchmark_info.has_value()) {
+    RETURN_IF_ERROR(
+        benchmark_info->TimeInitPhaseStart(BenchmarkInfo::InitPhase::kTotal));
     RETURN_IF_ERROR(benchmark_info->TimeInitPhaseStart(
         BenchmarkInfo::InitPhase::kModelAssets));
   }
@@ -316,6 +318,11 @@ absl::StatusOr<std::unique_ptr<Engine>> EngineAdvancedImpl::Create(
   if (benchmark_info.has_value()) {
     RETURN_IF_ERROR(
         benchmark_info->TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kExecutor));
+  }
+
+  if (benchmark_info.has_value()) {
+    RETURN_IF_ERROR(
+        benchmark_info->TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kTotal));
   }
 
   auto llm_impl = std::make_unique<EngineAdvancedImpl>(

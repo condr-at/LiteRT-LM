@@ -942,6 +942,8 @@ TEST(BenchmarkInfoTests, GetTimeToFirstTokenValid) {
 
 TEST(BenchmarkInfoTests, OperatorOutputWithData) {
   BenchmarkInfo benchmark_info(GetBenchmarkParams());
+  EXPECT_OK(
+      benchmark_info.TimeInitPhaseStart(BenchmarkInfo::InitPhase::kTotal));
   EXPECT_OK(benchmark_info.TimeInitPhaseStart(
       BenchmarkInfo::InitPhase::kModelAssets));
   EXPECT_OK(
@@ -950,7 +952,7 @@ TEST(BenchmarkInfoTests, OperatorOutputWithData) {
       benchmark_info.TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kModelAssets));
   EXPECT_OK(
       benchmark_info.TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kTokenizer));
-
+  EXPECT_OK(benchmark_info.TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kTotal));
   EXPECT_OK(benchmark_info.TimePrefillTurnStart());
   EXPECT_OK(benchmark_info.TimePrefillTurnEnd(100));
   EXPECT_OK(benchmark_info.TimePrefillTurnStart());
@@ -965,10 +967,10 @@ TEST(BenchmarkInfoTests, OperatorOutputWithData) {
   std::stringstream ss;
   ss << benchmark_info;
   const std::string expected_output = R"(BenchmarkInfo:
-  Init Phases \(2\):
-    - Model assets: .* ms
-    - Tokenizer: .* ms
-    Total init time: .* ms
+  Init Phases \(3\):
+    - Init Model assets: .* ms
+    - Init Tokenizer: .* ms
+    - Init Total: .* ms
 --------------------------------------------------
   Time to first token: .* s
 --------------------------------------------------

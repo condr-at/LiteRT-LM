@@ -406,21 +406,24 @@ class BenchmarkInfo {
     kTokenizer,
     kSession,
     kConversation,
+    kTotal,
   };
   static constexpr absl::string_view InitPhaseToString(InitPhase phase) {
     switch (phase) {
       case InitPhase::kModelAssets:
-        return "Model assets";
+        return "Init Model assets";
       case InitPhase::kLlmMetadata:
-        return "LLM metadata";
+        return "Init LLM metadata";
       case InitPhase::kExecutor:
-        return "Executor";
+        return "Init Executor";
       case InitPhase::kTokenizer:
-        return "Tokenizer";
+        return "Init Tokenizer";
       case InitPhase::kSession:
-        return "Session";
+        return "Init Session";
       case InitPhase::kConversation:
-        return "Conversation";
+        return "Init Conversation";
+      case InitPhase::kTotal:
+        return "Init Total";
     }
   }
 

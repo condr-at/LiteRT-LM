@@ -245,6 +245,8 @@ absl::StatusOr<std::unique_ptr<Engine>> EngineImpl::Create(
           : std::nullopt;
 
   if (benchmark_info.has_value()) {
+    RETURN_IF_ERROR(
+        benchmark_info->TimeInitPhaseStart(BenchmarkInfo::InitPhase::kTotal));
     RETURN_IF_ERROR(benchmark_info->TimeInitPhaseStart(
         BenchmarkInfo::InitPhase::kModelAssets));
   }
@@ -333,6 +335,12 @@ absl::StatusOr<std::unique_ptr<Engine>> EngineImpl::Create(
   auto worker_thread_pool =
       std::make_unique<ThreadPool>(/*name_prefix=*/"engine",
                                    /*max_num_threads=*/1);
+
+  if (benchmark_info.has_value()) {
+    RETURN_IF_ERROR(
+        benchmark_info->TimeInitPhaseEnd(BenchmarkInfo::InitPhase::kTotal));
+  }
+
   auto llm_impl = std::make_unique<EngineImpl>(
       std::move(engine_settings), std::move(model_resources),
       std::move(tokenizer), std::move(executor), std::move(vision_executor),

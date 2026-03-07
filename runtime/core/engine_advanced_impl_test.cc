@@ -215,6 +215,39 @@ TEST(EngineTest, CreateEngine_WithModelAndCacheFromFileDescriptor) {
   EXPECT_FALSE(responses->GetTexts()[0].empty());
 }
 
+TEST(EngineTest, CreateEngine_WithBenchmark) {
+  auto task_path =
+      std::filesystem::path(::testing::SrcDir()) /
+      "litert_lm/runtime/testdata/test_lm_new_metadata.task";
+  auto model_assets = ModelAssets::Create(task_path.string());
+  ASSERT_OK(model_assets);
+  auto engine_settings =
+      EngineSettings::CreateDefault(*model_assets, Backend::CPU);
+  ASSERT_OK(engine_settings);
+
+  // Enable Benchmark
+  engine_settings->GetMutableBenchmarkParams();
+
+  absl::StatusOr<std::unique_ptr<Engine>> llm = CreateEngine(*engine_settings);
+  ABSL_CHECK_OK(llm);
+
+  absl::StatusOr<std::unique_ptr<Engine::Session>> session =
+      (*llm)->CreateSession(SessionConfig::CreateDefault());
+  ABSL_CHECK_OK(session);
+
+  auto benchmark_info = (*session)->GetMutableBenchmarkInfo();
+  ASSERT_OK(benchmark_info);
+
+  const auto& init_phases = (*benchmark_info)->GetInitPhases();
+
+  EXPECT_TRUE(init_phases.contains(std::string(
+      BenchmarkInfo::InitPhaseToString(BenchmarkInfo::InitPhase::kTokenizer))));
+  EXPECT_TRUE(init_phases.contains(std::string(
+      BenchmarkInfo::InitPhaseToString(BenchmarkInfo::InitPhase::kExecutor))));
+  EXPECT_TRUE(init_phases.contains(std::string(
+      BenchmarkInfo::InitPhaseToString(BenchmarkInfo::InitPhase::kTotal))));
+}
+
 TEST(EngineTest, CreateEngine_FailsNoVisionModel) {
   auto task_path =
       std::filesystem::path(::testing::SrcDir()) /

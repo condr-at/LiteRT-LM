@@ -467,7 +467,6 @@ std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info) {
   if (info.GetInitPhases().empty()) {
     os << "    No init phases recorded." << std::endl;
   } else {
-    double total_time = 0.0;
     const auto& init_phases = info.GetInitPhases();
     bool has_conversation_creation = false;
     std::string conversation_creation_phase_name =
@@ -488,11 +487,9 @@ std::ostream& operator<<(std::ostream& os, const BenchmarkInfo& info) {
         // so skip it.
         continue;
       }
-      total_time += absl::ToDoubleMilliseconds(phase.second);
       os << "    - " << phase.first << ": "
          << absl::ToDoubleMilliseconds(phase.second) << " ms" << std::endl;
     }
-    os << "    Total init time: " << total_time << " ms" << std::endl;
   }
 
   os << "--------------------------------------------------" << std::endl;
