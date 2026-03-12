@@ -105,6 +105,18 @@ class Session(private val handle: Long) : AutoCloseable {
     LiteRtLmJni.nativeGenerateContentStream(handle, inputData.toTypedArray(), jniCallback)
   }
 
+  /**
+   * Clones the current session.
+   *
+   * The cloned session inherits the current session state up to the moment this method is called.
+   *
+   * @throws IllegalStateException if the session is not alive.
+   */
+  fun clone(): Session {
+    checkIsAlive()
+    return Session(LiteRtLmJni.nativeCloneSession(handle))
+  }
+
   private inner class JniInferenceCallbackImpl(private val callback: ResponseCallback) :
     LiteRtLmJni.JniInferenceCallback {
     override fun onNext(response: String) {

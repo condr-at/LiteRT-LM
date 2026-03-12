@@ -631,6 +631,19 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteSession)(
   delete reinterpret_cast<Engine::Session*>(session_pointer);
 }
 
+LITERTLM_JNIEXPORT jlong JNICALL JNI_METHOD(nativeCloneSession)(
+    JNIEnv* env, jclass thiz, jlong session_pointer) {
+  Engine::Session* session =
+      reinterpret_cast<Engine::Session*>(session_pointer);
+  auto cloned_session = session->Clone();
+  if (!cloned_session.ok()) {
+    ThrowLiteRtLmJniException(
+        env, "Failed to clone session: " + cloned_session.status().ToString());
+    return 0;
+  }
+  return reinterpret_cast<jlong>(cloned_session->release());
+}
+
 LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeRunPrefill)(
     JNIEnv* env, jclass thiz, jlong session_pointer, jobjectArray input_data) {
   Engine::Session* session =

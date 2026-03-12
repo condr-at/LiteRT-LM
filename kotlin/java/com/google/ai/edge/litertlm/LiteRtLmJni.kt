@@ -105,6 +105,14 @@ internal object LiteRtLmJni {
   external fun nativeDeleteSession(sessionPointer: Long)
 
   /**
+   * Clones the LiteRT-LM session.
+   *
+   * @param sessionPointer A pointer to the native session instance.
+   * @return A pointer to the cloned native session instance.
+   */
+  external fun nativeCloneSession(sessionPointer: Long): Long
+
+  /**
    * Runs the prefill step for the given input data.
    *
    * @param sessionPointer A pointer to the native session instance.
